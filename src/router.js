@@ -9,7 +9,7 @@
 ========================================================= */
 import './games/anchoring.js'; // side effect: customElements.define('retro-game-anchoring', ...)
 import { renderAvailabilityGame } from './games/availability.js';
-import { renderBarnumGame } from './games/barnum.js';
+import './games/barnum.js'; // side effect: customElements.define('retro-game-barnum', ...)
 import { renderCalibrationGame } from './games/calibration.js';
 import './games/crowd-wisdom.js'; // side effect: customElements.define('retro-game-crowd-wisdom', ...)
 import './games/dictator.js'; // side effect: customElements.define('retro-game-dictator', ...)
@@ -35,7 +35,7 @@ const GAME_RENDERERS = {
   dictator: () => mountElement('retro-game-dictator'),
   'public-goods': () => mountElement('retro-game-public-goods'),
   'false-consensus': () => mountElement('retro-game-false-consensus'),
-  barnum: () => renderBarnumGame(),
+  barnum: () => mountElement('retro-game-barnum'),
   availability: () => renderAvailabilityGame(),
   'planning-fallacy': () => renderPlanningFallacyGame(),
   ultimatum: () => renderUltimatumGame(),
