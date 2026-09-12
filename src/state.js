@@ -22,6 +22,12 @@ export const state = {
     'Денис',
     'Диана',
   ],
+  // Home screen filters. Deliberately shared, persistent module state
+  // (like `participants`) rather than a Lit reactive property local to
+  // `<retro-home>` — a facilitator filtering to one category, opening
+  // a game, then returning home should still see that same filter
+  // applied, not have it silently reset just because going "back"
+  // remounts a fresh <retro-home> element. See src/home.js.
   filter: 'all',
   structureFilter: 'all',
 };
