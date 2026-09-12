@@ -35,6 +35,22 @@
      // longer needed:
      Persist.clear('anchoring');
 ========================================================= */
+// Exported standalone (not just via the Persist object below) so a Lit
+// component can reuse it directly in a declarative render() template —
+// see src/games/dictator.js for the first game rendering its own draft
+// banner reactively instead of going through Persist.banner()'s
+// imperative DOM injection (which only targets `document`, not a
+// component's shadow root).
+export function timeAgo(ts) {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'только что';
+  if (mins === 1) return 'минуту назад';
+  if (mins < 5) return mins + ' минуты назад';
+  if (mins < 60) return mins + ' минут назад';
+  const hrs = Math.round(mins / 60);
+  return hrs === 1 ? 'час назад' : hrs + ' ч. назад';
+}
+
 export const Persist = (() => {
   const PREFIX = 'retro-draft-';
 
@@ -77,16 +93,6 @@ export const Persist = (() => {
       /* noop */
     }
     return false;
-  }
-
-  function timeAgo(ts) {
-    const mins = Math.round((Date.now() - ts) / 60000);
-    if (mins < 1) return 'только что';
-    if (mins === 1) return 'минуту назад';
-    if (mins < 5) return mins + ' минуты назад';
-    if (mins < 60) return mins + ' минут назад';
-    const hrs = Math.round(mins / 60);
-    return hrs === 1 ? 'час назад' : hrs + ' ч. назад';
   }
 
   // Renders a dismissible recovery banner into #mountId and wires its

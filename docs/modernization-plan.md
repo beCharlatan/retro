@@ -183,13 +183,74 @@ swapInPairs/swapInGroups` в первую очередь (лежат в `test/un
   срабатываний не осталось; заодно всплыли и почищены 3 мелких
   реальных (неиспользуемый параметр `q` в availability.js/
   calibration.js, неиспользуемая `MT` в crowd-wisdom.js).
-- **Фаза 2 — Пилотная игра (`dictator`).** Переписывается как
-  `<retro-game-dictator>` на Lit с Shadow DOM и `css\`\`` стилями;
-  печать/PDF решается здесь впервые (самая рискованная часть); её
-  тесты (`test:...`, плюс общие `smoke`/`persistence`/`pdf`/`privacy`/
-  `chart-tip`, которые её тоже проверяют) переводятся на
-  `data-testid`. Полный прогон `bun run test` — обязательный чекпоинт
-  перед продолжением.
+- ✅ **Фаза 2 — Пилотная игра (`dictator`).** Переписана как
+  `<retro-game-dictator>` (`src/games/dictator.js`) на Lit, Shadow DOM
+  (по умолчанию, `mode: 'open'`), общий `sharedStyles`
+  (`src/styles/shared-styles.js` — **весь** `styles.css` целиком,
+  импортированный как текст через `import ... with { type: 'text' }`
+  + `unsafeCSS()`, а не вручную вырезанное подмножество правил — см.
+  обоснование в комментарии файла: риск незаметно упустить, например,
+  `@media print` или CSS-приватность полей, важнее лишней
+  специфичности). Проверено экспериментально (`Bun.build` с
+  `type: 'text'`), что это работает и под бандлером, и под
+  `bun run dev`.
+
+  **Архитектурные решения, зафиксированные здесь как образец для
+  Фазы 3:**
+  - Экраны не переключаются императивно (`Screen.goTo` не
+    используется этим компонентом) — рендерятся все сразу, класс
+    `.active`/`.done` на каждой `<section>`/точке прогресса вычисляется
+    от реактивного `screenIdx` прямо в `render()`. Прогресс-бар и
+    disabled-состояние кнопок — не `Screen.updateProgress`, а
+    вычисляемые геттеры в шаблоне.
+  - Баннер восстановления черновика рендерится декларативно из
+    `this.draft`, а не через `Persist.banner()` (тот пишет
+    `document.getElementById(mountId).innerHTML = ...`, не видит
+    shadow root); для этого `timeAgo` вынесен из `persist.js` как
+    самостоятельный `export`. `Persist.save/load/clear` — чистая
+    работа с `sessionStorage`, не изменились.
+  - `Print.mount(id, data, root = document)` — добавлен необязательный
+    `root`, компонент передаёт `this.renderRoot`. `ShadowRoot`
+    поддерживает `getElementById` нативно (часть
+    `DocumentOrShadowRoot`), так что `root.getElementById(...)` работает
+    одинаково что для `document`, что для shadow root.
+  - Кнопка PDF — настоящий `@click=${() => Print.run()}` вместо
+    инлайнового `onclick="Print.run()"` (поэтому `window.Print`-мост из
+    Фазы 1 этому компоненту не нужен — нужен только оставшимся 12
+    играм).
+  - SVG-график по-прежнему строится императивно (`ChartTip`'s
+    hover-логика не ложится на декларативный рендер естественно) —
+    просто через `this.renderRoot.getElementById(...)` вместо
+    `document.getElementById(...)`.
+  - `Roles.dotsHTML()` для этого компонента не используется (он не
+    проставляет `.done`, только `.active` — терялась бы анимация
+    прогресса); точки рисуются прямо в шаблоне маленьким циклом.
+
+  **Тесты:** `test/games.js`'s дескриптор dictator и
+  `test/chart-tip.spec.js`'s dictator-специфичный блок переведены на
+  `data-testid="entry-body-1"`/`"entry-body-2"`/`"next-btn-1"`/
+  `"next-btn-2"` вместо `id`; `#pdf-btn`/`#dict-chart`/
+  `#print-header-dictator`/`#print-footer-dictator` **оставлены как
+  `id`** — это общие межигровые селекторы в `pdf.spec.js`/
+  `chart-tip.spec.js`, которые проверяют все 13 игр одним и тем же
+  кодом, не специфика data-testid-миграции.
+  Ещё один реальный, некосметический фикс, который потребовался в
+  тестовой инфраструктуре ДО переноса dictator: `persistence.spec.js`
+  и `pdf.spec.js` использовали `page.evaluate(() =>
+  document.querySelector(...))` — это **не** пронизывает Shadow DOM (в
+  отличие от `page.click`/`page.$`/`page.$eval`, которые используют
+  CSS-движок Playwright и пронизывают открытые shadow root
+  автоматически). Переведены на `page.$eval`/`page.$$eval` — исправлено
+  и проверено ДО переноса dictator (на всех 13 ещё-legacy играх), чтобы
+  не путать причины при отладке самого компонента.
+
+  Полный прогон `bun run test` — 404/404. Проверено и вручную в
+  браузере (Browser pane): т.к. инструменты панели (`find`/`read_page`/
+  `get_page_text`) сами не пронизывают shadow root, использовались
+  скриншоты + `javascript_tool` (`el.shadowRoot.querySelector(...)`)
+  для управления — визуально: дизайн-система, аватары, блюр
+  приватности, график с подсказками, таблица результатов — всё
+  идентично прежнему виду.
 - **Фаза 3 — Остальные 12 игр.** Тем же шаблоном, группами (по
   категориям: cognitive/econ/social), с прогоном соответствующего
   `test:*`-поднабора после каждой и полного набора в конце каждой

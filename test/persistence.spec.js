@@ -60,11 +60,18 @@ async function run() {
 
         await page.click('.draft-restore');
         await page.waitForTimeout(150);
-        const restoredSomething = await page.evaluate(() => {
-          const inputs = document.querySelectorAll('.screen.active input');
-          const onButtons = document.querySelectorAll('.screen.active .toggle-pair button.on');
-          return Array.from(inputs).some((i) => i.value !== '') || onButtons.length > 0;
-        });
+        // $$eval (not a raw page.evaluate + document.querySelectorAll) —
+        // Playwright's own CSS engine pierces open shadow roots, unlike a
+        // plain in-page document.querySelectorAll, so this keeps working
+        // once a game is a Shadow DOM Lit component (see
+        // docs/modernization-plan.md Phase 2+).
+        const hasFilledInput = await page
+          .$$eval('.screen.active input', (inputs) => inputs.some((i) => i.value !== ''))
+          .catch(() => false);
+        const onButtonCount = await page
+          .$$eval('.screen.active .toggle-pair button.on', (btns) => btns.length)
+          .catch(() => 0);
+        const restoredSomething = hasFilledInput || onButtonCount > 0;
         report.check(`${game.name}: restore repopulates the form`, restoredSomething);
 
         // --- discard path: fill again, reload, discard, confirm gone for good ---

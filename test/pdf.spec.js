@@ -100,9 +100,10 @@ async function run() {
 
         // The whole point of putting the explanation on the sheet is that
         // it still has to fit a single A4 page alongside everything else.
-        const contentHeight = await page.evaluate(
-          () => document.querySelector('.wrap').scrollHeight,
-        );
+        // $eval (not page.evaluate + document.querySelector) — pierces
+        // open shadow roots, so this keeps working for a Shadow DOM Lit
+        // game component too (see docs/modernization-plan.md Phase 2+).
+        const contentHeight = await page.$eval('.wrap', (el) => el.scrollHeight);
         const A4_USABLE_PX = 1122 - 2 * 49; // 96dpi page height minus ~13mm top/bottom margins
         report.check(
           `${game.name}: printed content still fits one A4 page`,

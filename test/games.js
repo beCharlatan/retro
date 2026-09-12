@@ -62,21 +62,28 @@ const GAMES = [
     id: 'dictator',
     name: 'Игра диктатора',
     multiScreen: true,
+    // First game migrated to a Lit/Shadow DOM custom element (see
+    // docs/modernization-plan.md Phase 2) — selectors here use
+    // data-testid instead of id, per that migration's decision (CSS
+    // Modules would hash class names, so tests shouldn't depend on
+    // them; ids still work fine but data-testid is the deliberate,
+    // consistent hook going forward). Playwright's CSS engine pierces
+    // open shadow roots automatically for these, same as for ids/classes.
     async toEntryScreen(page) {
       await page.click('text=Раунд 1 →');
     },
     async fill(page, opts = {}) {
-      const inputs = await page.$$('#entry-body-1 input');
+      const inputs = await page.$$('[data-testid="entry-body-1"] input');
       const n = opts.count ?? inputs.length;
       for (let i = 0; i < n; i++) await inputs[i].fill(String(100 + i * 20));
       return n;
     },
     async toResults(page) {
-      await page.click('#next-btn-1');
+      await page.click('[data-testid="next-btn-1"]');
       await page.waitForTimeout(80);
-      const inputs = await page.$$('#entry-body-2 input');
+      const inputs = await page.$$('[data-testid="entry-body-2"] input');
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(150 + i * 20));
-      await page.click('#next-btn-2');
+      await page.click('[data-testid="next-btn-2"]');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');

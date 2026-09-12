@@ -57,8 +57,13 @@ export const Print = (() => {
   const ORIGINAL_TITLE = document.title;
   let pendingFilename = null;
 
-  function mount(id, data) {
-    const el = document.getElementById(id);
+  // `root` defaults to `document` (every legacy game's mount points are
+  // plain global ids) — a Shadow DOM Lit component passes its own
+  // `this.renderRoot` instead, since `document.getElementById` can't see
+  // inside a shadow root. See src/games/dictator.js for the first caller
+  // that needs this.
+  function mount(id, data, root = document) {
+    const el = root.getElementById(id);
     if (el) {
       el.innerHTML = `
         <div class="print-kicker">5 минут общего развития</div>
@@ -74,7 +79,7 @@ export const Print = (() => {
     // copy without having seen the live context screen. Looked up by
     // naming convention: print-header-X's companion is print-footer-X.
     if (data.explanation) {
-      const footerEl = document.getElementById(id.replace('header', 'footer'));
+      const footerEl = root.getElementById(id.replace('header', 'footer'));
       if (footerEl) {
         footerEl.innerHTML = `
           <div class="print-footer-title">Что это было</div>

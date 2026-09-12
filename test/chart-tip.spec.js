@@ -90,13 +90,16 @@ async function run() {
       const page = await openPage(browser, report);
       await page.click('text=Игра диктатора');
       await page.click('text=Раунд 1 →');
-      const r1 = await page.$$('#entry-body-1 input');
+      // data-testid, not id — dictator is a Shadow DOM Lit component
+      // (docs/modernization-plan.md Phase 2); Playwright's CSS engine
+      // pierces open shadow roots for these the same as for ids/classes.
+      const r1 = await page.$$('[data-testid="entry-body-1"] input');
       for (let i = 0; i < r1.length; i++) await r1[i].fill(String(100 + i * 20));
-      await page.click('#next-btn-1');
+      await page.click('[data-testid="next-btn-1"]');
       await page.waitForTimeout(100);
-      const r2 = await page.$$('#entry-body-2 input');
+      const r2 = await page.$$('[data-testid="entry-body-2"] input');
       for (let i = 0; i < r2.length; i++) await r2[i].fill(String(150 + i * 20));
-      await page.click('#next-btn-2');
+      await page.click('[data-testid="next-btn-2"]');
 
       await hoverHitCircle(page, '#dict-chart circle');
       const html1 = await page.innerHTML('.chart-tooltip');
