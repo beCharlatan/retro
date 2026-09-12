@@ -1,0 +1,12 @@
+# This project's "tests" are a hand-rolled Playwright regression suite
+# (test/run-all.js + test/*.spec.js), NOT Bun's own test runner format —
+# the *.spec.js naming happens to match Bun's default test-file glob
+# though, so a bare `bun test` would otherwise "discover" and silently
+# no-op them (0 pass / 0 fail, looking deceptively like a clean run).
+#
+# Pointing Bun's test root at an unused folder keeps `bun test` out of
+# test/ entirely, so the mistake fails obviously instead of looking
+# green. Always run the suite via `bun run test` (see package.json) —
+# that's a plain script invocation, unaffected by this file.
+[test]
+root = "test/.bun-test-root-unused"

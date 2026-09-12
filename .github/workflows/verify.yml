@@ -1,0 +1,41 @@
+name: verify
+
+# Runs the full build + regression suite (404 checks across 13 games)
+# on every push and pull request, so a broken build or a failing
+# game/test never lands on main unnoticed. This is the thorough gate —
+# the local pre-push hook (scripts/pre-push) only runs the fast smoke
+# suite so `git push` itself stays quick; this workflow is what
+# actually enforces the full suite before anything merges.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright's Chromium (with OS deps)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build + run the full regression suite
+        run: bun run verify
+
+      - name: Upload the built dist/index.html
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/index.html
+          retention-days: 14

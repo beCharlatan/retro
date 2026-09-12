@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>5 минут общего развития</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+
+<!-- Shared role-assignment pattern (pairs / two-group splits) -->
+<script src="roles.js"></script>
+<!-- Shared screen-navigation pattern (goTo, back-home) -->
+<script src="screen.js"></script>
+<!-- Shared draft-recovery pattern (protects against accidental reload) -->
+<script src="persist.js"></script>
+<!-- Shared hover-tooltip pattern for chart data points -->
+<script src="chart-tip.js"></script>
+<!-- Shared PDF export pattern for results screens -->
+<script src="print.js"></script>
+
+<!-- Game modules first, so their functions exist before app.js wires up the router -->
+<script src="games/anchoring.js"></script>
+<script src="games/crowd-wisdom.js"></script>
+<script src="games/dictator.js"></script>
+<script src="games/public-goods.js"></script>
+<script src="games/false-consensus.js"></script>
+<script src="games/barnum.js"></script>
+<script src="games/availability.js"></script>
+<script src="games/planning-fallacy.js"></script>
+<script src="games/ultimatum.js"></script>
+<script src="games/prisoners-dilemma.js"></script>
+<script src="games/endowment.js"></script>
+<script src="games/framing.js"></script>
+<script src="games/calibration.js"></script>
+
+<!-- App shell: state, home screen, router. Boots itself at the end. -->
+<script src="app.js"></script>
+</body>
+</html>

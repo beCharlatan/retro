@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Fast local safety net right before `git push`: build + the smoke
+# suite only (~15-20s across all 13 games), NOT the full 400+-check
+# suite — that runs in CI on every push/PR (see
+# .github/workflows/verify.yml) and would make `git push` itself
+# annoyingly slow if it ran here too. This just catches an obviously
+# broken build/game before it leaves your machine.
+#
+# Installed via: bun run install-hooks
+# Skip once, if you really need to: git push --no-verify
+
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo "→ pre-push: build + smoke suite (fast check — full 400+ suite runs in CI)"
+bun build.js
+bun test/run-all.js --only=smoke
+
+echo "✓ pre-push checks passed"

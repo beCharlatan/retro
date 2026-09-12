@@ -1,0 +1,26 @@
+{
+  "name": "5-minut-obshchego-razvitiya",
+  "private": true,
+  "description": "Team retro mini-experiments platform — single-file app built from src/, tested with a Playwright regression suite in test/.",
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "build": "bun build.js",
+    "test": "bun test/run-all.js",
+    "test:smoke": "bun test/run-all.js --only=smoke",
+    "test:home": "bun test/run-all.js --only=home",
+    "test:persistence": "bun test/run-all.js --only=persistence",
+    "test:pdf": "bun test/run-all.js --only=pdf",
+    "test:swap": "bun test/run-all.js --only=swap",
+    "test:copy": "bun test/run-all.js --only=copy",
+    "test:trio": "bun test/run-all.js --only=trio",
+    "test:custom-question": "bun test/run-all.js --only=custom-question",
+    "test:privacy": "bun test/run-all.js --only=privacy",
+    "test:chart-tip": "bun test/run-all.js --only=chart-tip",
+    "verify": "bun run build && bun run test",
+    "install-hooks": "bun scripts/install-hooks.js",
+    "postinstall": "bun scripts/install-hooks.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}
