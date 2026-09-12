@@ -18,7 +18,7 @@ import { renderFalseConsensusGame } from './games/false-consensus.js';
 import { renderFramingGame } from './games/framing.js';
 import { renderPlanningFallacyGame } from './games/planning-fallacy.js';
 import { renderPrisonersDilemmaGame } from './games/prisoners-dilemma.js';
-import { renderPublicGoodsGame } from './games/public-goods.js';
+import './games/public-goods.js'; // side effect: customElements.define('retro-game-public-goods', ...)
 import { renderUltimatumGame } from './games/ultimatum.js';
 import { app } from './state.js';
 
@@ -33,7 +33,7 @@ const GAME_RENDERERS = {
   anchoring: () => renderAnchoringGame(),
   'crowd-wisdom': () => renderCrowdWisdomGame(),
   dictator: () => mountElement('retro-game-dictator'),
-  'public-goods': () => renderPublicGoodsGame(),
+  'public-goods': () => mountElement('retro-game-public-goods'),
   'false-consensus': () => renderFalseConsensusGame(),
   barnum: () => renderBarnumGame(),
   availability: () => renderAvailabilityGame(),

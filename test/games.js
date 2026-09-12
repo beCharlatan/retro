@@ -94,21 +94,23 @@ const GAMES = [
     id: 'public-goods',
     name: 'Общественное благо',
     multiScreen: true,
+    // Shadow DOM Lit component (docs/modernization-plan.md Phase 3) —
+    // data-testid instead of id, same as dictator's pilot.
     async toEntryScreen(page) {
       await page.click('text=Раунд 1 →');
     },
     async fill(page, opts = {}) {
-      const inputs = await page.$$('#entry-body-1 input');
+      const inputs = await page.$$('[data-testid="entry-body-1"] input');
       const n = opts.count ?? inputs.length;
       for (let i = 0; i < n; i++) await inputs[i].fill(String(40 + i * 5));
       return n;
     },
     async toResults(page) {
-      await page.click('#next-btn-1');
+      await page.click('[data-testid="next-btn-1"]');
       await page.waitForTimeout(80);
-      const inputs = await page.$$('#entry-body-2 input');
+      const inputs = await page.$$('[data-testid="entry-body-2"] input');
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(30 + i * 4));
-      await page.click('#next-btn-2');
+      await page.click('[data-testid="next-btn-2"]');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
