@@ -11,7 +11,7 @@ import './games/anchoring.js'; // side effect: customElements.define('retro-game
 import { renderAvailabilityGame } from './games/availability.js';
 import { renderBarnumGame } from './games/barnum.js';
 import { renderCalibrationGame } from './games/calibration.js';
-import { renderCrowdWisdomGame } from './games/crowd-wisdom.js';
+import './games/crowd-wisdom.js'; // side effect: customElements.define('retro-game-crowd-wisdom', ...)
 import './games/dictator.js'; // side effect: customElements.define('retro-game-dictator', ...)
 import { renderEndowmentGame } from './games/endowment.js';
 import { renderFalseConsensusGame } from './games/false-consensus.js';
@@ -31,7 +31,7 @@ function mountElement(tag) {
 
 const GAME_RENDERERS = {
   anchoring: () => mountElement('retro-game-anchoring'),
-  'crowd-wisdom': () => renderCrowdWisdomGame(),
+  'crowd-wisdom': () => mountElement('retro-game-crowd-wisdom'),
   dictator: () => mountElement('retro-game-dictator'),
   'public-goods': () => mountElement('retro-game-public-goods'),
   'false-consensus': () => renderFalseConsensusGame(),

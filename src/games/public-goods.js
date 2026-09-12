@@ -333,7 +333,7 @@ export class RetroGamePublicGoods extends LitElement {
             </div>
           </div>
 
-          <table class="results-table">
+          <table class="results-table" id="results-table">
             <thead>
               <tr>
                 <th>Участник</th>
@@ -342,7 +342,7 @@ export class RetroGamePublicGoods extends LitElement {
                 <th>Изменение</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="results-tbody">
               ${
                 r
                   ? r.filled.map((d) => {

@@ -500,7 +500,7 @@ export class RetroGameAnchoring extends LitElement {
 
           <p>${r ? r.corrText : ''}</p>
 
-          <table class="results-table">
+          <table class="results-table" id="results-table">
             <thead>
               <tr>
                 <th>Участник</th>
@@ -508,7 +508,7 @@ export class RetroGameAnchoring extends LitElement {
                 <th>Оценка</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="results-tbody">
               ${
                 r
                   ? r.filled.map(
