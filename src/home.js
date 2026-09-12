@@ -134,7 +134,7 @@ export class RetroHome extends LitElement {
     return html`
       <div
         class="game-card ${g.ready ? '' : 'disabled'}"
-        style="--cat-color:${cat.color}"
+        style="--cat-color:${cat.color};--cat-bg:${cat.pillBg}"
         @click=${() => this._openGame(g)}
       >
         <div class="top-row">

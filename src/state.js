@@ -75,11 +75,18 @@ export const AVATAR_COLORS = [
   '#8A4B6B',
 ];
 
-export const AVATAR_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.7 0 8 1.34 8 4v2H4v-2c0-2.66 5.3-4 8-4zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>`;
-
 export function avatarColor(name) {
   const idx = state.participants.indexOf(name);
   return AVATAR_COLORS[(idx < 0 ? 0 : idx) % AVATAR_COLORS.length];
+}
+
+// First letter of the name, uppercased — the kit's "Collaborator
+// tokens" component uses a real photo per person; we have no photos,
+// so an initials letter is the standard fallback treatment (also how
+// Airtable itself renders a collaborator with no avatar image).
+function avatarInitial(name) {
+  const trimmed = (name || '').trim();
+  return trimmed ? trimmed[0].toUpperCase() : '?';
 }
 
 // Renders a small colored avatar for `name`. Pass size:'sm' for the
@@ -89,7 +96,7 @@ export function avatarColor(name) {
 export function avatarHTML(name, size) {
   const color = avatarColor(name);
   const cls = size === 'sm' ? 'avatar avatar-sm' : 'avatar';
-  return `<span class="${cls}" style="background:${color}">${AVATAR_SVG}</span>`;
+  return `<span class="${cls}" style="background:${color}">${avatarInitial(name)}</span>`;
 }
 
 // Wraps a name with its (small) avatar as one inline unit — the form
