@@ -114,12 +114,21 @@ export const Roles = (() => {
 
   // Swaps two people between groupA/groupB IN PLACE. If both are
   // already in the same group, it's a no-op (nothing meaningful to
-  // swap). Keeps group sizes exactly as they were.
+  // swap) — same for either name not being a participant in either
+  // group at all (mirrors swapInPairs's posX/posY-not-found guard;
+  // caught by a unit test that swapped in a name absent from both
+  // groups and found it got spliced into groupA anyway, corrupting
+  // it, because `aHasX === aHasY` reads "not found anywhere" the same
+  // as "same group" — both are `false === false`). Keeps group sizes
+  // exactly as they were.
   function swapInGroups(groups, nameX, nameY) {
     if (nameX === nameY) return;
     const aHasX = groups.groupA.includes(nameX);
     const aHasY = groups.groupA.includes(nameY);
-    if (aHasX === aHasY) return; // same group (or neither found) — nothing to do
+    const foundX = aHasX || groups.groupB.includes(nameX);
+    const foundY = aHasY || groups.groupB.includes(nameY);
+    if (!foundX || !foundY) return;
+    if (aHasX === aHasY) return; // same group — nothing to do
     const from = aHasX ? groups.groupA : groups.groupB;
     const to = aHasX ? groups.groupB : groups.groupA;
     from[from.indexOf(nameX)] = nameY;

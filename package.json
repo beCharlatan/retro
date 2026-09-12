@@ -18,7 +18,7 @@
     "test:privacy": "bun test/run-all.js --only=privacy",
     "test:chart-tip": "bun test/run-all.js --only=chart-tip",
     "test:unit": "bun test",
-    "verify": "bun run build && bun run test",
+    "verify": "bun run build && bun run test && bun run test:unit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
