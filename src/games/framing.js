@@ -407,7 +407,7 @@ export class RetroGameFraming extends LitElement {
           </p>
 
           ${this._spoilerCard('a', 'А', null)}
-          ${this._spoilerCard('b', 'Б', 'var(--rust)')}
+          ${this._spoilerCard('b', 'Б', 'var(--red)')}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this.goTo(1)}>← Назад</button>

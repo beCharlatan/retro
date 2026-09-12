@@ -35,15 +35,19 @@ export const state = {
 export const CATEGORY = {
   cognitive: {
     label: 'Когнитивные искажения',
-    color: 'var(--teal-deep)',
-    pillBg: 'var(--teal-soft)',
+    color: 'var(--blue-deep)',
+    pillBg: 'var(--blue-soft)',
   },
   econ: {
     label: 'Экономика / теория игр',
-    color: 'var(--amber-deep)',
-    pillBg: 'var(--amber-soft)',
+    color: 'var(--orange-deep)',
+    pillBg: 'var(--orange-soft)',
   },
-  social: { label: 'Социальная психология', color: 'var(--plum-deep)', pillBg: 'var(--plum-soft)' },
+  social: {
+    label: 'Социальная психология',
+    color: 'var(--purple-deep)',
+    pillBg: 'var(--purple-soft)',
+  },
 };
 
 // How participants are split for the exercise — used by the second filter row.
