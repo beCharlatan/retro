@@ -14,7 +14,7 @@ import { renderCalibrationGame } from './games/calibration.js';
 import './games/crowd-wisdom.js'; // side effect: customElements.define('retro-game-crowd-wisdom', ...)
 import './games/dictator.js'; // side effect: customElements.define('retro-game-dictator', ...)
 import { renderEndowmentGame } from './games/endowment.js';
-import { renderFalseConsensusGame } from './games/false-consensus.js';
+import './games/false-consensus.js'; // side effect: customElements.define('retro-game-false-consensus', ...)
 import { renderFramingGame } from './games/framing.js';
 import { renderPlanningFallacyGame } from './games/planning-fallacy.js';
 import { renderPrisonersDilemmaGame } from './games/prisoners-dilemma.js';
@@ -34,7 +34,7 @@ const GAME_RENDERERS = {
   'crowd-wisdom': () => mountElement('retro-game-crowd-wisdom'),
   dictator: () => mountElement('retro-game-dictator'),
   'public-goods': () => mountElement('retro-game-public-goods'),
-  'false-consensus': () => renderFalseConsensusGame(),
+  'false-consensus': () => mountElement('retro-game-false-consensus'),
   barnum: () => renderBarnumGame(),
   availability: () => renderAvailabilityGame(),
   'planning-fallacy': () => renderPlanningFallacyGame(),
