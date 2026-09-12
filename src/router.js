@@ -19,7 +19,7 @@ import { renderFramingGame } from './games/framing.js';
 import { renderPlanningFallacyGame } from './games/planning-fallacy.js';
 import { renderPrisonersDilemmaGame } from './games/prisoners-dilemma.js';
 import './games/public-goods.js'; // side effect: customElements.define('retro-game-public-goods', ...)
-import { renderUltimatumGame } from './games/ultimatum.js';
+import './games/ultimatum.js'; // side effect: customElements.define('retro-game-ultimatum', ...)
 import { app } from './state.js';
 
 // Mounts a custom element by tag name into #app, replacing whatever
@@ -38,7 +38,7 @@ const GAME_RENDERERS = {
   barnum: () => mountElement('retro-game-barnum'),
   availability: () => renderAvailabilityGame(),
   'planning-fallacy': () => renderPlanningFallacyGame(),
-  ultimatum: () => renderUltimatumGame(),
+  ultimatum: () => mountElement('retro-game-ultimatum'),
   'prisoners-dilemma': () => renderPrisonersDilemmaGame(),
   endowment: () => renderEndowmentGame(),
   framing: () => renderFramingGame(),
