@@ -5,42 +5,53 @@
    Auto-saves each game's working data to sessionStorage
    (cleared automatically when the tab closes — this is not
    a permanent record, just insurance against an accidental
-   refresh mid-session) every time an answer changes, and
-   offers to restore it the next time that same game screen
-   is opened again in the same tab.
+   refresh mid-session) every time an answer changes, and lets a Lit
+   component (docs/modernization-plan.md Phase 2+) offer to restore it
+   the next time that same game screen is opened again in the same
+   tab.
 
    ---------------------------------------------------------
-   USAGE (inside a game's render function):
+   USAGE (inside a Lit component):
 
-     // Whenever working data changes (inside updateFillProgress
-     // or equivalent), persist a snapshot. The payload is your
-     // own shape — Persist just wraps it with a timestamp:
-     Persist.save('anchoring', { data: data });
+     constructor() {
+       ...
+       const loaded = Persist.load('anchoring');
+       this.draft = loaded && Array.isArray(loaded.payload.data)
+         && loaded.payload.data.length === this.names.length
+         ? loaded
+         : null;
+     }
 
-     // At the top of the instructions screen, offer to restore a
-     // usable draft in one call: `validate` checks the raw payload
-     // you saved, `onRestore` gets that same payload and reassigns
-     // the game's local state + rebuilds the screen + navigates:
-     Persist.offerRestore('anchoring', 'draft-mount-anchoring',
-       (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
-       (p) => {
-         data = p.data;
-         buildEntryRows();
-         updateFillProgress();
-         anchoringGoTo(1);
-       });
+     // Whenever working data changes, persist a snapshot — the
+     // payload is your own shape, Persist just wraps it with a
+     // timestamp:
+     _onEntryInput(e, idx) {
+       ...
+       Persist.save('anchoring', { data: this.data });
+     }
 
-     // Once the round is "locked in" (results screen reached)
-     // or the person leaves back to the menu, the draft is no
-     // longer needed:
+     // Draft banner + timeAgo(draft.savedAt) rendered declaratively in
+     // render() from `this.draft` — see src/games/dictator.js's
+     // header comment for why (a Persist-owned imperative DOM-writing
+     // helper used to exist for this, `Persist.banner()`/
+     // `Persist.offerRestore()`, removed once every game had migrated
+     // to the declarative form and nothing called them any more).
+     // Restore/discard handlers just reassign local state and clear
+     // `this.draft`:
+     _restoreDraft() {
+       this.data = this.draft.payload.data;
+       this.draft = null;
+       this.goTo(1);
+     }
+     _discardDraft() {
+       Persist.clear('anchoring');
+       this.draft = null;
+     }
+
+     // Once the round is "locked in" (results screen reached) or the
+     // person leaves back to the menu, the draft is no longer needed:
      Persist.clear('anchoring');
 ========================================================= */
-// Exported standalone (not just via the Persist object below) so a Lit
-// component can reuse it directly in a declarative render() template —
-// see src/games/dictator.js for the first game rendering its own draft
-// banner reactively instead of going through Persist.banner()'s
-// imperative DOM injection (which only targets `document`, not a
-// component's shadow root).
 export function timeAgo(ts) {
   const mins = Math.round((Date.now() - ts) / 60000);
   if (mins < 1) return 'только что';
@@ -95,58 +106,7 @@ export const Persist = (() => {
     return false;
   }
 
-  // Renders a dismissible recovery banner into #mountId and wires its
-  // two buttons; whichever is pressed clears the banner from the DOM.
-  function banner(mountId, savedAt, onRestore, onDiscard) {
-    const el = document.getElementById(mountId);
-    if (!el) return;
-    el.innerHTML =
-      '<div class="draft-banner">' +
-      '<span class="draft-text">📋 Есть незавершённая попытка (' +
-      timeAgo(savedAt) +
-      ') — продолжить с того места?</span>' +
-      '<span class="draft-actions">' +
-      '<button type="button" class="draft-restore">Восстановить</button>' +
-      '<button type="button" class="draft-discard">Начать заново</button>' +
-      '</span></div>';
-    el.querySelector('.draft-restore').addEventListener('click', () => {
-      el.innerHTML = '';
-      onRestore();
-    });
-    el.querySelector('.draft-discard').addEventListener('click', () => {
-      el.innerHTML = '';
-      onDiscard();
-    });
-  }
-
-  // One-call replacement for the "load draft, check it's still usable,
-  // wire the banner" trio every game used to repeat by hand. `validate`
-  // gets the raw payload you saved and returns true/false (drafts differ
-  // in shape — some hold {data}, others {entries} or {assignment,
-  // entries} / {groups, entries} — so this stays shape-agnostic rather
-  // than guessing a common one). `onRestore` gets that same payload and
-  // is responsible for reassigning the game's local state and
-  // navigating to the right screen; discard just clears the draft.
-  function offerRestore(gameId, mountId, validate, onRestore) {
-    const draft = load(gameId);
-    if (draft && validate(draft.payload)) {
-      banner(
-        mountId,
-        draft.savedAt,
-        () => onRestore(draft.payload),
-        () => clear(gameId),
-      );
-    }
-  }
-
-  return {
-    save: save,
-    load: load,
-    clear: clear,
-    hasAny: hasAny,
-    banner: banner,
-    offerRestore: offerRestore,
-  };
+  return { save, load, clear, hasAny };
 })();
 
 // Warn before leaving the tab only if some game has unsaved progress.

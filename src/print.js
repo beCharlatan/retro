@@ -24,10 +24,10 @@
    cancel).
 
    ---------------------------------------------------------
-   USAGE (inside a game's *ShowResults function, right
-   before navigating to the results screen):
+   USAGE (inside a Lit component's _showResults(), right before
+   navigating to the results screen):
 
-     Print.mount('results-print-header', {
+     Print.mount('print-header-anchoring', {
        title: 'Эффект якоря',
        subtitle: 'Случайное число незаметно сдвигает вашу же числовую оценку.',
        meta: Print.meta(filled.length),
@@ -35,8 +35,8 @@
          'задаёт «якорь» — и итоговый ответ смещается в его сторону, ' +
          'даже когда число совершенно нерелевантно. Открыли эффект ' +
          'Тверски и Канеман в 1974 году.'
-     });
-     anchoringGoTo(2);
+     }, this.renderRoot); // <- Shadow DOM root, so mount() finds its ids inside it
+     this.goTo(2);
 
    And in the results screen's own template, add the mount point plus
    the export button (kept out of the printed page itself via
@@ -45,12 +45,12 @@
    `explanation` (the "print-header-X" / "print-footer-X" naming
    convention is what wires them together, see mount() below):
 
-     <div class="print-header" id="results-print-header"></div>
+     <div class="print-header" id="print-header-anchoring"></div>
      ...
      <table class="results-table">...</table>
-     <div class="print-footer" id="results-print-footer"></div>
+     <div class="print-footer" id="print-footer-anchoring"></div>
      <div class="pdf-row">
-       <button class="ghost" id="pdf-btn" onclick="Print.run()">🖨️  Сохранить / отправить PDF</button>
+       <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>🖨️  Сохранить / отправить PDF</button>
      </div>
 ========================================================= */
 export const Print = (() => {
@@ -137,13 +137,3 @@ export const Print = (() => {
 
   return { mount, run, meta };
 })();
-
-// Every game's results screen still triggers this via an inline
-// onclick="Print.run()" attribute (not yet migrated to an
-// addEventListener binding — see docs/modernization-plan.md Phase 2+),
-// and inline event-handler attributes run in the GLOBAL scope, not a
-// module's scope — they can't see the `Print` import each game module
-// now has. Exposing it on `window` too bridges that, exactly like
-// every game already does for its own window.xxxGoTo/xxxShowResults
-// functions.
-window.Print = Print;
