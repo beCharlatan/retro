@@ -36,7 +36,7 @@ async function run() {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
       await page.click('text=Вносить данные →');
-      const inputs = await page.$$('#entry-body input');
+      const inputs = await page.$$('[data-testid="entry-body"] input');
       const vals = [
         12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29, 60, 40, 25,
         30, 33, 33,

@@ -21,7 +21,7 @@ const GAMES = [
       await page.click('text=Вносить данные →');
     },
     async fill(page, opts = {}) {
-      const inputs = await page.$$('#entry-body input');
+      const inputs = await page.$$('[data-testid="entry-body"] input');
       const rows = inputs.length / 2;
       const n = opts.count ?? rows;
       for (let i = 0; i < n; i++) {

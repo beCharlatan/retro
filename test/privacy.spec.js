@@ -32,7 +32,7 @@ async function run() {
       await page.click('text=Эффект якоря');
       await page.click('text=Вносить данные →');
       await page.waitForTimeout(100);
-      const inputs = await page.$$('#entry-body input');
+      const inputs = await page.$$('[data-testid="entry-body"] input');
 
       const emptyFilter = await inputs[0].evaluate((el) => getComputedStyle(el).filter);
       report.check('anchoring: empty field is not blurred', !isBlurred(emptyFilter), emptyFilter);
@@ -79,7 +79,7 @@ async function run() {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
       await page.click('text=Вносить данные →');
-      const inputs = await page.$$('#entry-body input');
+      const inputs = await page.$$('[data-testid="entry-body"] input');
       await inputs[0].fill('42');
       await inputs[1].fill('30');
       await page.waitForTimeout(150);
@@ -88,7 +88,7 @@ async function run() {
       await page.waitForTimeout(150);
       await page.click('.draft-restore');
       await page.waitForTimeout(250);
-      const restoredInputs = await page.$$('#entry-body input');
+      const restoredInputs = await page.$$('[data-testid="entry-body"] input');
       const restoredFilter = await restoredInputs[0].evaluate((el) => getComputedStyle(el).filter);
       report.check(
         'anchoring: a restored (unfocused) draft value is blurred, not shown in the clear',
@@ -159,7 +159,7 @@ async function run() {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
       await page.click('text=Вносить данные →');
-      const inputs = await page.$$('#entry-body input');
+      const inputs = await page.$$('[data-testid="entry-body"] input');
       for (let i = 0; i < inputs.length; i += 2) {
         await inputs[i].fill('20');
         await inputs[i + 1].fill('30');

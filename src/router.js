@@ -7,7 +7,7 @@
    #app instead. Both kinds live side by side here during the
    incremental, one-game-at-a-time migration.
 ========================================================= */
-import { renderAnchoringGame } from './games/anchoring.js';
+import './games/anchoring.js'; // side effect: customElements.define('retro-game-anchoring', ...)
 import { renderAvailabilityGame } from './games/availability.js';
 import { renderBarnumGame } from './games/barnum.js';
 import { renderCalibrationGame } from './games/calibration.js';
@@ -30,7 +30,7 @@ function mountElement(tag) {
 }
 
 const GAME_RENDERERS = {
-  anchoring: () => renderAnchoringGame(),
+  anchoring: () => mountElement('retro-game-anchoring'),
   'crowd-wisdom': () => renderCrowdWisdomGame(),
   dictator: () => mountElement('retro-game-dictator'),
   'public-goods': () => mountElement('retro-game-public-goods'),
