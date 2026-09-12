@@ -51,7 +51,9 @@
    (these games have 5 screens instead of 4: instructions →
    roles → data entry → results → context).
 ========================================================= */
-const Roles = (() => {
+import { avatarName } from './state.js';
+
+export const Roles = (() => {
   // Fisher–Yates shuffle — returns a new array, does not mutate input.
   function shuffle(arr) {
     const a = arr.slice();

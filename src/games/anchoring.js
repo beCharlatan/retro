@@ -1,7 +1,14 @@
 /* =========================================================
    GAME: Эффект якоря (anchoring)
 ========================================================= */
-function renderAnchoringGame() {
+
+import { ChartTip } from '../chart-tip.js';
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderAnchoringGame() {
   const NAMES = state.participants.slice();
   const TRUE_VALUE = 28;
   let data = NAMES.map((n) => ({ name: n, anchor: null, guess: null }));

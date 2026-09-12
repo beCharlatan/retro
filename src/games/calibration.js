@@ -8,7 +8,14 @@
    by anchoring.js) — simpler to fill in live, one question at
    a time, same rhythm as reading questions aloud.
 ========================================================= */
-function renderCalibrationGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderCalibrationGame() {
   const NAMES = state.participants.slice();
   const DEFAULT_QUESTIONS = [
     { q: 'В каком году была основана компания Google?', answer: 1998, unit: '' },

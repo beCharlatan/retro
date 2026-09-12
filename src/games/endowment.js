@@ -6,7 +6,14 @@
    giving both a WTA and a WTP price, which doubles the sample
    behind each average instead of splitting the room in half.
 ========================================================= */
-function renderEndowmentGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderEndowmentGame() {
   let groups = Roles.makeGroups(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft

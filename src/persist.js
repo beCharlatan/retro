@@ -35,7 +35,7 @@
      // longer needed:
      Persist.clear('anchoring');
 ========================================================= */
-const Persist = (() => {
+export const Persist = (() => {
   const PREFIX = 'retro-draft-';
 
   function save(gameId, payload) {

@@ -8,7 +8,15 @@
    pairing needed — this is the simplest game to extend with a
    second data point per person.
 ========================================================= */
-function renderDictatorGame() {
+
+import { ChartTip } from '../chart-tip.js';
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderDictatorGame() {
   const NAMES = state.participants.slice();
   const POT = 1000;
   let data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));

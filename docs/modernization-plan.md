@@ -139,19 +139,50 @@ swapInPairs/swapInGroups` в первую очередь (лежат в `test/un
 
 ## Фазы
 
-- **Фаза 0 — Подготовка.** `git init` + бейзлайн-коммит текущего
+- ✅ **Фаза 0 — Подготовка.** `git init` + бейзлайн-коммит текущего
   зелёного состояния (404/404). `bun add lit`, `bun add -d
   @biomejs/biome`. `test/unit/` + `bunfig.toml` под `bun test`.
-- **Фаза 1 — Общие модули → ESM (атомарно, все 18 файлов).**
-  `roles.js`, `screen.js`, `persist.js`, `print.js`, `chart-tip.js`,
-  `app.js` (state/router) и все 13 игр получают явные
-  `export`/`import`. **Рендеринг и DOM остаются прежними** — это ещё
-  не Lit и не Shadow DOM, только модульная система и способ сборки
-  (`build.js` переходит на `Bun.build()` вместо ручной конкатенации).
-  Полный набор тестов должен остаться зелёным без единой правки в
-  тестах на этом шаге — поведение и разметка не меняются. Первые
-  `bun test`-юниты на `Roles` (теперь с реальным `export`) пишутся
-  здесь же.
+- ✅ **Фаза 1 — Общие модули → ESM (атомарно, все 18+ файлов).**
+  Сделано иначе, чем в первом черновике плана: `app.js` (353 строки —
+  state, аватары, главный экран, роутер) не осталось одним файлом с
+  добавленным `export` — распалось на `state.js` (state/CATEGORY/
+  STRUCTURE/GAMES/avatar-хелперы/`app`-узел), `toast.js`
+  (`showToast`/`copyToClipboard`), `home.js` (главный экран, было
+  внутри app.js), `router.js` (`GAME_RENDERERS`/`openGame`, импортирует
+  все 13 игр) и `privacy-mask.js` (делегированный блюр toggle-кнопок,
+  side-effect-only модуль). `app.js` теперь — только `import
+  './privacy-mask.js'; import { renderHome } from './home.js';
+  renderHome();` — точка входа для `Bun.build()`. `roles.js`,
+  `screen.js`, `persist.js`, `print.js`, `chart-tip.js` и все 13 игр
+  получили явные `export`/`import` (games/*.js импортируют `state`,
+  `avatarName`, `app` из `state.js`, плюс `Screen`/`Persist`/`Print` и,
+  где нужно, `Roles`/`ChartTip`/`copyToClipboard`). `build.js`
+  переписан на `Bun.build()` (JS-граф от `src/app.js` + CSS от
+  `src/styles.css`, оба с `minify:true`), инлайнится в
+  `dist/index.html` как раньше — один `<script type="module">` вместо
+  раньше нескольких склеенных вручную кусков.
+  **Найденный и исправленный по ходу баг:** каждая игра вызывает PDF
+  через инлайновый `onclick="Print.run()"` в HTML-разметке — а
+  инлайновые обработчики выполняются в ГЛОБАЛЬНОЙ области видимости,
+  не видят module-scoped `import { Print }`. Пофиксено добавлением
+  `window.Print = Print;` в `print.js` (тот же паттерн, которым каждая
+  игра уже давно вешает свои `window.xGoTo`/`xShowResults` — просто
+  этот случай раньше был неявным глобалом, а не игровой функцией).
+  Полный прогон `bun run test` — 404/404 зелёные, включая PDF-тесты,
+  которые как раз это ловят.
+  **Ещё находка:** `src/index.html` (dev-версия) грузила файлы через
+  отдельные `<script src>` — с настоящими ES-модулями это перестаёт
+  открываться напрямую по `file://` (браузеры блокируют `import` как
+  cross-origin). Добавлен `scripts/dev-server.js` (`Bun.serve()`,
+  ~20 строк) + `bun run dev` → `http://localhost:5173`; `dist/index.html`
+  это не касается (там всё заинлайнено текстом, без отдельных запросов).
+  Проверено вручную в браузере (Browser pane): главный экран и
+  `anchoring` открываются и работают без ошибок в консоли.
+  Biome: `overrides`, отключавший `noUnusedVariables` для `src/*.js`/
+  `src/games/*.js` (см. ниже), убран — с реальными `export` ложных
+  срабатываний не осталось; заодно всплыли и почищены 3 мелких
+  реальных (неиспользуемый параметр `q` в availability.js/
+  calibration.js, неиспользуемая `MT` в crowd-wisdom.js).
 - **Фаза 2 — Пилотная игра (`dictator`).** Переписывается как
   `<retro-game-dictator>` на Lit с Shadow DOM и `css\`\`` стилями;
   печать/PDF решается здесь впервые (самая рискованная часть); её

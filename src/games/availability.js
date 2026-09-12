@@ -5,7 +5,14 @@
    calibration.js, but each screen is a simple toggle choice
    instead of a low/high range.
 ========================================================= */
-function renderAvailabilityGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderAvailabilityGame() {
   const NAMES = state.participants.slice();
   const QUESTIONS = [
     {

@@ -32,18 +32,5 @@
         "organizeImports": "on"
       }
     }
-  },
-  "overrides": [
-    {
-      "includes": ["src/*.js", "src/games/*.js"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnusedVariables": "off",
-            "noUnusedFunctionParameters": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }

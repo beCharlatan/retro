@@ -8,7 +8,14 @@
    between rounds and measure how often round 2 "echoed" the
    partner's round 1 move.
 ========================================================= */
-function renderPrisonersDilemmaGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderPrisonersDilemmaGame() {
   let assignment = Roles.makePairs(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft

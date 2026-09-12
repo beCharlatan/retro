@@ -5,6 +5,7 @@
   "packageManager": "bun@1.4.2",
   "scripts": {
     "build": "bun build.js",
+    "dev": "bun scripts/dev-server.js",
     "test": "bun test/run-all.js",
     "test:smoke": "bun test/run-all.js --only=smoke",
     "test:home": "bun test/run-all.js --only=home",

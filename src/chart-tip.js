@@ -27,7 +27,7 @@
    it's safe to build the string from data that might be referenced
    by closure — no need to worry about stale values.
 ========================================================= */
-const ChartTip = (() => {
+export const ChartTip = (() => {
   let el = null;
 
   function ensure() {

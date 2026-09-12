@@ -5,7 +5,14 @@
    to be the Proposer once and the Responder once, instead of
    one person always deciding and the other always reacting.
 ========================================================= */
-function renderUltimatumGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderUltimatumGame() {
   const STAKE = 1000;
   let assignment = Roles.makePairs(state.participants);
   let entries = buildEntries();

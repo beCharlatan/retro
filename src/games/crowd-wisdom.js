@@ -6,7 +6,14 @@
    "сколько строк кода в нашем репозитории?" — so the effect
    feels like it's about this team, not an abstract quiz.
 ========================================================= */
-function renderCrowdWisdomGame() {
+
+import { ChartTip } from '../chart-tip.js';
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderCrowdWisdomGame() {
   const NAMES = state.participants.slice();
   const DEFAULT_VALUE = 420; // tons — real mass of the ISS
   const DEFAULT_QUESTION = 'Сколько тонн весит Международная космическая станция?';

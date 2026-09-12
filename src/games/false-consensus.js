@@ -1,7 +1,13 @@
 /* =========================================================
    GAME: Эффект ложного консенсуса (false-consensus)
 ========================================================= */
-function renderFalseConsensusGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderFalseConsensusGame() {
   const NAMES = state.participants.slice();
   const DEFAULT_QUESTION =
     'Готовы ли вы прямо сейчас, без подготовки, провести 5-минутную презентацию перед всей командой?';

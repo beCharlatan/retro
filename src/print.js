@@ -53,7 +53,7 @@
        <button class="ghost" id="pdf-btn" onclick="Print.run()">🖨️  Сохранить / отправить PDF</button>
      </div>
 ========================================================= */
-const Print = (() => {
+export const Print = (() => {
   const ORIGINAL_TITLE = document.title;
   let pendingFilename = null;
 
@@ -132,3 +132,13 @@ const Print = (() => {
 
   return { mount, run, meta };
 })();
+
+// Every game's results screen still triggers this via an inline
+// onclick="Print.run()" attribute (not yet migrated to an
+// addEventListener binding — see docs/modernization-plan.md Phase 2+),
+// and inline event-handler attributes run in the GLOBAL scope, not a
+// module's scope — they can't see the `Print` import each game module
+// now has. Exposing it on `window` too bridges that, exactly like
+// every game already does for its own window.xxxGoTo/xxxShowResults
+// functions.
+window.Print = Print;

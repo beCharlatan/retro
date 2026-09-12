@@ -6,7 +6,14 @@
    more than once — round 2 lets the team test that directly
    on themselves instead of just reading about it in the facts.
 ========================================================= */
-function renderPublicGoodsGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderPublicGoodsGame() {
   const NAMES = state.participants.slice();
   const STAKE = 100;
   let data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));

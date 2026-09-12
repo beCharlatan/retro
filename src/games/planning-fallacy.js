@@ -1,7 +1,13 @@
 /* =========================================================
    GAME: Ошибка планирования (planning-fallacy)
 ========================================================= */
-function renderPlanningFallacyGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+
+export function renderPlanningFallacyGame() {
   const NAMES = state.participants.slice();
   let data = NAMES.map((n) => ({ name: n, best: null, actual: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft

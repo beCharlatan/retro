@@ -1,7 +1,15 @@
 /* =========================================================
    GAME: Эффект фрейминга (framing)
 ========================================================= */
-function renderFramingGame() {
+
+import { Persist } from '../persist.js';
+import { Print } from '../print.js';
+import { Roles } from '../roles.js';
+import { Screen } from '../screen.js';
+import { app, avatarName, state } from '../state.js';
+import { copyToClipboard } from '../toast.js';
+
+export function renderFramingGame() {
   let groups = Roles.makeGroups(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft

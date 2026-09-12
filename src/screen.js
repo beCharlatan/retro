@@ -39,7 +39,11 @@
        if (hydrated) { Persist.save('crowd-wisdom', { data: data }); }
      }
 ========================================================= */
-const Screen = (() => {
+
+import { renderHome } from './home.js';
+import { Persist } from './persist.js';
+
+export const Screen = (() => {
   function goTo(screenIdx) {
     Array.from(document.querySelectorAll('.screen')).forEach((s, i) => {
       s.classList.toggle('active', i === screenIdx);

@@ -12,33 +12,13 @@
 <div id="app"></div>
 <div id="toast"></div>
 
-<!-- Shared role-assignment pattern (pairs / two-group splits) -->
-<script src="roles.js"></script>
-<!-- Shared screen-navigation pattern (goTo, back-home) -->
-<script src="screen.js"></script>
-<!-- Shared draft-recovery pattern (protects against accidental reload) -->
-<script src="persist.js"></script>
-<!-- Shared hover-tooltip pattern for chart data points -->
-<script src="chart-tip.js"></script>
-<!-- Shared PDF export pattern for results screens -->
-<script src="print.js"></script>
-
-<!-- Game modules first, so their functions exist before app.js wires up the router -->
-<script src="games/anchoring.js"></script>
-<script src="games/crowd-wisdom.js"></script>
-<script src="games/dictator.js"></script>
-<script src="games/public-goods.js"></script>
-<script src="games/false-consensus.js"></script>
-<script src="games/barnum.js"></script>
-<script src="games/availability.js"></script>
-<script src="games/planning-fallacy.js"></script>
-<script src="games/ultimatum.js"></script>
-<script src="games/prisoners-dilemma.js"></script>
-<script src="games/endowment.js"></script>
-<script src="games/framing.js"></script>
-<script src="games/calibration.js"></script>
-
-<!-- App shell: state, home screen, router. Boots itself at the end. -->
-<script src="app.js"></script>
+<!-- Real ES modules now (see docs/modernization-plan.md Phase 1) —
+     app.js imports everything it needs (state.js, home.js, router.js,
+     which in turn imports every src/games/*.js) itself, so this is
+     the one entrypoint. Needs an actual HTTP origin to resolve those
+     imports (browsers block module imports over file://) — run
+     `bun run dev` and open http://localhost:5173, don't double-click
+     this file directly. -->
+<script type="module" src="app.js"></script>
 </body>
 </html>
