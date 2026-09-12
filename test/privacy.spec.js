@@ -34,26 +34,42 @@ async function run() {
       await page.waitForTimeout(100);
       const inputs = await page.$$('#entry-body input');
 
-      const emptyFilter = await inputs[0].evaluate(el => getComputedStyle(el).filter);
+      const emptyFilter = await inputs[0].evaluate((el) => getComputedStyle(el).filter);
       report.check('anchoring: empty field is not blurred', !isBlurred(emptyFilter), emptyFilter);
 
       await inputs[0].fill('42');
       await page.waitForTimeout(200);
-      const focusedFilter = await inputs[0].evaluate(el => getComputedStyle(el).filter);
-      report.check('anchoring: the field currently being typed into is not blurred', !isBlurred(focusedFilter), focusedFilter);
+      const focusedFilter = await inputs[0].evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'anchoring: the field currently being typed into is not blurred',
+        !isBlurred(focusedFilter),
+        focusedFilter,
+      );
 
       await inputs[1].fill('55');
       await page.waitForTimeout(200);
-      const lostFocusFilter = await inputs[0].evaluate(el => getComputedStyle(el).filter);
-      report.check('anchoring: a filled field blurs once focus moves elsewhere', isBlurred(lostFocusFilter), lostFocusFilter);
+      const lostFocusFilter = await inputs[0].evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'anchoring: a filled field blurs once focus moves elsewhere',
+        isBlurred(lostFocusFilter),
+        lostFocusFilter,
+      );
 
-      const nowFocusedFilter = await inputs[1].evaluate(el => getComputedStyle(el).filter);
-      report.check('anchoring: the newly-focused field is legible', !isBlurred(nowFocusedFilter), nowFocusedFilter);
+      const nowFocusedFilter = await inputs[1].evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'anchoring: the newly-focused field is legible',
+        !isBlurred(nowFocusedFilter),
+        nowFocusedFilter,
+      );
 
       await inputs[0].click();
       await page.waitForTimeout(200);
-      const refocusedFilter = await inputs[0].evaluate(el => getComputedStyle(el).filter);
-      report.check('anchoring: re-focusing a blurred field reveals it again', !isBlurred(refocusedFilter), refocusedFilter);
+      const refocusedFilter = await inputs[0].evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'anchoring: re-focusing a blurred field reveals it again',
+        !isBlurred(refocusedFilter),
+        refocusedFilter,
+      );
 
       await page.close();
     }
@@ -73,9 +89,12 @@ async function run() {
       await page.click('.draft-restore');
       await page.waitForTimeout(250);
       const restoredInputs = await page.$$('#entry-body input');
-      const restoredFilter = await restoredInputs[0].evaluate(el => getComputedStyle(el).filter);
-      report.check('anchoring: a restored (unfocused) draft value is blurred, not shown in the clear',
-        isBlurred(restoredFilter), restoredFilter);
+      const restoredFilter = await restoredInputs[0].evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'anchoring: a restored (unfocused) draft value is blurred, not shown in the clear',
+        isBlurred(restoredFilter),
+        restoredFilter,
+      );
       await page.close();
     }
 
@@ -90,15 +109,26 @@ async function run() {
 
       await yesBtn.click();
       await page.waitForTimeout(150);
-      const justClickedFilter = await yesBtn.evaluate(el => getComputedStyle(el).filter);
-      report.check('false-consensus: choice is briefly visible right after clicking', !isBlurred(justClickedFilter), justClickedFilter);
+      const justClickedFilter = await yesBtn.evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'false-consensus: choice is briefly visible right after clicking',
+        !isBlurred(justClickedFilter),
+        justClickedFilter,
+      );
 
       await page.waitForTimeout(1500);
-      const afterDelayFilter = await yesBtn.evaluate(el => getComputedStyle(el).filter);
-      report.check('false-consensus: choice blurs again ~1.4s after the click', isBlurred(afterDelayFilter), afterDelayFilter);
+      const afterDelayFilter = await yesBtn.evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'false-consensus: choice blurs again ~1.4s after the click',
+        isBlurred(afterDelayFilter),
+        afterDelayFilter,
+      );
 
-      const stillOn = await yesBtn.evaluate(el => el.classList.contains('on'));
-      report.check('false-consensus: the underlying choice is still recorded while blurred', stillOn);
+      const stillOn = await yesBtn.evaluate((el) => el.classList.contains('on'));
+      report.check(
+        'false-consensus: the underlying choice is still recorded while blurred',
+        stillOn,
+      );
 
       await page.close();
     }
@@ -115,9 +145,12 @@ async function run() {
       const coopBtn = await card.$('button[data-val="C"]');
       await coopBtn.click();
       await page.waitForTimeout(1600);
-      const filter = await coopBtn.evaluate(el => getComputedStyle(el).filter);
-      report.check("prisoners-dilemma: toggle masking also applies here (shared CSS/listener)",
-        isBlurred(filter), filter);
+      const filter = await coopBtn.evaluate((el) => getComputedStyle(el).filter);
+      report.check(
+        'prisoners-dilemma: toggle masking also applies here (shared CSS/listener)',
+        isBlurred(filter),
+        filter,
+      );
       await page.close();
     }
 
@@ -133,9 +166,11 @@ async function run() {
       }
       await page.click('text=Показать результаты →');
       await page.waitForTimeout(200);
-      const hasInputsInTable = await page.$$eval('#results-table input', els => els.length);
-      report.check('anchoring: results table has no <input> elements to blur (plain text reveal)',
-        hasInputsInTable === 0);
+      const hasInputsInTable = await page.$$eval('#results-table input', (els) => els.length);
+      report.check(
+        'anchoring: results table has no <input> elements to blur (plain text reveal)',
+        hasInputsInTable === 0,
+      );
       await page.close();
     }
   });
@@ -146,5 +181,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

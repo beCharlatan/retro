@@ -5,43 +5,55 @@
    calibration.js, but each screen is a simple toggle choice
    instead of a low/high range.
 ========================================================= */
-function renderAvailabilityGame(){
+function renderAvailabilityGame() {
   const NAMES = state.participants.slice();
   const QUESTIONS = [
     {
       text: 'Что, по-вашему, ежегодно убивает больше людей в мире: удары молнии или авиакатастрофы?',
-      optA: 'Молния', optB: 'Авиакатастрофы', correct: 'a',
-      reveal: 'Молния: по оценкам метеослужб — около 24 000 смертей в мире в год, тогда как жертвы авиакатастроф исчисляются несколькими сотнями.',
+      optA: 'Молния',
+      optB: 'Авиакатастрофы',
+      correct: 'a',
+      reveal:
+        'Молния: по оценкам метеослужб — около 24 000 смертей в мире в год, тогда как жертвы авиакатастроф исчисляются несколькими сотнями.',
     },
     {
       text: 'Что чаще становится причиной смерти: диабет или убийство?',
-      optA: 'Диабет', optB: 'Убийство', correct: 'a',
-      reveal: 'Диабет: по данным ВОЗ, от него ежегодно умирает около 1,5–2 млн человек в мире — в разы больше, чем от убийств (~400 тыс.).',
+      optA: 'Диабет',
+      optB: 'Убийство',
+      correct: 'a',
+      reveal:
+        'Диабет: по данным ВОЗ, от него ежегодно умирает около 1,5–2 млн человек в мире — в разы больше, чем от убийств (~400 тыс.).',
     },
     {
       text: 'Кто чаще становится причиной смерти человека: москиты (через малярию и другие болезни) или акулы?',
-      optA: 'Москиты', optB: 'Акулы', correct: 'a',
-      reveal: 'Москиты: переносимые ими болезни убивают порядка 700 000+ человек в год — против 5–10 смертей от акул. Разрыв на пять порядков.',
+      optA: 'Москиты',
+      optB: 'Акулы',
+      correct: 'a',
+      reveal:
+        'Москиты: переносимые ими болезни убивают порядка 700 000+ человек в год — против 5–10 смертей от акул. Разрыв на пять порядков.',
     },
     {
       text: 'Что чаще убивает: автомобильные аварии или теракты?',
-      optA: 'Автоаварии', optB: 'Теракты', correct: 'a',
-      reveal: 'Автоаварии: около 1,2 млн смертей в мире в год (ВОЗ) — на порядки больше, чем от терактов в любой отдельно взятый год.',
+      optA: 'Автоаварии',
+      optB: 'Теракты',
+      correct: 'a',
+      reveal:
+        'Автоаварии: около 1,2 млн смертей в мире в год (ВОЗ) — на порядки больше, чем от терактов в любой отдельно взятый год.',
     },
   ];
 
-  let entries = NAMES.map(n => ({ name:n, answers: QUESTIONS.map(()=>null) }));
+  let entries = NAMES.map((n) => ({ name: n, answers: QUESTIONS.map(() => null) }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   const TOTAL_SCREENS = 3 + QUESTIONS.length; // instructions + Qn + results + context
 
-  function questionScreenHTML(qIdx){
+  function questionScreenHTML(qIdx) {
     const q = QUESTIONS[qIdx];
     const isLast = qIdx === QUESTIONS.length - 1;
     const nextLabel = isLast ? 'Показать результаты →' : 'Следующий вопрос →';
     return `
-      <section class="screen" id="screen-${1+qIdx}">
-        <p class="eyebrow">Вопрос ${qIdx+1} из ${QUESTIONS.length}</p>
+      <section class="screen" id="screen-${1 + qIdx}">
+        <p class="eyebrow">Вопрос ${qIdx + 1} из ${QUESTIONS.length}</p>
         <h2>${q.text}</h2>
         <p class="lede">Интуитивный выбор — без подсчётов.</p>
 
@@ -105,9 +117,9 @@ function renderAvailabilityGame(){
         </div>
       </section>
 
-      ${QUESTIONS.map((_,i)=>questionScreenHTML(i)).join('')}
+      ${QUESTIONS.map((_, i) => questionScreenHTML(i)).join('')}
 
-      <section class="screen" id="screen-${1+QUESTIONS.length}">
+      <section class="screen" id="screen-${1 + QUESTIONS.length}">
         <p class="eyebrow">Результаты</p>
         <h2>Что получилось у вашей команды</h2>
         <div class="print-header" id="print-header-availability"></div>
@@ -126,7 +138,7 @@ function renderAvailabilityGame(){
           <thead>
             <tr>
               <th>Участник</th>
-              ${QUESTIONS.map((_,i)=>`<th>В${i+1}</th>`).join('')}
+              ${QUESTIONS.map((_, i) => `<th>В${i + 1}</th>`).join('')}
               <th>Верно</th>
             </tr>
           </thead>
@@ -142,11 +154,11 @@ function renderAvailabilityGame(){
 
         <div class="nav-row">
           <button class="ghost" onclick="availGoTo(${QUESTIONS.length})">← Назад</button>
-          <button class="primary" onclick="availGoTo(${2+QUESTIONS.length})">Что это было? →</button>
+          <button class="primary" onclick="availGoTo(${2 + QUESTIONS.length})">Что это было? →</button>
         </div>
       </section>
 
-      <section class="screen" id="screen-${2+QUESTIONS.length}">
+      <section class="screen" id="screen-${2 + QUESTIONS.length}">
         <p class="eyebrow">А теперь — контекст</p>
         <h1>Эвристика доступности</h1>
         <p class="lede">Мы оцениваем вероятность события по тому, насколько легко вспоминаются примеры — а не по реальной статистике.</p>
@@ -177,18 +189,21 @@ function renderAvailabilityGame(){
 
   Screen.wireBackHome('availability');
 
-  Persist.offerRestore('availability', 'draft-mount-availability',
+  Persist.offerRestore(
+    'availability',
+    'draft-mount-availability',
     (p) => Array.isArray(p.entries) && p.entries.length === NAMES.length,
     (p) => {
       entries = p.entries;
-      QUESTIONS.forEach((_,qi)=>{
+      QUESTIONS.forEach((_, qi) => {
         buildEntryRows(qi);
         updateFillProgress(qi);
       });
       availGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(qIdx){
+  function buildEntryRows(qIdx) {
     const body = document.getElementById('entry-body-' + qIdx);
     body.innerHTML = '';
     const q = QUESTIONS[qIdx];
@@ -199,20 +214,20 @@ function renderAvailabilityGame(){
       div.innerHTML = `
         <div class="name">${avatarName(e.name)}</div>
         <div class="toggle-pair" data-idx="${i}" data-q="${qIdx}">
-          <button type="button" data-val="a" class="${ans==='a'?'on':''}">${q.optA}</button>
-          <button type="button" data-val="b" class="${ans==='b'?'on':''}">${q.optB}</button>
+          <button type="button" data-val="a" class="${ans === 'a' ? 'on' : ''}">${q.optA}</button>
+          <button type="button" data-val="b" class="${ans === 'b' ? 'on' : ''}">${q.optB}</button>
         </div>
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('.toggle-pair')).forEach(wrap=>{
-      Array.from(wrap.querySelectorAll('button')).forEach(btn=>{
-        btn.addEventListener('click', ()=>{
+    Array.from(body.querySelectorAll('.toggle-pair')).forEach((wrap) => {
+      Array.from(wrap.querySelectorAll('button')).forEach((btn) => {
+        btn.addEventListener('click', () => {
           const idx = +wrap.dataset.idx;
           const qi = +wrap.dataset.q;
           const val = btn.dataset.val;
           entries[idx].answers[qi] = val;
-          Array.from(wrap.querySelectorAll('button')).forEach(b=>{
+          Array.from(wrap.querySelectorAll('button')).forEach((b) => {
             b.classList.toggle('on', b.dataset.val === val);
           });
           updateFillProgress(qi);
@@ -221,64 +236,73 @@ function renderAvailabilityGame(){
     });
   }
 
-  function updateFillProgress(qIdx){
-    const filled = entries.filter(e => e.answers[qIdx] !== null).length;
+  function updateFillProgress(qIdx) {
+    const filled = entries.filter((e) => e.answers[qIdx] !== null).length;
     Screen.updateProgress('-' + qIdx, filled, NAMES.length, 'next-btn-' + qIdx, 2);
-    if(hydrated){ Persist.save('availability', { entries: entries }); }
+    if (hydrated) {
+      Persist.save('availability', { entries: entries });
+    }
   }
 
-  window.availGoTo = function(screenIdx){
+  window.availGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.availNext = function(qIdx){
-    if(qIdx === QUESTIONS.length - 1){
+  window.availNext = (qIdx) => {
+    if (qIdx === QUESTIONS.length - 1) {
       availShowResults();
     } else {
       availGoTo(2 + qIdx);
     }
   };
 
-  window.availShowResults = function(){
-    const correctPerQuestion = QUESTIONS.map(()=>0);
-    let totalCorrect = 0, totalAnswered = 0;
+  window.availShowResults = () => {
+    const correctPerQuestion = QUESTIONS.map(() => 0);
+    let totalCorrect = 0,
+      totalAnswered = 0;
 
-    entries.forEach(e=>{
-      QUESTIONS.forEach((q,qi)=>{
+    entries.forEach((e) => {
+      QUESTIONS.forEach((q, qi) => {
         const ans = e.answers[qi];
-        if(ans === null) return;
+        if (ans === null) return;
         totalAnswered++;
-        if(ans === q.correct){ correctPerQuestion[qi]++; totalCorrect++; }
+        if (ans === q.correct) {
+          correctPerQuestion[qi]++;
+          totalCorrect++;
+        }
       });
     });
 
-    document.getElementById('correct-rate').textContent =
-      totalAnswered ? Math.round(totalCorrect/totalAnswered*100) + '%' : '—';
+    document.getElementById('correct-rate').textContent = totalAnswered
+      ? Math.round((totalCorrect / totalAnswered) * 100) + '%'
+      : '—';
 
     const statsEl = document.getElementById('per-question-stats');
-    statsEl.innerHTML = QUESTIONS.map((q,qi)=>{
-      const answered = entries.filter(e=>e.answers[qi]!==null).length;
-      const pct = answered ? Math.round(correctPerQuestion[qi]/answered*100) : 0;
-      return `<div class="stat"><div class="n">${pct}%</div><div class="lab">верно в вопросе ${qi+1}</div></div>`;
+    statsEl.innerHTML = QUESTIONS.map((q, qi) => {
+      const answered = entries.filter((e) => e.answers[qi] !== null).length;
+      const pct = answered ? Math.round((correctPerQuestion[qi] / answered) * 100) : 0;
+      return `<div class="stat"><div class="n">${pct}%</div><div class="lab">верно в вопросе ${qi + 1}</div></div>`;
     }).join('');
 
-    document.getElementById('answers-reveal').innerHTML = QUESTIONS.map((q,i)=>
-      `<div class="fact"><b>Вопрос ${i+1}: ${q.optA} vs ${q.optB}</b><span>${q.reveal}</span></div>`
+    document.getElementById('answers-reveal').innerHTML = QUESTIONS.map(
+      (q, i) =>
+        `<div class="fact"><b>Вопрос ${i + 1}: ${q.optA} vs ${q.optB}</b><span>${q.reveal}</span></div>`,
     ).join('');
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    entries.forEach(e=>{
-      let hits = 0, answered = 0;
-      const cells = QUESTIONS.map((q,qi)=>{
+    entries.forEach((e) => {
+      let hits = 0,
+        answered = 0;
+      const cells = QUESTIONS.map((q, qi) => {
         const ans = e.answers[qi];
-        if(ans === null) return '<td>—</td>';
+        if (ans === null) return '<td>—</td>';
         answered++;
         const hit = ans === q.correct;
-        if(hit) hits++;
+        if (hit) hits++;
         return `<td>${hit ? '✓' : '✕'}</td>`;
       }).join('');
-      const pctText = answered ? Math.round(hits/answered*100)+'%' : '—';
+      const pctText = answered ? Math.round((hits / answered) * 100) + '%' : '—';
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(e.name)}</td>${cells}<td>${pctText}</td>`;
       tbody.appendChild(tr);
@@ -288,15 +312,16 @@ function renderAvailabilityGame(){
       title: 'Эвристика доступности',
       subtitle: 'Мы оцениваем риск по тому, что легче вспоминается, а не по статистике.',
       meta: Print.meta(entries.length),
-      explanation: 'Мы оцениваем вероятность события по тому, насколько легко вспоминаются примеры, а не по реальной статистике — яркие, эмоциональные и часто освещаемые в новостях события кажутся значительно более частыми, чем есть на самом деле. Эффект описали Амос Тверски и Дэниел Канеман в статье 1973 года.'
+      explanation:
+        'Мы оцениваем вероятность события по тому, насколько легко вспоминаются примеры, а не по реальной статистике — яркие, эмоциональные и часто освещаемые в новостях события кажутся значительно более частыми, чем есть на самом деле. Эффект описали Амос Тверски и Дэниел Канеман в статье 1973 года.',
     });
 
     availGoTo(1 + QUESTIONS.length);
   };
 
-  window.availReset = function(){
-    entries = NAMES.map(n => ({ name:n, answers: QUESTIONS.map(()=>null) }));
-    QUESTIONS.forEach((_,qi)=>{
+  window.availReset = () => {
+    entries = NAMES.map((n) => ({ name: n, answers: QUESTIONS.map(() => null) }));
+    QUESTIONS.forEach((_, qi) => {
       buildEntryRows(qi);
       updateFillProgress(qi);
     });
@@ -304,7 +329,7 @@ function renderAvailabilityGame(){
     Persist.clear('availability');
   };
 
-  QUESTIONS.forEach((_,qi)=>{
+  QUESTIONS.forEach((_, qi) => {
     buildEntryRows(qi);
     updateFillProgress(qi);
   });

@@ -1,12 +1,13 @@
 /* =========================================================
    GAME: Эффект ложного консенсуса (false-consensus)
 ========================================================= */
-function renderFalseConsensusGame(){
+function renderFalseConsensusGame() {
   const NAMES = state.participants.slice();
-  const DEFAULT_QUESTION = 'Готовы ли вы прямо сейчас, без подготовки, провести 5-минутную презентацию перед всей командой?';
+  const DEFAULT_QUESTION =
+    'Готовы ли вы прямо сейчас, без подготовки, провести 5-минутную презентацию перед всей командой?';
   let QUESTION = DEFAULT_QUESTION;
   let isCustomQuestion = false;
-  let data = NAMES.map(n => ({ name:n, own:null, estimate:null }));
+  let data = NAMES.map((n) => ({ name: n, own: null, estimate: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -170,11 +171,13 @@ function renderFalseConsensusGame(){
 
   Screen.wireBackHome('false-consensus');
 
-  Persist.offerRestore('false-consensus', 'draft-mount-false-consensus',
+  Persist.offerRestore(
+    'false-consensus',
+    'draft-mount-false-consensus',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
-      if(p.question){
+      if (p.question) {
         QUESTION = p.question;
         isCustomQuestion = true;
         updateQuestionDisplay();
@@ -182,22 +185,23 @@ function renderFalseConsensusGame(){
       buildEntryRows();
       updateFillProgress();
       fcGoTo(1);
-    });
+    },
+  );
 
-  function updateQuestionDisplay(){
+  function updateQuestionDisplay() {
     document.getElementById('fc-question-text').innerHTML =
       `«${QUESTION}» Каждый отвечает про себя: да или нет.`;
   }
 
-  document.getElementById('custom-q-toggle').addEventListener('click', ()=>{
+  document.getElementById('custom-q-toggle').addEventListener('click', () => {
     const panel = document.getElementById('custom-q-panel');
     panel.hidden = !panel.hidden;
   });
 
-  document.getElementById('custom-q-apply').addEventListener('click', ()=>{
+  document.getElementById('custom-q-apply').addEventListener('click', () => {
     const text = document.getElementById('custom-q-text').value.trim();
     const statusEl = document.getElementById('custom-q-status');
-    if(!text){
+    if (!text) {
       statusEl.textContent = 'Впишите текст вопроса.';
       return;
     }
@@ -208,7 +212,7 @@ function renderFalseConsensusGame(){
     document.getElementById('custom-q-reset').hidden = false;
   });
 
-  document.getElementById('custom-q-reset').addEventListener('click', ()=>{
+  document.getElementById('custom-q-reset').addEventListener('click', () => {
     QUESTION = DEFAULT_QUESTION;
     isCustomQuestion = false;
     updateQuestionDisplay();
@@ -217,7 +221,7 @@ function renderFalseConsensusGame(){
     document.getElementById('custom-q-reset').hidden = true;
   });
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     const body = document.getElementById('entry-body');
     body.innerHTML = '';
     data.forEach((row, i) => {
@@ -226,91 +230,99 @@ function renderFalseConsensusGame(){
       div.innerHTML = `
         <div class="name">${avatarName(row.name)}</div>
         <div class="toggle-pair" data-idx="${i}">
-          <button type="button" data-val="yes" class="${row.own==='yes'?'on':''}">Да</button>
-          <button type="button" data-val="no" class="${row.own==='no'?'on':''}">Нет</button>
+          <button type="button" data-val="yes" class="${row.own === 'yes' ? 'on' : ''}">Да</button>
+          <button type="button" data-val="no" class="${row.own === 'no' ? 'on' : ''}">Нет</button>
         </div>
         <input type="number" min="0" max="100" inputmode="numeric" placeholder="0–100" data-idx="${i}" data-field="estimate" value="${row.estimate ?? ''}">
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('.toggle-pair button')).forEach(btn=>{
-      btn.addEventListener('click', e=>{
+    Array.from(body.querySelectorAll('.toggle-pair button')).forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         const wrap = e.currentTarget.closest('.toggle-pair');
         const idx = +wrap.dataset.idx;
         const val = e.currentTarget.dataset.val;
         data[idx].own = val;
-        Array.from(wrap.querySelectorAll('button')).forEach(b=>{
+        Array.from(wrap.querySelectorAll('button')).forEach((b) => {
           b.classList.toggle('on', b.dataset.val === val);
         });
         updateFillProgress();
       });
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
-      inp.addEventListener('input', e=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
+      inp.addEventListener('input', (e) => {
         const idx = +e.target.dataset.idx;
         let v = e.target.value === '' ? null : Number(e.target.value);
-        if(v !== null){ if(v<0) v=0; if(v>100) v=100; }
+        if (v !== null) {
+          if (v < 0) v = 0;
+          if (v > 100) v = 100;
+        }
         data[idx].estimate = v;
         updateFillProgress();
       });
     });
   }
 
-  function updateFillProgress(){
-    const filled = data.filter(d => d.own !== null && d.estimate !== null).length;
+  function updateFillProgress() {
+    const filled = data.filter((d) => d.own !== null && d.estimate !== null).length;
     Screen.updateProgress('', filled, NAMES.length, 'show-results-btn', 2);
-    if(hydrated){
+    if (hydrated) {
       Persist.save('false-consensus', {
         data: data,
-        question: isCustomQuestion ? QUESTION : null
+        question: isCustomQuestion ? QUESTION : null,
       });
     }
   }
 
-  window.fcGoTo = function(screenIdx){
+  window.fcGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.fcShowResults = function(){
-    const filled = data.filter(d => d.own !== null && d.estimate !== null);
-    const yesCount = filled.filter(d=>d.own==='yes').length;
-    const realYesPct = Math.round(yesCount/filled.length*100);
+  window.fcShowResults = () => {
+    const filled = data.filter((d) => d.own !== null && d.estimate !== null);
+    const yesCount = filled.filter((d) => d.own === 'yes').length;
+    const realYesPct = Math.round((yesCount / filled.length) * 100);
     document.getElementById('real-yes').textContent = realYesPct + '%';
 
-    const yesSide = filled.filter(d=>d.own==='yes');
-    const noSide = filled.filter(d=>d.own==='no');
-    const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b.estimate,0)/arr.length) : null;
-    const yesAvg = avg(yesSide), noAvg = avg(noSide);
+    const yesSide = filled.filter((d) => d.own === 'yes');
+    const noSide = filled.filter((d) => d.own === 'no');
+    const avg = (arr) =>
+      arr.length ? Math.round(arr.reduce((a, b) => a + b.estimate, 0) / arr.length) : null;
+    const yesAvg = avg(yesSide),
+      noAvg = avg(noSide);
 
-    document.getElementById('yes-side-avg').textContent = yesAvg===null ? '—' : yesAvg+'%';
-    document.getElementById('no-side-avg').textContent = noAvg===null ? '—' : noAvg+'%';
+    document.getElementById('yes-side-avg').textContent = yesAvg === null ? '—' : yesAvg + '%';
+    document.getElementById('no-side-avg').textContent = noAvg === null ? '—' : noAvg + '%';
 
     let compareText = `Реально ответили «да» ${realYesPct}% команды.`;
-    if(yesAvg!==null && noAvg!==null){
+    if (yesAvg !== null && noAvg !== null) {
       compareText += ` Те, кто сам сказал «да», в среднем ожидали ${yesAvg}% согласных — те, кто сказал «нет», ожидали только ${noAvg}%. Каждая группа тянет прогноз в свою сторону.`;
     }
     document.getElementById('fc-compare-text').textContent = compareText;
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.own==='yes'?'Да':'Нет'}</td><td>${d.estimate}%</td>`;
+      tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.own === 'yes' ? 'Да' : 'Нет'}</td><td>${d.estimate}%</td>`;
       tbody.appendChild(tr);
     });
 
     Print.mount('print-header-false-consensus', {
       title: 'Ложный консенсус',
-      subtitle: isCustomQuestion ? QUESTION : 'Мы уверены, что наше мнение разделяют куда больше людей, чем на самом деле.',
+      subtitle: isCustomQuestion
+        ? QUESTION
+        : 'Мы уверены, что наше мнение разделяют куда больше людей, чем на самом деле.',
       meta: Print.meta(filled.length),
-      explanation: 'Мы систематически переоцениваем, насколько остальные разделяют наше собственное мнение или поведение — потому что единственная реальная точка отсчёта, которая у нас есть, это мы сами. Эффект описали психологи Ли Росс, Дэвид Грин и Памела Хаус в серии экспериментов в Стэнфорде в 1977 году.'
+      explanation:
+        'Мы систематически переоцениваем, насколько остальные разделяют наше собственное мнение или поведение — потому что единственная реальная точка отсчёта, которая у нас есть, это мы сами. Эффект описали психологи Ли Росс, Дэвид Грин и Памела Хаус в серии экспериментов в Стэнфорде в 1977 году.',
     });
 
     fcGoTo(2);
   };
 
-  window.fcReset = function(){
-    data = NAMES.map(n => ({ name:n, own:null, estimate:null }));
+  window.fcReset = () => {
+    data = NAMES.map((n) => ({ name: n, own: null, estimate: null }));
     buildEntryRows();
     updateFillProgress();
     fcGoTo(0);

@@ -10,9 +10,9 @@
 // e.g. when the package is installed from a tarball rather than
 // cloned — so it never breaks a plain `bun install`.
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const { execSync } = require('node:child_process');
 
 try {
   const root = execSync('git rev-parse --show-toplevel', { stdio: ['ignore', 'pipe', 'ignore'] })
@@ -30,6 +30,6 @@ try {
   fs.copyFileSync(src, dest);
   fs.chmodSync(dest, 0o755);
   console.log('install-hooks: pre-push hook installed -> ' + dest);
-} catch (e) {
+} catch {
   console.log('install-hooks: skipped (not inside a git repository)');
 }

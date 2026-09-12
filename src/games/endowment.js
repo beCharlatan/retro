@@ -6,18 +6,30 @@
    giving both a WTA and a WTP price, which doubles the sample
    behind each average instead of splitting the room in half.
 ========================================================= */
-function renderEndowmentGame(){
+function renderEndowmentGame() {
   let groups = Roles.makeGroups(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   const TOTAL_SCREENS = 6;
 
-  function buildEntries(){
+  function buildEntries() {
     // r1Role is where they start (from the groups screen); r2Role is
     // always the opposite — that's the whole point of round 2.
-    const owners = groups.groupA.map(n => ({ name:n, r1Role:'owner', r2Role:'buyer', r1Price:null, r2Price:null }));
-    const buyers = groups.groupB.map(n => ({ name:n, r1Role:'buyer', r2Role:'owner', r1Price:null, r2Price:null }));
+    const owners = groups.groupA.map((n) => ({
+      name: n,
+      r1Role: 'owner',
+      r2Role: 'buyer',
+      r1Price: null,
+      r2Price: null,
+    }));
+    const buyers = groups.groupB.map((n) => ({
+      name: n,
+      r1Role: 'buyer',
+      r2Role: 'owner',
+      r1Price: null,
+      r2Price: null,
+    }));
     return owners.concat(buyers);
   }
 
@@ -183,7 +195,9 @@ function renderEndowmentGame(){
 
   Screen.wireBackHome('endowment');
 
-  Persist.offerRestore('endowment', 'draft-mount-endowment',
+  Persist.offerRestore(
+    'endowment',
+    'draft-mount-endowment',
     (p) => Array.isArray(p.entries) && p.entries.length === state.participants.length,
     (p) => {
       groups = p.groups;
@@ -194,12 +208,15 @@ function renderEndowmentGame(){
       updateFillProgress(1);
       updateFillProgress(2);
       endGoTo(2);
-    });
+    },
+  );
 
-  function renderGroupsHolder(){
+  function renderGroupsHolder() {
     const el = document.getElementById('groups-holder');
-    el.innerHTML =
-      Roles.groupsHTML(groups.groupA, groups.groupB, { labelA:'Владельцы (раунд 1)', labelB:'Покупатели (раунд 1)' });
+    el.innerHTML = Roles.groupsHTML(groups.groupA, groups.groupB, {
+      labelA: 'Владельцы (раунд 1)',
+      labelB: 'Покупатели (раунд 1)',
+    });
     Roles.bindGroupSwap(el, () => groups, renderGroupsHolder);
   }
   renderGroupsHolder();
@@ -208,7 +225,7 @@ function renderEndowmentGame(){
     renderGroupsHolder();
   });
 
-  window.endLockGroups = function(){
+  window.endLockGroups = () => {
     entries = buildEntries();
     buildEntryRows(1);
     buildEntryRows(2);
@@ -217,22 +234,26 @@ function renderEndowmentGame(){
     endGoTo(2);
   };
 
-  function buildEntryRows(round){
+  function buildEntryRows(round) {
     const body = document.getElementById('entry-body-' + round);
     document.getElementById('fill-total-' + round).textContent = entries.length;
     const roleField = round === 1 ? 'r1Role' : 'r2Role';
     const priceField = round === 1 ? 'r1Price' : 'r2Price';
 
-    const withIdx = entries.map((e, i) => ({ ...e, idx:i }));
-    const owners = withIdx.filter(e => e[roleField] === 'owner');
-    const buyers = withIdx.filter(e => e[roleField] === 'buyer');
+    const withIdx = entries.map((e, i) => ({ ...e, idx: i }));
+    const owners = withIdx.filter((e) => e[roleField] === 'owner');
+    const buyers = withIdx.filter((e) => e[roleField] === 'buyer');
 
-    function section(title, list, cls){
-      const cards = list.map(e => `
+    function section(title, list, cls) {
+      const cards = list
+        .map(
+          (e) => `
         <div class="team-entry-card">
           <div class="team-entry-name">${avatarName(e.name)}</div>
           <input type="number" min="0" inputmode="numeric" placeholder="₽" data-idx="${e.idx}" data-round="${round}" value="${e[priceField] ?? ''}">
-        </div>`).join('');
+        </div>`,
+        )
+        .join('');
       return `
         <div class="team-entry-group ${cls}">
           <div class="team-entry-group-title">${title} <span class="count">· ${list.length} чел.</span></div>
@@ -240,58 +261,64 @@ function renderEndowmentGame(){
         </div>`;
     }
 
-    body.innerHTML = section('Владельцы · продают', owners, 'team-a') + section('Покупатели · покупают', buyers, 'team-b');
+    body.innerHTML =
+      section('Владельцы · продают', owners, 'team-a') +
+      section('Покупатели · покупают', buyers, 'team-b');
 
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const round = +e.target.dataset.round;
     const priceField = round === 1 ? 'r1Price' : 'r2Price';
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null && v < 0) v = 0;
+    if (v !== null && v < 0) v = 0;
     entries[idx][priceField] = v;
     updateFillProgress(round);
   }
 
-  function updateFillProgress(round){
+  function updateFillProgress(round) {
     const priceField = round === 1 ? 'r1Price' : 'r2Price';
-    const filled = entries.filter(e => e[priceField] !== null).length;
+    const filled = entries.filter((e) => e[priceField] !== null).length;
     Screen.updateProgress('-' + round, filled, entries.length, 'next-btn-' + round, 2);
-    if(hydrated){ Persist.save('endowment', { groups: groups, entries: entries }); }
+    if (hydrated) {
+      Persist.save('endowment', { groups: groups, entries: entries });
+    }
   }
 
-  window.endGoTo = function(screenIdx){
+  window.endGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.endShowResults = function(){
-    const filled = entries.filter(e => e.r1Price !== null && e.r2Price !== null);
+  window.endShowResults = () => {
+    const filled = entries.filter((e) => e.r1Price !== null && e.r2Price !== null);
 
     // Everyone gave one WTA (as owner) and one WTP (as buyer) — pick the
     // right value from whichever round they held each role in.
-    const wtaOf = e => e.r1Role === 'owner' ? e.r1Price : e.r2Price;
-    const wtpOf = e => e.r1Role === 'buyer' ? e.r1Price : e.r2Price;
+    const wtaOf = (e) => (e.r1Role === 'owner' ? e.r1Price : e.r2Price);
+    const wtpOf = (e) => (e.r1Role === 'buyer' ? e.r1Price : e.r2Price);
 
-    const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+    const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
     const avgWTA = avg(filled.map(wtaOf));
     const avgWTP = avg(filled.map(wtpOf));
 
-    document.getElementById('avg-wta').textContent = avgWTA===null ? '—' : Math.round(avgWTA)+' ₽';
-    document.getElementById('avg-wtp').textContent = avgWTP===null ? '—' : Math.round(avgWTP)+' ₽';
+    document.getElementById('avg-wta').textContent =
+      avgWTA === null ? '—' : Math.round(avgWTA) + ' ₽';
+    document.getElementById('avg-wtp').textContent =
+      avgWTP === null ? '—' : Math.round(avgWTP) + ' ₽';
 
-    if(avgWTA!==null && avgWTP!==null && avgWTP>0){
-      document.getElementById('ratio-value').textContent = (avgWTA/avgWTP).toFixed(1) + '×';
+    if (avgWTA !== null && avgWTP !== null && avgWTP > 0) {
+      document.getElementById('ratio-value').textContent = (avgWTA / avgWTP).toFixed(1) + '×';
     } else {
       document.getElementById('ratio-value').textContent = '—';
     }
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(e=>{
+    filled.forEach((e) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(e.name)}</td><td>${wtaOf(e)} ₽</td><td>${wtpOf(e)} ₽</td>`;
       tbody.appendChild(tr);
@@ -301,13 +328,14 @@ function renderEndowmentGame(){
       title: 'Эффект владения',
       subtitle: 'Та же вещь внезапно дороже для того, кто ей уже владеет.',
       meta: Print.meta(filled.length, '2 раунда, роли поменялись'),
-      explanation: 'Одна и та же вещь субъективно ценнее для того, кто ею уже владеет, чем для того, кто хочет её купить, хотя рационально цена должна быть одной и той же. Знаменитый «эксперимент с кружками» описан в статье Kahneman, Knetsch, Thaler (1990) — эффект считается частным случаем неприятия потерь (loss aversion).'
+      explanation:
+        'Одна и та же вещь субъективно ценнее для того, кто ею уже владеет, чем для того, кто хочет её купить, хотя рационально цена должна быть одной и той же. Знаменитый «эксперимент с кружками» описан в статье Kahneman, Knetsch, Thaler (1990) — эффект считается частным случаем неприятия потерь (loss aversion).',
     });
 
     endGoTo(4);
   };
 
-  window.endReset = function(){
+  window.endReset = () => {
     groups = Roles.makeGroups(state.participants);
     renderGroupsHolder();
     entries = buildEntries();

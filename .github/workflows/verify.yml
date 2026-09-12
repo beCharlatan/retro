@@ -29,6 +29,9 @@ jobs:
       - name: Install Playwright's Chromium (with OS deps)
         run: bunx playwright install --with-deps chromium
 
+      - name: Lint (Biome)
+        run: bun run lint
+
       - name: Build + run the full regression suite
         run: bun run verify
 

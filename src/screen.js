@@ -39,7 +39,7 @@
        if (hydrated) { Persist.save('crowd-wisdom', { data: data }); }
      }
 ========================================================= */
-const Screen = (function () {
+const Screen = (() => {
   function goTo(screenIdx) {
     Array.from(document.querySelectorAll('.screen')).forEach((s, i) => {
       s.classList.toggle('active', i === screenIdx);
@@ -70,7 +70,8 @@ const Screen = (function () {
   // button to enable/disable once `filled` reaches `minRequired`.
   function updateProgress(idSuffix, filled, total, btnId, minRequired) {
     document.getElementById('fill-count' + idSuffix).textContent = filled;
-    document.getElementById('fill-bar' + idSuffix).style.width = (total ? filled / total * 100 : 0) + '%';
+    document.getElementById('fill-bar' + idSuffix).style.width =
+      (total ? (filled / total) * 100 : 0) + '%';
     document.getElementById(btnId).disabled = filled < minRequired;
   }
 

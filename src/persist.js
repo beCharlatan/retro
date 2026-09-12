@@ -35,13 +35,18 @@
      // longer needed:
      Persist.clear('anchoring');
 ========================================================= */
-const Persist = (function () {
+const Persist = (() => {
   const PREFIX = 'retro-draft-';
 
   function save(gameId, payload) {
     try {
-      sessionStorage.setItem(PREFIX + gameId, JSON.stringify({ payload: payload, savedAt: Date.now() }));
-    } catch (e) { /* storage unavailable — fail silently, feature is best-effort */ }
+      sessionStorage.setItem(
+        PREFIX + gameId,
+        JSON.stringify({ payload: payload, savedAt: Date.now() }),
+      );
+    } catch {
+      /* storage unavailable — fail silently, feature is best-effort */
+    }
   }
 
   function load(gameId) {
@@ -50,11 +55,17 @@ const Persist = (function () {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       return parsed && parsed.payload ? parsed : null;
-    } catch (e) { return null; }
+    } catch {
+      return null;
+    }
   }
 
   function clear(gameId) {
-    try { sessionStorage.removeItem(PREFIX + gameId); } catch (e) { /* noop */ }
+    try {
+      sessionStorage.removeItem(PREFIX + gameId);
+    } catch {
+      /* noop */
+    }
   }
 
   function hasAny() {
@@ -62,7 +73,9 @@ const Persist = (function () {
       for (let i = 0; i < sessionStorage.length; i++) {
         if (sessionStorage.key(i).indexOf(PREFIX) === 0) return true;
       }
-    } catch (e) { /* noop */ }
+    } catch {
+      /* noop */
+    }
     return false;
   }
 
@@ -83,16 +96,18 @@ const Persist = (function () {
     if (!el) return;
     el.innerHTML =
       '<div class="draft-banner">' +
-      '<span class="draft-text">📋 Есть незавершённая попытка (' + timeAgo(savedAt) + ') — продолжить с того места?</span>' +
+      '<span class="draft-text">📋 Есть незавершённая попытка (' +
+      timeAgo(savedAt) +
+      ') — продолжить с того места?</span>' +
       '<span class="draft-actions">' +
       '<button type="button" class="draft-restore">Восстановить</button>' +
       '<button type="button" class="draft-discard">Начать заново</button>' +
       '</span></div>';
-    el.querySelector('.draft-restore').addEventListener('click', function () {
+    el.querySelector('.draft-restore').addEventListener('click', () => {
       el.innerHTML = '';
       onRestore();
     });
-    el.querySelector('.draft-discard').addEventListener('click', function () {
+    el.querySelector('.draft-discard').addEventListener('click', () => {
       el.innerHTML = '';
       onDiscard();
     });
@@ -109,15 +124,27 @@ const Persist = (function () {
   function offerRestore(gameId, mountId, validate, onRestore) {
     const draft = load(gameId);
     if (draft && validate(draft.payload)) {
-      banner(mountId, draft.savedAt, () => onRestore(draft.payload), () => clear(gameId));
+      banner(
+        mountId,
+        draft.savedAt,
+        () => onRestore(draft.payload),
+        () => clear(gameId),
+      );
     }
   }
 
-  return { save: save, load: load, clear: clear, hasAny: hasAny, banner: banner, offerRestore: offerRestore };
+  return {
+    save: save,
+    load: load,
+    clear: clear,
+    hasAny: hasAny,
+    banner: banner,
+    offerRestore: offerRestore,
+  };
 })();
 
 // Warn before leaving the tab only if some game has unsaved progress.
-window.addEventListener('beforeunload', function (e) {
+window.addEventListener('beforeunload', (e) => {
   if (Persist.hasAny()) {
     e.preventDefault();
     e.returnValue = '';

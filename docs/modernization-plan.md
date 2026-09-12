@@ -124,7 +124,14 @@ DOM/CSS Modules/data-testid идёт по одной игре за раз, на�
 
 ### Biome + `bun test`
 Biome — линт и форматирование одним инструментом, конфиг
-`biome.json`, скрипты `bun run lint` / `bun run format`. `bun test`
+`biome.json`, скрипты `bun run lint` / `bun run format`. Уже применён
+ко всему репозиторию (безопасные автофиксы + `node:`-протокол для
+`require`); `biome.json`'s `overrides` для `src/*.js`/`src/games/*.js`
+временно отключает `noUnusedVariables`/`noUnusedFunctionParameters` —
+Biome анализирует файлы по одному и (справедливо, раз экспортов ещё
+нет) считает неиспользуемыми `Screen`/`Persist`/`Roles`/`Print`/
+`ChartTip`/`render*Game`, на самом деле потребляемые другими файлами
+через общий scope. Убрать это исключение сразу после Фазы 1. `bun test`
 покрывает чистую логику без DOM: `Roles.shuffle/makePairs/makeGroups/
 swapInPairs/swapInGroups` в первую очередь (лежат в `test/unit/*.test.js`,
 `bunfig.toml` указывает `[test] root` именно туда, чтобы не

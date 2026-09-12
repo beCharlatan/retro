@@ -3,7 +3,7 @@
 // (just Playwright) so the whole suite runs with a single `node` command
 // and no test framework to install.
 
-const path = require('path');
+const path = require('node:path');
 const { chromium } = require('playwright');
 
 const DIST_PATH = path.join(__dirname, '..', 'dist', 'index.html');
@@ -40,7 +40,9 @@ class Report {
       console.log(`\x1b[32mAll ${total} checks passed.\x1b[0m`);
     } else {
       console.log(`\x1b[31m${this.failed} of ${total} checks failed:\x1b[0m`);
-      this.failures.forEach(f => console.log(`  - ${f.label}${f.detail ? ': ' + f.detail : ''}`));
+      this.failures.forEach((f) => {
+        console.log(`  - ${f.label}${f.detail ? ': ' + f.detail : ''}`);
+      });
     }
     return this.failed === 0;
   }
@@ -51,8 +53,8 @@ class Report {
 // Google Fonts, which has no network access in this sandbox).
 async function openPage(browser, report, viewport) {
   const page = await browser.newPage({ viewport: viewport || { width: 1000, height: 1300 } });
-  page.on('pageerror', e => report.fail('no uncaught JS errors', String(e)));
-  page.on('console', msg => {
+  page.on('pageerror', (e) => report.fail('no uncaught JS errors', String(e)));
+  page.on('console', (msg) => {
     if (msg.type() === 'error' && !msg.text().includes('403')) {
       report.fail('no console errors', msg.text());
     }

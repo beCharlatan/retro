@@ -1,9 +1,9 @@
 /* =========================================================
    GAME: Ошибка планирования (planning-fallacy)
 ========================================================= */
-function renderPlanningFallacyGame(){
+function renderPlanningFallacyGame() {
   const NAMES = state.participants.slice();
-  let data = NAMES.map(n => ({ name:n, best:null, actual:null }));
+  let data = NAMES.map((n) => ({ name: n, best: null, actual: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -146,16 +146,19 @@ function renderPlanningFallacyGame(){
 
   Screen.wireBackHome('planning-fallacy');
 
-  Persist.offerRestore('planning-fallacy', 'draft-mount-planning-fallacy',
+  Persist.offerRestore(
+    'planning-fallacy',
+    'draft-mount-planning-fallacy',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
       buildEntryRows();
       updateFillProgress();
       pfGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     const body = document.getElementById('entry-body');
     body.innerHTML = '';
     data.forEach((row, i) => {
@@ -168,43 +171,47 @@ function renderPlanningFallacyGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const field = e.target.dataset.field;
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null && v < 0) v = 0;
+    if (v !== null && v < 0) v = 0;
     data[idx][field] = v;
     updateFillProgress();
   }
 
-  function updateFillProgress(){
-    const filled = data.filter(d => d.best !== null && d.actual !== null && d.best > 0).length;
+  function updateFillProgress() {
+    const filled = data.filter((d) => d.best !== null && d.actual !== null && d.best > 0).length;
     Screen.updateProgress('', filled, NAMES.length, 'show-results-btn', 2);
-    if(hydrated){ Persist.save('planning-fallacy', { data: data }); }
+    if (hydrated) {
+      Persist.save('planning-fallacy', { data: data });
+    }
   }
 
-  window.pfGoTo = function(screenIdx){
+  window.pfGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.pfShowResults = function(){
-    const filled = data.filter(d => d.best !== null && d.actual !== null && d.best > 0);
-    const ratios = filled.map(d => d.actual / d.best);
-    const avgRatio = ratios.reduce((a,b)=>a+b,0)/ratios.length;
+  window.pfShowResults = () => {
+    const filled = data.filter((d) => d.best !== null && d.actual !== null && d.best > 0);
+    const ratios = filled.map((d) => d.actual / d.best);
+    const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
 
     document.getElementById('avg-ratio').textContent = avgRatio.toFixed(2) + '×';
-    document.getElementById('accurate-count').textContent = ratios.filter(r=>r<1.3).length + ' из ' + ratios.length;
-    document.getElementById('overrun-count').textContent = ratios.filter(r=>r>1.5).length + ' из ' + ratios.length;
+    document.getElementById('accurate-count').textContent =
+      ratios.filter((r) => r < 1.3).length + ' из ' + ratios.length;
+    document.getElementById('overrun-count').textContent =
+      ratios.filter((r) => r > 1.5).length + ' из ' + ratios.length;
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
-      const ratio = d.actual/d.best;
+    filled.forEach((d) => {
+      const ratio = d.actual / d.best;
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.best} ч</td><td>${d.actual} ч</td><td>${ratio.toFixed(2)}×</td>`;
       tbody.appendChild(tr);
@@ -214,14 +221,15 @@ function renderPlanningFallacyGame(){
       title: 'Ошибка планирования',
       subtitle: '«В лучшем случае» и «по факту» — почти никогда не одно и то же число.',
       meta: Print.meta(filled.length),
-      explanation: 'Люди систематически недооценивают, сколько времени займёт задача, даже прекрасно помня, что прошлые похожие задачи тоже заняли больше запланированного. Термин ввели Дэниел Канеман и Амос Тверски в 1977–1979 годах; классический разбор — исследование Roger Buehler, Dale Griffin и Michael Ross (1994) о студентах и сроках дипломных работ.'
+      explanation:
+        'Люди систематически недооценивают, сколько времени займёт задача, даже прекрасно помня, что прошлые похожие задачи тоже заняли больше запланированного. Термин ввели Дэниел Канеман и Амос Тверски в 1977–1979 годах; классический разбор — исследование Roger Buehler, Dale Griffin и Michael Ross (1994) о студентах и сроках дипломных работ.',
     });
 
     pfGoTo(2);
   };
 
-  window.pfReset = function(){
-    data = NAMES.map(n => ({ name:n, best:null, actual:null }));
+  window.pfReset = () => {
+    data = NAMES.map((n) => ({ name: n, best: null, actual: null }));
     buildEntryRows();
     updateFillProgress();
     pfGoTo(0);

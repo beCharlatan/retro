@@ -8,24 +8,32 @@
    between rounds and measure how often round 2 "echoed" the
    partner's round 1 move.
 ========================================================= */
-function renderPrisonersDilemmaGame(){
+function renderPrisonersDilemmaGame() {
   let assignment = Roles.makePairs(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   const TOTAL_SCREENS = 7;
 
-  function buildEntries(){
-    return assignment.pairs.map(p => ({ a:p.a, b:p.b, trio: !!p.trio, r1a:null, r1b:null, r2a:null, r2b:null }));
+  function buildEntries() {
+    return assignment.pairs.map((p) => ({
+      a: p.a,
+      b: p.b,
+      trio: !!p.trio,
+      r1a: null,
+      r1b: null,
+      r2a: null,
+      r2b: null,
+    }));
   }
 
-  function payoff(choiceA, choiceB){
-    if(choiceA==='C' && choiceB==='C') return [3,3];
-    if(choiceA==='D' && choiceB==='D') return [1,1];
-    if(choiceA==='D' && choiceB==='C') return [5,0];
-    return [0,5];
+  function payoff(choiceA, choiceB) {
+    if (choiceA === 'C' && choiceB === 'C') return [3, 3];
+    if (choiceA === 'D' && choiceB === 'D') return [1, 1];
+    if (choiceA === 'D' && choiceB === 'C') return [5, 0];
+    return [0, 5];
   }
-  const label = c => c==='C' ? 'Сотрудничал' : 'Предал';
+  const label = (c) => (c === 'C' ? 'Сотрудничал' : 'Предал');
 
   app.innerHTML = `
     <div class="wrap narrow">
@@ -209,7 +217,9 @@ function renderPrisonersDilemmaGame(){
 
   Screen.wireBackHome('prisoners-dilemma');
 
-  Persist.offerRestore('prisoners-dilemma', 'draft-mount-prisoners-dilemma',
+  Persist.offerRestore(
+    'prisoners-dilemma',
+    'draft-mount-prisoners-dilemma',
     (p) => Array.isArray(p.entries) && p.assignment,
     (p) => {
       assignment = p.assignment;
@@ -220,9 +230,10 @@ function renderPrisonersDilemmaGame(){
       updateFillProgress(1);
       updateFillProgress(2);
       pdGoTo(2);
-    });
+    },
+  );
 
-  function renderPairsHolder(){
+  function renderPairsHolder() {
     const el = document.getElementById('pairs-holder');
     el.innerHTML = Roles.pairsHTML(assignment.pairs, assignment.observer);
     Roles.bindPairSwap(el, () => assignment.pairs, renderPairsHolder);
@@ -233,7 +244,7 @@ function renderPrisonersDilemmaGame(){
     renderPairsHolder();
   });
 
-  window.pdLockPairs = function(){
+  window.pdLockPairs = () => {
     entries = buildEntries();
     buildEntryRows(1);
     buildEntryRows(2);
@@ -242,7 +253,7 @@ function renderPrisonersDilemmaGame(){
     pdGoTo(2);
   };
 
-  function buildEntryRows(round){
+  function buildEntryRows(round) {
     const body = document.getElementById('entry-body-' + round);
     body.innerHTML = '';
     const fieldA = round === 1 ? 'r1a' : 'r2a';
@@ -254,28 +265,28 @@ function renderPrisonersDilemmaGame(){
         ${e.trio ? '<span class="role-pair-trio-badge">🔺 трио</span>' : ''}
         <div class="pair-entry-name"><b>${avatarName(e.a)}</b></div>
         <div class="toggle-pair" data-idx="${i}" data-round="${round}" data-side="a">
-          <button type="button" data-val="C" class="${e[fieldA]==='C'?'on':''}">Coтр.</button>
-          <button type="button" data-val="D" class="${e[fieldA]==='D'?'on':''}">Пред.</button>
+          <button type="button" data-val="C" class="${e[fieldA] === 'C' ? 'on' : ''}">Coтр.</button>
+          <button type="button" data-val="D" class="${e[fieldA] === 'D' ? 'on' : ''}">Пред.</button>
         </div>
         <div class="pair-entry-connector">↔</div>
         <div class="toggle-pair" data-idx="${i}" data-round="${round}" data-side="b">
-          <button type="button" data-val="C" class="${e[fieldB]==='C'?'on':''}">Coтр.</button>
-          <button type="button" data-val="D" class="${e[fieldB]==='D'?'on':''}">Пред.</button>
+          <button type="button" data-val="C" class="${e[fieldB] === 'C' ? 'on' : ''}">Coтр.</button>
+          <button type="button" data-val="D" class="${e[fieldB] === 'D' ? 'on' : ''}">Пред.</button>
         </div>
         <div class="pair-entry-name"><b>${avatarName(e.b)}</b></div>
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('.toggle-pair')).forEach(wrap=>{
-      Array.from(wrap.querySelectorAll('button')).forEach(btn=>{
-        btn.addEventListener('click', ()=>{
+    Array.from(body.querySelectorAll('.toggle-pair')).forEach((wrap) => {
+      Array.from(wrap.querySelectorAll('button')).forEach((btn) => {
+        btn.addEventListener('click', () => {
           const idx = +wrap.dataset.idx;
           const r = +wrap.dataset.round;
           const side = wrap.dataset.side;
           const field = (r === 1 ? 'r1' : 'r2') + side;
           const val = btn.dataset.val;
           entries[idx][field] = val;
-          Array.from(wrap.querySelectorAll('button')).forEach(b=>{
+          Array.from(wrap.querySelectorAll('button')).forEach((b) => {
             b.classList.toggle('on', b.dataset.val === val);
           });
           updateFillProgress(r);
@@ -284,23 +295,25 @@ function renderPrisonersDilemmaGame(){
     });
   }
 
-  function updateFillProgress(round){
+  function updateFillProgress(round) {
     const fieldA = round === 1 ? 'r1a' : 'r2a';
     const fieldB = round === 1 ? 'r1b' : 'r2b';
-    const filled = entries.filter(e => e[fieldA] !== null && e[fieldB] !== null).length;
+    const filled = entries.filter((e) => e[fieldA] !== null && e[fieldB] !== null).length;
     Screen.updateProgress('-' + round, filled, entries.length, 'next-btn-' + round, 1);
-    if(hydrated){ Persist.save('prisoners-dilemma', { assignment: assignment, entries: entries }); }
+    if (hydrated) {
+      Persist.save('prisoners-dilemma', { assignment: assignment, entries: entries });
+    }
   }
 
-  window.pdGoTo = function(screenIdx){
+  window.pdGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.pdShowRecap = function(){
-    const filled = entries.filter(e => e.r1a !== null && e.r1b !== null);
+  window.pdShowRecap = () => {
+    const filled = entries.filter((e) => e.r1a !== null && e.r1b !== null);
     const tbody = document.getElementById('recap-tbody');
     tbody.innerHTML = '';
-    filled.forEach(e=>{
+    filled.forEach((e) => {
       const pts = payoff(e.r1a, e.r1b);
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(e.a)} ↔ ${avatarName(e.b)}</td><td>${label(e.r1a)} / ${label(e.r1b)}</td><td>${pts[0]} / ${pts[1]}</td>`;
@@ -309,37 +322,44 @@ function renderPrisonersDilemmaGame(){
     pdGoTo(3);
   };
 
-  window.pdShowResults = function(){
-    const filled = entries.filter(e => e.r1a !== null && e.r1b !== null && e.r2a !== null && e.r2b !== null);
+  window.pdShowResults = () => {
+    const filled = entries.filter(
+      (e) => e.r1a !== null && e.r1b !== null && e.r2a !== null && e.r2b !== null,
+    );
 
-    const coopPct = (choices) => Math.round(choices.filter(c=>c==='C').length/choices.length*100);
-    const r1Choices = filled.flatMap(e=>[e.r1a,e.r1b]);
-    const r2Choices = filled.flatMap(e=>[e.r2a,e.r2b]);
+    const coopPct = (choices) =>
+      Math.round((choices.filter((c) => c === 'C').length / choices.length) * 100);
+    const r1Choices = filled.flatMap((e) => [e.r1a, e.r1b]);
+    const r2Choices = filled.flatMap((e) => [e.r2a, e.r2b]);
     const coopR1 = coopPct(r1Choices);
     const coopR2 = coopPct(r2Choices);
     const delta = coopR2 - coopR1;
 
-    document.getElementById('coop-delta').textContent = (delta>=0?'+':'') + delta + ' п.п.';
+    document.getElementById('coop-delta').textContent = (delta >= 0 ? '+' : '') + delta + ' п.п.';
     document.getElementById('coop-r1').textContent = coopR1 + '%';
     document.getElementById('coop-r2').textContent = coopR2 + '%';
 
     // "Echo rate": in round 2, did each person's move match what their
     // PARTNER did in round 1 (mirroring — the Tit for Tat signature)?
-    let echoes = 0, totalResponses = 0;
-    filled.forEach(e=>{
-      if(e.r2a === e.r1b) echoes++;
+    let echoes = 0,
+      totalResponses = 0;
+    filled.forEach((e) => {
+      if (e.r2a === e.r1b) echoes++;
       totalResponses++;
-      if(e.r2b === e.r1a) echoes++;
+      if (e.r2b === e.r1a) echoes++;
       totalResponses++;
     });
-    document.getElementById('echo-rate').textContent = Math.round(echoes/totalResponses*100) + '%';
+    document.getElementById('echo-rate').textContent =
+      Math.round((echoes / totalResponses) * 100) + '%';
 
-    const bothCoopEver = filled.filter(e => (e.r1a==='C'&&e.r1b==='C') || (e.r2a==='C'&&e.r2b==='C')).length;
+    const bothCoopEver = filled.filter(
+      (e) => (e.r1a === 'C' && e.r1b === 'C') || (e.r2a === 'C' && e.r2b === 'C'),
+    ).length;
     document.getElementById('cc-count').textContent = bothCoopEver + ' из ' + filled.length;
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(e=>{
+    filled.forEach((e) => {
       const p1 = payoff(e.r1a, e.r1b);
       const p2 = payoff(e.r2a, e.r2b);
       const tr1 = document.createElement('tr');
@@ -354,13 +374,14 @@ function renderPrisonersDilemmaGame(){
       title: 'Дилемма заключённого',
       subtitle: 'Рационально предать — но если встреча не последняя, правила меняются.',
       meta: Print.meta(filled.length * 2, `${filled.length} пар · 2 раунда`),
-      explanation: 'Рационально для каждого — предать, но если предадут оба, обоим будет хуже, чем при обоюдном сотрудничестве. Игру сформулировали Меррилл Флуд и Мелвин Дрешер в 1950 году в RAND Corporation; в компьютерных турнирах Роберта Аксельрода в начале 1980-х для повторяющейся версии игры победила простая отзывчивая стратегия «Око за око».'
+      explanation:
+        'Рационально для каждого — предать, но если предадут оба, обоим будет хуже, чем при обоюдном сотрудничестве. Игру сформулировали Меррилл Флуд и Мелвин Дрешер в 1950 году в RAND Corporation; в компьютерных турнирах Роберта Аксельрода в начале 1980-х для повторяющейся версии игры победила простая отзывчивая стратегия «Око за око».',
     });
 
     pdGoTo(5);
   };
 
-  window.pdReset = function(){
+  window.pdReset = () => {
     assignment = Roles.makePairs(state.participants);
     renderPairsHolder();
     entries = buildEntries();

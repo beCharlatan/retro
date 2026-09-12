@@ -5,7 +5,7 @@
    to be the Proposer once and the Responder once, instead of
    one person always deciding and the other always reacting.
 ========================================================= */
-function renderUltimatumGame(){
+function renderUltimatumGame() {
   const STAKE = 1000;
   let assignment = Roles.makePairs(state.participants);
   let entries = buildEntries();
@@ -13,11 +13,15 @@ function renderUltimatumGame(){
 
   const TOTAL_SCREENS = 6;
 
-  function buildEntries(){
-    return assignment.pairs.map(p => ({
-      a: p.a, b: p.b, trio: !!p.trio,
-      r1_offer: null, r1_min: null, // Round 1: a proposes, b responds
-      r2_offer: null, r2_min: null, // Round 2: b proposes, a responds
+  function buildEntries() {
+    return assignment.pairs.map((p) => ({
+      a: p.a,
+      b: p.b,
+      trio: !!p.trio,
+      r1_offer: null,
+      r1_min: null, // Round 1: a proposes, b responds
+      r2_offer: null,
+      r2_min: null, // Round 2: b proposes, a responds
     }));
   }
 
@@ -185,7 +189,9 @@ function renderUltimatumGame(){
 
   Screen.wireBackHome('ultimatum');
 
-  Persist.offerRestore('ultimatum', 'draft-mount-ultimatum',
+  Persist.offerRestore(
+    'ultimatum',
+    'draft-mount-ultimatum',
     (p) => Array.isArray(p.entries) && p.assignment,
     (p) => {
       assignment = p.assignment;
@@ -196,12 +202,15 @@ function renderUltimatumGame(){
       updateFillProgress(1);
       updateFillProgress(2);
       ultGoTo(2);
-    });
+    },
+  );
 
-  function renderPairsHolder(){
+  function renderPairsHolder() {
     const el = document.getElementById('pairs-holder');
-    el.innerHTML =
-      Roles.pairsHTML(assignment.pairs, assignment.observer, { labelA:'Предлагающий (раунд 1)', labelB:'Отвечающий (раунд 1)' });
+    el.innerHTML = Roles.pairsHTML(assignment.pairs, assignment.observer, {
+      labelA: 'Предлагающий (раунд 1)',
+      labelB: 'Отвечающий (раунд 1)',
+    });
     Roles.bindPairSwap(el, () => assignment.pairs, renderPairsHolder);
   }
   renderPairsHolder();
@@ -210,7 +219,7 @@ function renderUltimatumGame(){
     renderPairsHolder();
   });
 
-  window.ultLockPairs = function(){
+  window.ultLockPairs = () => {
     entries = buildEntries();
     buildEntryRows(1);
     buildEntryRows(2);
@@ -219,7 +228,7 @@ function renderUltimatumGame(){
     ultGoTo(2);
   };
 
-  function buildEntryRows(round){
+  function buildEntryRows(round) {
     const body = document.getElementById('entry-body-' + round);
     body.innerHTML = '';
     entries.forEach((e, i) => {
@@ -239,57 +248,75 @@ function renderUltimatumGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const round = +e.target.dataset.round;
     const field = e.target.dataset.field;
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null){ if(v<0) v=0; if(v>STAKE) v=STAKE; }
+    if (v !== null) {
+      if (v < 0) v = 0;
+      if (v > STAKE) v = STAKE;
+    }
     entries[idx][field] = v;
     updateFillProgress(round);
   }
 
-  function updateFillProgress(round){
+  function updateFillProgress(round) {
     const offerField = round === 1 ? 'r1_offer' : 'r2_offer';
     const minField = round === 1 ? 'r1_min' : 'r2_min';
-    const filled = entries.filter(e => e[offerField] !== null && e[minField] !== null).length;
+    const filled = entries.filter((e) => e[offerField] !== null && e[minField] !== null).length;
     Screen.updateProgress('-' + round, filled, entries.length, 'next-btn-' + round, 1);
-    if(hydrated){ Persist.save('ultimatum', { assignment: assignment, entries: entries }); }
+    if (hydrated) {
+      Persist.save('ultimatum', { assignment: assignment, entries: entries });
+    }
   }
 
-  window.ultGoTo = function(screenIdx){
+  window.ultGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.ultShowResults = function(){
+  window.ultShowResults = () => {
     // Flatten both rounds into one list of "who proposed to whom".
     const instances = [];
-    entries.forEach(e=>{
-      if(e.r1_offer !== null && e.r1_min !== null){
-        instances.push({ round:1, proposer:e.a, responder:e.b, offer:e.r1_offer, min:e.r1_min });
+    entries.forEach((e) => {
+      if (e.r1_offer !== null && e.r1_min !== null) {
+        instances.push({
+          round: 1,
+          proposer: e.a,
+          responder: e.b,
+          offer: e.r1_offer,
+          min: e.r1_min,
+        });
       }
-      if(e.r2_offer !== null && e.r2_min !== null){
-        instances.push({ round:2, proposer:e.b, responder:e.a, offer:e.r2_offer, min:e.r2_min });
+      if (e.r2_offer !== null && e.r2_min !== null) {
+        instances.push({
+          round: 2,
+          proposer: e.b,
+          responder: e.a,
+          offer: e.r2_offer,
+          min: e.r2_min,
+        });
       }
     });
 
-    const deals = instances.filter(x => x.offer >= x.min).length;
-    document.getElementById('deal-rate').textContent =
-      instances.length ? Math.round(deals/instances.length*100) + '%' : '—';
+    const deals = instances.filter((x) => x.offer >= x.min).length;
+    document.getElementById('deal-rate').textContent = instances.length
+      ? Math.round((deals / instances.length) * 100) + '%'
+      : '—';
 
-    const avgOffer = instances.reduce((a,b)=>a+b.offer,0)/instances.length;
-    const avgMin = instances.reduce((a,b)=>a+b.min,0)/instances.length;
+    const avgOffer = instances.reduce((a, b) => a + b.offer, 0) / instances.length;
+    const avgMin = instances.reduce((a, b) => a + b.min, 0) / instances.length;
     document.getElementById('avg-offer').textContent = Math.round(avgOffer) + ' ₽';
     document.getElementById('avg-min').textContent = Math.round(avgMin) + ' ₽';
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    instances.forEach(x=>{
+    instances.forEach((x) => {
       const deal = x.offer >= x.min;
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${x.round}</td><td class="name">${avatarName(x.proposer)}</td><td class="name">${avatarName(x.responder)}</td><td>${x.offer} ₽</td><td>${x.min} ₽</td><td>${deal ? 'Сделка' : 'Отказ'}</td>`;
@@ -300,13 +327,14 @@ function renderUltimatumGame(){
       title: 'Ультиматум',
       subtitle: 'Люди отвергают выгодные предложения, если те кажутся нечестными.',
       meta: Print.meta(entries.length * 2, `${entries.length} пар · 2 раунда`),
-      explanation: 'Классическая теория предсказывает: рациональный Отвечающий согласится на любую ненулевую сумму — в реальности люди массово отвергают «несправедливые» предложения, даже теряя деньги. Игру формализовали Güth, Schmittberger и Schwarze в статье 1982 года.'
+      explanation:
+        'Классическая теория предсказывает: рациональный Отвечающий согласится на любую ненулевую сумму — в реальности люди массово отвергают «несправедливые» предложения, даже теряя деньги. Игру формализовали Güth, Schmittberger и Schwarze в статье 1982 года.',
     });
 
     ultGoTo(4);
   };
 
-  window.ultReset = function(){
+  window.ultReset = () => {
     assignment = Roles.makePairs(state.participants);
     renderPairsHolder();
     entries = buildEntries();

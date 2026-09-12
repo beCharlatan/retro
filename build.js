@@ -4,34 +4,32 @@
 //
 // Usage: bun run build  (or: bun build.js / node build.js)
 
-const fs = require("fs");
-const path = require("path");
+const fs = require('node:fs');
+const path = require('node:path');
 
-const SRC = path.join(__dirname, "src");
-const DIST = path.join(__dirname, "dist");
-const GAMES_DIR = path.join(SRC, "games");
+const SRC = path.join(__dirname, 'src');
+const DIST = path.join(__dirname, 'dist');
+const GAMES_DIR = path.join(SRC, 'games');
 
 function read(p) {
-  return fs.readFileSync(p, "utf-8");
+  return fs.readFileSync(p, 'utf-8');
 }
 
-const css = read(path.join(SRC, "styles.css")).trim();
+const css = read(path.join(SRC, 'styles.css')).trim();
 
-const rolesJs = read(path.join(SRC, "roles.js")).trim();
-const screenJs = read(path.join(SRC, "screen.js")).trim();
-const persistJs = read(path.join(SRC, "persist.js")).trim();
-const chartTipJs = read(path.join(SRC, "chart-tip.js")).trim();
-const printJs = read(path.join(SRC, "print.js")).trim();
+const rolesJs = read(path.join(SRC, 'roles.js')).trim();
+const screenJs = read(path.join(SRC, 'screen.js')).trim();
+const persistJs = read(path.join(SRC, 'persist.js')).trim();
+const chartTipJs = read(path.join(SRC, 'chart-tip.js')).trim();
+const printJs = read(path.join(SRC, 'print.js')).trim();
 
 const gameFiles = fs
   .readdirSync(GAMES_DIR)
-  .filter((f) => f.endsWith(".js"))
+  .filter((f) => f.endsWith('.js'))
   .sort();
-const gamesJs = gameFiles
-  .map((f) => read(path.join(GAMES_DIR, f)).trim())
-  .join("\n\n");
+const gamesJs = gameFiles.map((f) => read(path.join(GAMES_DIR, f)).trim()).join('\n\n');
 
-const appJs = read(path.join(SRC, "app.js")).trim();
+const appJs = read(path.join(SRC, 'app.js')).trim();
 
 const html = `<!DOCTYPE html>
 <html lang="ru">
@@ -69,8 +67,6 @@ ${appJs}
 `;
 
 fs.mkdirSync(DIST, { recursive: true });
-fs.writeFileSync(path.join(DIST, "index.html"), html, "utf-8");
+fs.writeFileSync(path.join(DIST, 'index.html'), html, 'utf-8');
 
-console.log(
-  `Built dist/index.html  (${gameFiles.length} game module(s): ${gameFiles.join(", ")})`
-);
+console.log(`Built dist/index.html  (${gameFiles.length} game module(s): ${gameFiles.join(', ')})`);

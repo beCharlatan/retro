@@ -30,19 +30,29 @@ async function run() {
         await page.waitForTimeout(200);
 
         const mountId = `print-header-${game.id}`;
-        const headerHTML = await page.$eval(`#${mountId}`, el => el.innerHTML).catch(() => '');
+        const headerHTML = await page.$eval(`#${mountId}`, (el) => el.innerHTML).catch(() => '');
         report.check(`${game.name}: print header mounted with content`, headerHTML.length > 0);
-        report.check(`${game.name}: print header includes the game name`,
-          headerHTML.includes(game.name));
-        report.check(`${game.name}: print header includes a participant count`,
-          /\d+\s+участник/.test(headerHTML), headerHTML.slice(0, 120));
+        report.check(
+          `${game.name}: print header includes the game name`,
+          headerHTML.includes(game.name),
+        );
+        report.check(
+          `${game.name}: print header includes a participant count`,
+          /\d+\s+участник/.test(headerHTML),
+          headerHTML.slice(0, 120),
+        );
 
         const footerId = `print-footer-${game.id}`;
-        const footerHTML = await page.$eval(`#${footerId}`, el => el.innerHTML).catch(() => '');
-        report.check(`${game.name}: print footer mounted with an explanation`,
-          footerHTML.length > 80, `len=${footerHTML.length}`);
-        report.check(`${game.name}: print footer has a visible title label`,
-          footerHTML.includes('Что это было'));
+        const footerHTML = await page.$eval(`#${footerId}`, (el) => el.innerHTML).catch(() => '');
+        report.check(
+          `${game.name}: print footer mounted with an explanation`,
+          footerHTML.length > 80,
+          `len=${footerHTML.length}`,
+        );
+        report.check(
+          `${game.name}: print footer has a visible title label`,
+          footerHTML.includes('Что это было'),
+        );
 
         const exportBtnVisible = await page.isVisible('#pdf-btn').catch(() => false);
         report.check(`${game.name}: export button visible on screen`, exportBtnVisible);
@@ -51,7 +61,9 @@ async function run() {
         // for the moment of printing (the browser's Save-as-PDF dialog suggests
         // document.title as the filename), then restore once the dialog closes.
         const originalTitle = await page.title();
-        await page.evaluate(() => { window.print = () => {}; }); // no real dialog in headless
+        await page.evaluate(() => {
+          window.print = () => {};
+        }); // no real dialog in headless
         await page.click('#pdf-btn');
         await page.waitForTimeout(80);
         const titleDuringPrint = await page.title();
@@ -62,14 +74,20 @@ async function run() {
           today.getFullYear(),
         ].join('.');
         const expectedSlug = game.name.replace(/\s+/g, '_');
-        report.check(`${game.name}: PDF filename includes game name + today's date`,
-          titleDuringPrint === `${expectedSlug}_${expectedDate}`, titleDuringPrint);
+        report.check(
+          `${game.name}: PDF filename includes game name + today's date`,
+          titleDuringPrint === `${expectedSlug}_${expectedDate}`,
+          titleDuringPrint,
+        );
 
         await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
         await page.waitForTimeout(80);
         const titleAfter = await page.title();
-        report.check(`${game.name}: tab title restored after print dialog closes`,
-          titleAfter === originalTitle, `${titleAfter} vs ${originalTitle}`);
+        report.check(
+          `${game.name}: tab title restored after print dialog closes`,
+          titleAfter === originalTitle,
+          `${titleAfter} vs ${originalTitle}`,
+        );
 
         await page.emulateMedia({ media: 'print' });
         await page.waitForTimeout(100);
@@ -82,10 +100,15 @@ async function run() {
 
         // The whole point of putting the explanation on the sheet is that
         // it still has to fit a single A4 page alongside everything else.
-        const contentHeight = await page.evaluate(() => document.querySelector('.wrap').scrollHeight);
+        const contentHeight = await page.evaluate(
+          () => document.querySelector('.wrap').scrollHeight,
+        );
         const A4_USABLE_PX = 1122 - 2 * 49; // 96dpi page height minus ~13mm top/bottom margins
-        report.check(`${game.name}: printed content still fits one A4 page`,
-          contentHeight < A4_USABLE_PX, `height=${contentHeight}px, limit=${A4_USABLE_PX}px`);
+        report.check(
+          `${game.name}: printed content still fits one A4 page`,
+          contentHeight < A4_USABLE_PX,
+          `height=${contentHeight}px, limit=${A4_USABLE_PX}px`,
+        );
       } catch (e) {
         report.fail(`${game.name}: threw during pdf flow`, e.message);
       } finally {
@@ -100,5 +123,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

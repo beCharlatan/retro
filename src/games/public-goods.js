@@ -6,10 +6,10 @@
    more than once — round 2 lets the team test that directly
    on themselves instead of just reading about it in the facts.
 ========================================================= */
-function renderPublicGoodsGame(){
+function renderPublicGoodsGame() {
   const NAMES = state.participants.slice();
   const STAKE = 100;
-  let data = NAMES.map(n => ({ name:n, r1:null, r2:null }));
+  let data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -172,7 +172,9 @@ function renderPublicGoodsGame(){
 
   Screen.wireBackHome('public-goods');
 
-  Persist.offerRestore('public-goods', 'draft-mount-public-goods',
+  Persist.offerRestore(
+    'public-goods',
+    'draft-mount-public-goods',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
@@ -181,9 +183,10 @@ function renderPublicGoodsGame(){
       updateFillProgress(1);
       updateFillProgress(2);
       pgGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(round){
+  function buildEntryRows(round) {
     const body = document.getElementById('entry-body-' + round);
     body.innerHTML = '';
     const field = round === 1 ? 'r1' : 'r2';
@@ -196,48 +199,54 @@ function renderPublicGoodsGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const round = +e.target.dataset.round;
     const field = round === 1 ? 'r1' : 'r2';
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null){ if(v<0) v=0; if(v>STAKE) v=STAKE; }
+    if (v !== null) {
+      if (v < 0) v = 0;
+      if (v > STAKE) v = STAKE;
+    }
     data[idx][field] = v;
     updateFillProgress(round);
   }
 
-  function updateFillProgress(round){
+  function updateFillProgress(round) {
     const field = round === 1 ? 'r1' : 'r2';
-    const filled = data.filter(d => d[field] !== null).length;
+    const filled = data.filter((d) => d[field] !== null).length;
     Screen.updateProgress('-' + round, filled, NAMES.length, 'next-btn-' + round, 2);
-    if(hydrated){ Persist.save('public-goods', { data: data }); }
+    if (hydrated) {
+      Persist.save('public-goods', { data: data });
+    }
   }
 
-  window.pgGoTo = function(screenIdx){
+  window.pgGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  function roundStats(filled, field){
+  function roundStats(filled, field) {
     const n = filled.length;
-    const sumContrib = filled.reduce((a,b)=>a+b[field],0);
+    const sumContrib = filled.reduce((a, b) => a + b[field], 0);
     const pot = sumContrib * 2;
-    const totalPayoff = Math.round(n*STAKE - sumContrib + pot);
+    const totalPayoff = Math.round(n * STAKE - sumContrib + pot);
     const avg = sumContrib / n;
     return { avg, totalPayoff };
   }
 
-  window.pgShowResults = function(){
-    const filled = data.filter(d => d.r1 !== null && d.r2 !== null);
+  window.pgShowResults = () => {
+    const filled = data.filter((d) => d.r1 !== null && d.r2 !== null);
     const s1 = roundStats(filled, 'r1');
     const s2 = roundStats(filled, 'r2');
     const delta = s2.avg - s1.avg;
 
-    document.getElementById('delta-contrib').textContent = (delta>=0?'+':'') + delta.toFixed(1);
+    document.getElementById('delta-contrib').textContent =
+      (delta >= 0 ? '+' : '') + delta.toFixed(1);
     document.getElementById('avg-r1').textContent = s1.avg.toFixed(1);
     document.getElementById('avg-r2').textContent = s2.avg.toFixed(1);
     document.getElementById('payoff-r1').textContent = s1.totalPayoff;
@@ -245,9 +254,9 @@ function renderPublicGoodsGame(){
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const diff = d.r2 - d.r1;
-      const diffText = (diff>=0?'+':'') + diff;
+      const diffText = (diff >= 0 ? '+' : '') + diff;
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.r1}</td><td>${d.r2}</td><td>${diffText}</td>`;
       tbody.appendChild(tr);
@@ -255,16 +264,18 @@ function renderPublicGoodsGame(){
 
     Print.mount('print-header-public-goods', {
       title: 'Общественное благо',
-      subtitle: 'Группе выгодно вкладываться всем — каждому по отдельности выгоднее не вкладываться.',
+      subtitle:
+        'Группе выгодно вкладываться всем — каждому по отдельности выгоднее не вкладываться.',
       meta: Print.meta(filled.length, '2 раунда'),
-      explanation: 'Группе выгодно, если вкладываются все, но каждому по отдельности выгоднее не вкладываться, а пользоваться чужим вкладом — классическая «проблема безбилетника». Один из первых систематических экспериментов — Marwell G., Ames R. (1979); устойчивый результат в литературе — вклады обычно снижаются при повторении игры с одной и той же группой.'
+      explanation:
+        'Группе выгодно, если вкладываются все, но каждому по отдельности выгоднее не вкладываться, а пользоваться чужим вкладом — классическая «проблема безбилетника». Один из первых систематических экспериментов — Marwell G., Ames R. (1979); устойчивый результат в литературе — вклады обычно снижаются при повторении игры с одной и той же группой.',
     });
 
     pgGoTo(3);
   };
 
-  window.pgReset = function(){
-    data = NAMES.map(n => ({ name:n, r1:null, r2:null }));
+  window.pgReset = () => {
+    data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));
     buildEntryRows(1);
     buildEntryRows(2);
     updateFillProgress(1);

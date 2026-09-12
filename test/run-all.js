@@ -7,15 +7,29 @@
 //   bun run build && bun run test
 //   bun test/run-all.js --only=persistence,pdf
 
-const path = require('path');
+const path = require('node:path');
 
-const ALL_SUITES = ['smoke', 'home', 'persistence', 'pdf', 'swap', 'copy', 'trio', 'custom-question', 'privacy', 'chart-tip'];
+const ALL_SUITES = [
+  'smoke',
+  'home',
+  'persistence',
+  'pdf',
+  'swap',
+  'copy',
+  'trio',
+  'custom-question',
+  'privacy',
+  'chart-tip',
+];
 
 function parseOnly() {
-  const arg = process.argv.find(a => a.startsWith('--only='));
+  const arg = process.argv.find((a) => a.startsWith('--only='));
   if (!arg) return ALL_SUITES;
-  const requested = arg.split('=')[1].split(',').map(s => s.trim());
-  return ALL_SUITES.filter(s => requested.includes(s));
+  const requested = arg
+    .split('=')[1]
+    .split(',')
+    .map((s) => s.trim());
+  return ALL_SUITES.filter((s) => requested.includes(s));
 }
 
 async function main() {
@@ -32,7 +46,9 @@ async function main() {
     const report = await mod.run();
     totalPassed += report.passed;
     totalFailed += report.failed;
-    report.failures.forEach(f => allFailures.push(`[${name}] ${f.label}${f.detail ? ': ' + f.detail : ''}`));
+    report.failures.forEach((f) => {
+      allFailures.push(`[${name}] ${f.label}${f.detail ? ': ' + f.detail : ''}`);
+    });
   }
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
@@ -40,7 +56,9 @@ async function main() {
   console.log(`TOTAL: ${totalPassed} passed, ${totalFailed} failed  (${seconds}s)`);
   if (totalFailed > 0) {
     console.log('\nFailures:');
-    allFailures.forEach(f => console.log('  - ' + f));
+    allFailures.forEach((f) => {
+      console.log('  - ' + f);
+    });
   }
   console.log('='.repeat(50));
 

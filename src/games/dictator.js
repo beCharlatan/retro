@@ -8,10 +8,10 @@
    pairing needed — this is the simplest game to extend with a
    second data point per person.
 ========================================================= */
-function renderDictatorGame(){
+function renderDictatorGame() {
   const NAMES = state.participants.slice();
   const POT = 1000;
-  let data = NAMES.map(n => ({ name:n, r1:null, r2:null }));
+  let data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -177,7 +177,9 @@ function renderDictatorGame(){
 
   Screen.wireBackHome('dictator');
 
-  Persist.offerRestore('dictator', 'draft-mount-dictator',
+  Persist.offerRestore(
+    'dictator',
+    'draft-mount-dictator',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
@@ -186,9 +188,10 @@ function renderDictatorGame(){
       updateFillProgress(1);
       updateFillProgress(2);
       dictGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(round){
+  function buildEntryRows(round) {
     const body = document.getElementById('entry-body-' + round);
     body.innerHTML = '';
     const field = round === 1 ? 'r1' : 'r2';
@@ -201,78 +204,167 @@ function renderDictatorGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const round = +e.target.dataset.round;
     const field = round === 1 ? 'r1' : 'r2';
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null){ if(v<0) v=0; if(v>POT) v=POT; }
+    if (v !== null) {
+      if (v < 0) v = 0;
+      if (v > POT) v = POT;
+    }
     data[idx][field] = v;
     updateFillProgress(round);
   }
 
-  function updateFillProgress(round){
+  function updateFillProgress(round) {
     const field = round === 1 ? 'r1' : 'r2';
-    const filled = data.filter(d => d[field] !== null).length;
+    const filled = data.filter((d) => d[field] !== null).length;
     Screen.updateProgress('-' + round, filled, NAMES.length, 'next-btn-' + round, 2);
-    if(hydrated){ Persist.save('dictator', { data: data }); }
+    if (hydrated) {
+      Persist.save('dictator', { data: data });
+    }
   }
 
-  window.dictGoTo = function(screenIdx){
+  window.dictGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  function drawChart(filled){
+  function drawChart(filled) {
     const svg = document.getElementById('dict-chart');
     svg.innerHTML = '';
-    const W=640,H=220, ML=20, MR=20, MT=30, MB=36;
-    const plotW = W-ML-MR;
+    const W = 640,
+      H = 220,
+      ML = 20,
+      MR = 20,
+      MT = 30,
+      MB = 36;
+    const plotW = W - ML - MR;
 
-    function xOf(v){ return ML + (v/POT) * plotW; }
-    function ns(tag, attrs){
+    function xOf(v) {
+      return ML + (v / POT) * plotW;
+    }
+    function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-      for(const k in attrs) el.setAttribute(k, attrs[k]);
+      for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
 
-    svg.appendChild(ns('line',{x1:ML,y1:H-MB,x2:ML+plotW,y2:H-MB,stroke:'#1E2A32','stroke-width':1.2}));
-    [0,250,500,750,1000].forEach(v=>{
+    svg.appendChild(
+      ns('line', {
+        x1: ML,
+        y1: H - MB,
+        x2: ML + plotW,
+        y2: H - MB,
+        stroke: '#1E2A32',
+        'stroke-width': 1.2,
+      }),
+    );
+    [0, 250, 500, 750, 1000].forEach((v) => {
       const x = xOf(v);
-      svg.appendChild(ns('line',{x1:x,y1:H-MB,x2:x,y2:H-MB+5,stroke:'#4B5B63','stroke-width':1}));
-      const lx = ns('text',{x:x,y:H-MB+18,'font-size':10.5,'font-family':'IBM Plex Mono, monospace',fill:'#4B5B63','text-anchor':'middle'});
-      lx.textContent = v; svg.appendChild(lx);
+      svg.appendChild(
+        ns('line', {
+          x1: x,
+          y1: H - MB,
+          x2: x,
+          y2: H - MB + 5,
+          stroke: '#4B5B63',
+          'stroke-width': 1,
+        }),
+      );
+      const lx = ns('text', {
+        x: x,
+        y: H - MB + 18,
+        'font-size': 10.5,
+        'font-family': 'IBM Plex Mono, monospace',
+        fill: '#4B5B63',
+        'text-anchor': 'middle',
+      });
+      lx.textContent = v;
+      svg.appendChild(lx);
     });
 
-    const halfX = xOf(POT/2);
-    svg.appendChild(ns('line',{x1:halfX,y1:MT,x2:halfX,y2:H-MB,stroke:'#9A7B3F','stroke-width':1.5,'stroke-dasharray':'5,4'}));
-    const halfLabel = ns('text',{x:halfX,y:MT-8,'font-size':10.5,'font-family':'IBM Plex Mono, monospace',fill:'#9A7B3F','text-anchor':'middle'});
-    halfLabel.textContent = 'поровну'; svg.appendChild(halfLabel);
+    const halfX = xOf(POT / 2);
+    svg.appendChild(
+      ns('line', {
+        x1: halfX,
+        y1: MT,
+        x2: halfX,
+        y2: H - MB,
+        stroke: '#9A7B3F',
+        'stroke-width': 1.5,
+        'stroke-dasharray': '5,4',
+      }),
+    );
+    const halfLabel = ns('text', {
+      x: halfX,
+      y: MT - 8,
+      'font-size': 10.5,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#9A7B3F',
+      'text-anchor': 'middle',
+    });
+    halfLabel.textContent = 'поровну';
+    svg.appendChild(halfLabel);
 
     const rowH = 16;
-    filled.forEach((p,i)=>{
-      const y1 = H-MB-14-((i%6)*rowH);
+    filled.forEach((p, i) => {
+      const y1 = H - MB - 14 - (i % 6) * rowH;
       const y2 = y1 - 8;
-      const c1 = ns('circle',{cx:xOf(p.r1),cy:y1,r:5,fill:'#3E6E64','fill-opacity':0.85,stroke:'#F5F3EC','stroke-width':1.2});
+      const c1 = ns('circle', {
+        cx: xOf(p.r1),
+        cy: y1,
+        r: 5,
+        fill: '#3E6E64',
+        'fill-opacity': 0.85,
+        stroke: '#F5F3EC',
+        'stroke-width': 1.2,
+      });
       svg.appendChild(c1);
-      ChartTip.attachToPoint(svg, ns, xOf(p.r1), y1, () => `<b>${p.name}</b><span class="tip-row"><span>Раунд 1 · анонимно</span><span>${p.r1} ₽</span></span>`, 8);
-      const c2 = ns('circle',{cx:xOf(p.r2),cy:y2,r:5,fill:'#A8482A','fill-opacity':0.85,stroke:'#F5F3EC','stroke-width':1.2});
+      ChartTip.attachToPoint(
+        svg,
+        ns,
+        xOf(p.r1),
+        y1,
+        () =>
+          `<b>${p.name}</b><span class="tip-row"><span>Раунд 1 · анонимно</span><span>${p.r1} ₽</span></span>`,
+        8,
+      );
+      const c2 = ns('circle', {
+        cx: xOf(p.r2),
+        cy: y2,
+        r: 5,
+        fill: '#A8482A',
+        'fill-opacity': 0.85,
+        stroke: '#F5F3EC',
+        'stroke-width': 1.2,
+      });
       svg.appendChild(c2);
-      ChartTip.attachToPoint(svg, ns, xOf(p.r2), y2, () => `<b>${p.name}</b><span class="tip-row"><span>Раунд 2 · не анонимно</span><span>${p.r2} ₽</span></span>`, 8);
+      ChartTip.attachToPoint(
+        svg,
+        ns,
+        xOf(p.r2),
+        y2,
+        () =>
+          `<b>${p.name}</b><span class="tip-row"><span>Раунд 2 · не анонимно</span><span>${p.r2} ₽</span></span>`,
+        8,
+      );
     });
   }
 
-  window.dictShowResults = function(){
-    const filled = data.filter(d => d.r1 !== null && d.r2 !== null);
-    const avgR1 = filled.reduce((a,b)=>a+b.r1,0)/filled.length;
-    const avgR2 = filled.reduce((a,b)=>a+b.r2,0)/filled.length;
+  window.dictShowResults = () => {
+    const filled = data.filter((d) => d.r1 !== null && d.r2 !== null);
+    const avgR1 = filled.reduce((a, b) => a + b.r1, 0) / filled.length;
+    const avgR2 = filled.reduce((a, b) => a + b.r2, 0) / filled.length;
     const delta = avgR2 - avgR1;
 
-    document.getElementById('delta-share').textContent = (delta>=0?'+':'') + Math.round(delta) + ' ₽';
+    document.getElementById('delta-share').textContent =
+      (delta >= 0 ? '+' : '') + Math.round(delta) + ' ₽';
     document.getElementById('avg-r1').textContent = Math.round(avgR1) + ' ₽';
     document.getElementById('avg-r2').textContent = Math.round(avgR2) + ' ₽';
 
@@ -280,9 +372,9 @@ function renderDictatorGame(){
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const diff = d.r2 - d.r1;
-      const diffText = (diff>=0?'+':'') + diff + ' ₽';
+      const diffText = (diff >= 0 ? '+' : '') + diff + ' ₽';
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.r1} ₽</td><td>${d.r2} ₽</td><td>${diffText}</td>`;
       tbody.appendChild(tr);
@@ -292,14 +384,15 @@ function renderDictatorGame(){
       title: 'Игра диктатора',
       subtitle: 'Никто не заставляет делиться — но почти все делятся, и ещё больше, если их видят.',
       meta: Print.meta(filled.length, '2 раунда'),
-      explanation: 'Классическая экономическая теория предсказывает, что рациональный и эгоистичный человек отдаст 0 — в реальности почти никто так не делает, а стоит убрать анонимность, отдают ещё больше. Дизайн формализован в статье Forsythe, Horowitz, Savin, Sefton (1994) как «очищенный» от переговорной стратегии тест альтруизма.'
+      explanation:
+        'Классическая экономическая теория предсказывает, что рациональный и эгоистичный человек отдаст 0 — в реальности почти никто так не делает, а стоит убрать анонимность, отдают ещё больше. Дизайн формализован в статье Forsythe, Horowitz, Savin, Sefton (1994) как «очищенный» от переговорной стратегии тест альтруизма.',
     });
 
     dictGoTo(3);
   };
 
-  window.dictReset = function(){
-    data = NAMES.map(n => ({ name:n, r1:null, r2:null }));
+  window.dictReset = () => {
+    data = NAMES.map((n) => ({ name: n, r1: null, r2: null }));
     buildEntryRows(1);
     buildEntryRows(2);
     updateFillProgress(1);

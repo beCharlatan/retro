@@ -1,10 +1,11 @@
 /* =========================================================
    GAME: Эффект Барнума / Форера (barnum)
 ========================================================= */
-function renderBarnumGame(){
+function renderBarnumGame() {
   const NAMES = state.participants.slice();
-  const PROFILE_TEXT = 'Иногда вы сомневаетесь, правильно ли поступили или приняли верное решение. Вы цените, когда вас окружают доказательства того, что вас любят и уважают, но при этом умеете быть требовательны к себе. У вас есть значительный неиспользуемый потенциал, который вы не всегда обращаете себе на пользу. Внешне вы дисциплинированы и держите себя в руках, но внутри нередко испытываете тревогу и неуверенность. Порой вы всерьёз сомневаетесь, правильный ли выбор сделали в жизни или в карьере. Вам нравится определённая доля перемен и разнообразия, а жёсткие рамки и ограничения вызывают недовольство.';
-  let data = NAMES.map(n => ({ name:n, rating:null }));
+  const PROFILE_TEXT =
+    'Иногда вы сомневаетесь, правильно ли поступили или приняли верное решение. Вы цените, когда вас окружают доказательства того, что вас любят и уважают, но при этом умеете быть требовательны к себе. У вас есть значительный неиспользуемый потенциал, который вы не всегда обращаете себе на пользу. Внешне вы дисциплинированы и держите себя в руках, но внутри нередко испытываете тревогу и неуверенность. Порой вы всерьёз сомневаетесь, правильный ли выбор сделали в жизни или в карьере. Вам нравится определённая доля перемен и разнообразия, а жёсткие рамки и ограничения вызывают недовольство.';
+  let data = NAMES.map((n) => ({ name: n, rating: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -155,20 +156,23 @@ function renderBarnumGame(){
 
   Screen.wireBackHome('barnum');
 
-  document.getElementById('copy-profile').addEventListener('click', (e)=>{
+  document.getElementById('copy-profile').addEventListener('click', (e) => {
     copyToClipboard(PROFILE_TEXT, e.currentTarget);
   });
 
-  Persist.offerRestore('barnum', 'draft-mount-barnum',
+  Persist.offerRestore(
+    'barnum',
+    'draft-mount-barnum',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
       buildEntryRows();
       updateFillProgress();
       barnumGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     const body = document.getElementById('entry-body');
     body.innerHTML = '';
     data.forEach((row, i) => {
@@ -180,37 +184,42 @@ function renderBarnumGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null){ if(v<0) v=0; if(v>5) v=5; }
+    if (v !== null) {
+      if (v < 0) v = 0;
+      if (v > 5) v = 5;
+    }
     data[idx].rating = v;
     updateFillProgress();
   }
 
-  function updateFillProgress(){
-    const filled = data.filter(d => d.rating !== null).length;
+  function updateFillProgress() {
+    const filled = data.filter((d) => d.rating !== null).length;
     Screen.updateProgress('', filled, NAMES.length, 'show-results-btn', 2);
-    if(hydrated){ Persist.save('barnum', { data: data }); }
+    if (hydrated) {
+      Persist.save('barnum', { data: data });
+    }
   }
 
-  window.barnumGoTo = function(screenIdx){
+  window.barnumGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.barnumShowResults = function(){
-    const filled = data.filter(d => d.rating !== null);
-    const avg = filled.reduce((a,b)=>a+b.rating,0)/filled.length;
+  window.barnumShowResults = () => {
+    const filled = data.filter((d) => d.rating !== null);
+    const avg = filled.reduce((a, b) => a + b.rating, 0) / filled.length;
     document.getElementById('avg-rating').textContent = avg.toFixed(2) + ' / 5';
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.rating} / 5</td>`;
       tbody.appendChild(tr);
@@ -220,14 +229,15 @@ function renderBarnumGame(){
       title: 'Эффект Барнума',
       subtitle: 'Расплывчатое описание личности кажется удивительно «прямо про меня».',
       meta: Print.meta(filled.length),
-      explanation: 'Расплывчатое, общее для всех описание личности воспринимается как удивительно точное и «прямо про меня» — потому что читающий сам додумывает подходящие примеры из своей жизни. Эффект впервые продемонстрировал психолог Бертрам Форер в 1949 году: все 39 студентов получили один и тот же текст и в среднем оценили его точность на 4.26 из 5.'
+      explanation:
+        'Расплывчатое, общее для всех описание личности воспринимается как удивительно точное и «прямо про меня» — потому что читающий сам додумывает подходящие примеры из своей жизни. Эффект впервые продемонстрировал психолог Бертрам Форер в 1949 году: все 39 студентов получили один и тот же текст и в среднем оценили его точность на 4.26 из 5.',
     });
 
     barnumGoTo(2);
   };
 
-  window.barnumReset = function(){
-    data = NAMES.map(n => ({ name:n, rating:null }));
+  window.barnumReset = () => {
+    data = NAMES.map((n) => ({ name: n, rating: null }));
     buildEntryRows();
     updateFillProgress();
     barnumGoTo(0);

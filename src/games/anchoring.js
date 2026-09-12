@@ -1,10 +1,10 @@
 /* =========================================================
    GAME: Эффект якоря (anchoring)
 ========================================================= */
-function renderAnchoringGame(){
+function renderAnchoringGame() {
   const NAMES = state.participants.slice();
   const TRUE_VALUE = 28;
-  let data = NAMES.map(n => ({ name:n, anchor:null, guess:null }));
+  let data = NAMES.map((n) => ({ name: n, anchor: null, guess: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -168,16 +168,19 @@ function renderAnchoringGame(){
 
   Screen.wireBackHome('anchoring');
 
-  Persist.offerRestore('anchoring', 'draft-mount-anchoring',
+  Persist.offerRestore(
+    'anchoring',
+    'draft-mount-anchoring',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
       buildEntryRows();
       updateFillProgress();
       anchoringGoTo(1);
-    });
+    },
+  );
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     const body = document.getElementById('entry-body');
     body.innerHTML = '';
     data.forEach((row, i) => {
@@ -190,127 +193,245 @@ function renderAnchoringGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const field = e.target.dataset.field;
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null){
+    if (v !== null) {
       const max = field === 'anchor' ? 99 : 100;
-      if(v > max) v = max;
-      if(v < 0) v = 0;
+      if (v > max) v = max;
+      if (v < 0) v = 0;
     }
     data[idx][field] = v;
     updateFillProgress();
   }
 
-  function updateFillProgress(){
-    const filled = data.filter(d => d.anchor !== null && d.guess !== null).length;
+  function updateFillProgress() {
+    const filled = data.filter((d) => d.anchor !== null && d.guess !== null).length;
     Screen.updateProgress('', filled, NAMES.length, 'show-results-btn', 2);
-    if(hydrated){ Persist.save('anchoring', { data: data }); }
+    if (hydrated) {
+      Persist.save('anchoring', { data: data });
+    }
   }
 
-  window.anchoringGoTo = function(screenIdx){
+  window.anchoringGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  function pearson(xs, ys){
+  function pearson(xs, ys) {
     const n = xs.length;
-    if(n < 2) return null;
-    const mx = xs.reduce((a,b)=>a+b,0)/n;
-    const my = ys.reduce((a,b)=>a+b,0)/n;
-    let num=0, dx2=0, dy2=0;
-    for(let i=0;i<n;i++){
-      const dx = xs[i]-mx, dy = ys[i]-my;
-      num += dx*dy; dx2 += dx*dx; dy2 += dy*dy;
+    if (n < 2) return null;
+    const mx = xs.reduce((a, b) => a + b, 0) / n;
+    const my = ys.reduce((a, b) => a + b, 0) / n;
+    let num = 0,
+      dx2 = 0,
+      dy2 = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = xs[i] - mx,
+        dy = ys[i] - my;
+      num += dx * dy;
+      dx2 += dx * dx;
+      dy2 += dy * dy;
     }
-    if(dx2===0 || dy2===0) return null;
-    return num / Math.sqrt(dx2*dy2);
+    if (dx2 === 0 || dy2 === 0) return null;
+    return num / Math.sqrt(dx2 * dy2);
   }
 
-  function corrLabel(r){
-    if(r === null) return "Недостаточно данных для оценки связи — впишите хотя бы пары значений.";
+  function corrLabel(r) {
+    if (r === null) return 'Недостаточно данных для оценки связи — впишите хотя бы пары значений.';
     const abs = Math.abs(r);
     let strength;
-    if(abs < 0.1) strength = "почти нет связи";
-    else if(abs < 0.3) strength = "слабая связь";
-    else if(abs < 0.5) strength = "умеренная связь";
-    else if(abs < 0.7) strength = "заметная связь";
-    else strength = "сильная связь";
-    const dir = r >= 0 ? "положительная" : "отрицательная";
+    if (abs < 0.1) strength = 'почти нет связи';
+    else if (abs < 0.3) strength = 'слабая связь';
+    else if (abs < 0.5) strength = 'умеренная связь';
+    else if (abs < 0.7) strength = 'заметная связь';
+    else strength = 'сильная связь';
+    const dir = r >= 0 ? 'положительная' : 'отрицательная';
     return `Коэффициент корреляции между числом из шага 1 и оценкой: r = ${r.toFixed(2)} — ${dir}, ${strength}. Это число никак не связано с ООН — но, скорее всего, связь всё равно есть.`;
   }
 
-  function drawScatter(points){
+  function drawScatter(points) {
     const svg = document.getElementById('scatter');
     svg.innerHTML = '';
-    const W=640,H=380, ML=46, MB=40, MT=16, MR=16;
-    const plotW = W-ML-MR, plotH = H-MT-MB;
-    const xMax=100, yMax=100;
+    const W = 640,
+      H = 380,
+      ML = 46,
+      MB = 40,
+      MT = 16,
+      MR = 16;
+    const plotW = W - ML - MR,
+      plotH = H - MT - MB;
+    const xMax = 100,
+      yMax = 100;
 
-    function ns(tag, attrs){
+    function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-      for(const k in attrs) el.setAttribute(k, attrs[k]);
+      for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
 
-    svg.appendChild(ns('line',{x1:ML,y1:MT,x2:ML,y2:MT+plotH,stroke:'#1E2A32','stroke-width':1.2}));
-    svg.appendChild(ns('line',{x1:ML,y1:MT+plotH,x2:ML+plotW,y2:MT+plotH,stroke:'#1E2A32','stroke-width':1.2}));
+    svg.appendChild(
+      ns('line', {
+        x1: ML,
+        y1: MT,
+        x2: ML,
+        y2: MT + plotH,
+        stroke: '#1E2A32',
+        'stroke-width': 1.2,
+      }),
+    );
+    svg.appendChild(
+      ns('line', {
+        x1: ML,
+        y1: MT + plotH,
+        x2: ML + plotW,
+        y2: MT + plotH,
+        stroke: '#1E2A32',
+        'stroke-width': 1.2,
+      }),
+    );
 
-    [0,25,50,75,100].forEach(t=>{
-      const x = ML + t/xMax*plotW;
-      const y = MT + plotH - t/yMax*plotH;
-      svg.appendChild(ns('line',{x1:x,y1:MT+plotH,x2:x,y2:MT+plotH+5,stroke:'#4B5B63','stroke-width':1}));
-      const lx = ns('text',{x:x,y:MT+plotH+18,'font-size':11,'font-family':'IBM Plex Mono, monospace',fill:'#4B5B63','text-anchor':'middle'});
-      lx.textContent = t; svg.appendChild(lx);
-      svg.appendChild(ns('line',{x1:ML-5,y1:y,x2:ML,y2:y,stroke:'#4B5B63','stroke-width':1}));
-      const ly = ns('text',{x:ML-10,y:y+4,'font-size':11,'font-family':'IBM Plex Mono, monospace',fill:'#4B5B63','text-anchor':'end'});
-      ly.textContent = t; svg.appendChild(ly);
+    [0, 25, 50, 75, 100].forEach((t) => {
+      const x = ML + (t / xMax) * plotW;
+      const y = MT + plotH - (t / yMax) * plotH;
+      svg.appendChild(
+        ns('line', {
+          x1: x,
+          y1: MT + plotH,
+          x2: x,
+          y2: MT + plotH + 5,
+          stroke: '#4B5B63',
+          'stroke-width': 1,
+        }),
+      );
+      const lx = ns('text', {
+        x: x,
+        y: MT + plotH + 18,
+        'font-size': 11,
+        'font-family': 'IBM Plex Mono, monospace',
+        fill: '#4B5B63',
+        'text-anchor': 'middle',
+      });
+      lx.textContent = t;
+      svg.appendChild(lx);
+      svg.appendChild(
+        ns('line', { x1: ML - 5, y1: y, x2: ML, y2: y, stroke: '#4B5B63', 'stroke-width': 1 }),
+      );
+      const ly = ns('text', {
+        x: ML - 10,
+        y: y + 4,
+        'font-size': 11,
+        'font-family': 'IBM Plex Mono, monospace',
+        fill: '#4B5B63',
+        'text-anchor': 'end',
+      });
+      ly.textContent = t;
+      svg.appendChild(ly);
     });
 
-    const axx = ns('text',{x:ML+plotW/2,y:H-4,'font-size':12,'font-family':'IBM Plex Mono, monospace',fill:'#1E2A32','text-anchor':'middle'});
-    axx.textContent = 'ЧИСЛО ИЗ ШАГА 1'; svg.appendChild(axx);
-    const axy = ns('text',{x:14,y:MT+plotH/2,'font-size':12,'font-family':'IBM Plex Mono, monospace',fill:'#1E2A32','text-anchor':'middle',transform:`rotate(-90 14 ${MT+plotH/2})`});
-    axy.textContent = 'ОЦЕНКА'; svg.appendChild(axy);
+    const axx = ns('text', {
+      x: ML + plotW / 2,
+      y: H - 4,
+      'font-size': 12,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#1E2A32',
+      'text-anchor': 'middle',
+    });
+    axx.textContent = 'ЧИСЛО ИЗ ШАГА 1';
+    svg.appendChild(axx);
+    const axy = ns('text', {
+      x: 14,
+      y: MT + plotH / 2,
+      'font-size': 12,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#1E2A32',
+      'text-anchor': 'middle',
+      transform: `rotate(-90 14 ${MT + plotH / 2})`,
+    });
+    axy.textContent = 'ОЦЕНКА';
+    svg.appendChild(axy);
 
-    const ty = MT + plotH - TRUE_VALUE/yMax*plotH;
-    svg.appendChild(ns('line',{x1:ML,y1:ty,x2:ML+plotW,y2:ty,stroke:'#B5502E','stroke-width':1.5,'stroke-dasharray':'5,4'}));
-    const tl = ns('text',{x:ML+plotW-4,y:ty-6,'font-size':11,'font-family':'IBM Plex Mono, monospace',fill:'#B5502E','text-anchor':'end'});
-    tl.textContent = '28% — правильный ответ'; svg.appendChild(tl);
+    const ty = MT + plotH - (TRUE_VALUE / yMax) * plotH;
+    svg.appendChild(
+      ns('line', {
+        x1: ML,
+        y1: ty,
+        x2: ML + plotW,
+        y2: ty,
+        stroke: '#B5502E',
+        'stroke-width': 1.5,
+        'stroke-dasharray': '5,4',
+      }),
+    );
+    const tl = ns('text', {
+      x: ML + plotW - 4,
+      y: ty - 6,
+      'font-size': 11,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#B5502E',
+      'text-anchor': 'end',
+    });
+    tl.textContent = '28% — правильный ответ';
+    svg.appendChild(tl);
 
-    points.forEach(p=>{
-      const x = ML + p.anchor/xMax*plotW;
-      const y = MT + plotH - p.guess/yMax*plotH;
-      const c = ns('circle',{cx:x,cy:y,r:6,fill:'#3E6E64','fill-opacity':0.85,stroke:'#F5F3EC','stroke-width':1.5});
+    points.forEach((p) => {
+      const x = ML + (p.anchor / xMax) * plotW;
+      const y = MT + plotH - (p.guess / yMax) * plotH;
+      const c = ns('circle', {
+        cx: x,
+        cy: y,
+        r: 6,
+        fill: '#3E6E64',
+        'fill-opacity': 0.85,
+        stroke: '#F5F3EC',
+        'stroke-width': 1.5,
+      });
       svg.appendChild(c);
-      const t = ns('text',{x:x,y:y-10,'font-size':10.5,'font-family':'IBM Plex Sans, sans-serif',fill:'#1E2A32','text-anchor':'middle'});
+      const t = ns('text', {
+        x: x,
+        y: y - 10,
+        'font-size': 10.5,
+        'font-family': 'IBM Plex Sans, sans-serif',
+        fill: '#1E2A32',
+        'text-anchor': 'middle',
+      });
       t.textContent = p.name;
       svg.appendChild(t);
-      ChartTip.attachToPoint(svg, ns, x, y, () => `<b>${p.name}</b><span class="tip-row"><span>Число из шага 1</span><span>${p.anchor}</span></span><span class="tip-row"><span>Оценка</span><span>${p.guess}%</span></span>`);
+      ChartTip.attachToPoint(
+        svg,
+        ns,
+        x,
+        y,
+        () =>
+          `<b>${p.name}</b><span class="tip-row"><span>Число из шага 1</span><span>${p.anchor}</span></span><span class="tip-row"><span>Оценка</span><span>${p.guess}%</span></span>`,
+      );
     });
   }
 
-  window.anchoringShowResults = function(){
-    const filled = data.filter(d => d.anchor !== null && d.guess !== null);
+  window.anchoringShowResults = () => {
+    const filled = data.filter((d) => d.anchor !== null && d.guess !== null);
     drawScatter(filled);
 
-    const xs = filled.map(d=>d.anchor), ys = filled.map(d=>d.guess);
+    const xs = filled.map((d) => d.anchor),
+      ys = filled.map((d) => d.guess);
     const r = pearson(xs, ys);
     document.getElementById('corr-text').textContent = corrLabel(r);
 
-    const low = filled.filter(d=>d.anchor < 50);
-    const high = filled.filter(d=>d.anchor >= 50);
-    const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b.guess,0)/arr.length).toFixed(0)+'%' : '—';
+    const low = filled.filter((d) => d.anchor < 50);
+    const high = filled.filter((d) => d.anchor >= 50);
+    const avg = (arr) =>
+      arr.length ? (arr.reduce((a, b) => a + b.guess, 0) / arr.length).toFixed(0) + '%' : '—';
     document.getElementById('low-avg').textContent = avg(low);
     document.getElementById('high-avg').textContent = avg(high);
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${d.anchor}</td><td>${d.guess}%</td>`;
       tbody.appendChild(tr);
@@ -320,14 +441,15 @@ function renderAnchoringGame(){
       title: 'Эффект якоря',
       subtitle: 'Случайное число незаметно сдвигает вашу же числовую оценку.',
       meta: Print.meta(filled.length),
-      explanation: 'Случайное число, увиденное прямо перед оценкой, задаёт «якорь» — и итоговый ответ смещается в его сторону, даже когда число совершенно нерелевантно вопросу. Эффект открыли Амос Тверски и Дэниел Канеман в 1974 году; за работы по поведенческой экономике Канеман получил Нобелевскую премию в 2002 году.'
+      explanation:
+        'Случайное число, увиденное прямо перед оценкой, задаёт «якорь» — и итоговый ответ смещается в его сторону, даже когда число совершенно нерелевантно вопросу. Эффект открыли Амос Тверски и Дэниел Канеман в 1974 году; за работы по поведенческой экономике Канеман получил Нобелевскую премию в 2002 году.',
     });
 
     anchoringGoTo(2);
   };
 
-  window.anchoringReset = function(){
-    data = NAMES.map(n => ({ name:n, anchor:null, guess:null }));
+  window.anchoringReset = () => {
+    data = NAMES.map((n) => ({ name: n, anchor: null, guess: null }));
     buildEntryRows();
     updateFillProgress();
     anchoringGoTo(0);

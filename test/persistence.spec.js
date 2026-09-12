@@ -46,9 +46,14 @@ async function run() {
         await page.waitForTimeout(150);
 
         const savedAfterDoubleReload = await draftKey(page, game.id);
-        const stillIntact = savedBefore && savedAfterDoubleReload &&
+        const stillIntact =
+          savedBefore &&
+          savedAfterDoubleReload &&
           JSON.stringify(savedAfterDoubleReload) === JSON.stringify(savedBefore);
-        report.check(`${game.name}: draft survives opening the screen twice unrestored`, stillIntact);
+        report.check(
+          `${game.name}: draft survives opening the screen twice unrestored`,
+          stillIntact,
+        );
 
         const bannerVisible = await page.isVisible('.draft-banner').catch(() => false);
         report.check(`${game.name}: recovery banner shows after reload`, bannerVisible);
@@ -58,7 +63,7 @@ async function run() {
         const restoredSomething = await page.evaluate(() => {
           const inputs = document.querySelectorAll('.screen.active input');
           const onButtons = document.querySelectorAll('.screen.active .toggle-pair button.on');
-          return Array.from(inputs).some(i => i.value !== '') || onButtons.length > 0;
+          return Array.from(inputs).some((i) => i.value !== '') || onButtons.length > 0;
         });
         report.check(`${game.name}: restore repopulates the form`, restoredSomething);
 
@@ -95,5 +100,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

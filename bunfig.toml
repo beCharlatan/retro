@@ -1,12 +1,18 @@
-# This project's "tests" are a hand-rolled Playwright regression suite
-# (test/run-all.js + test/*.spec.js), NOT Bun's own test runner format —
-# the *.spec.js naming happens to match Bun's default test-file glob
-# though, so a bare `bun test` would otherwise "discover" and silently
-# no-op them (0 pass / 0 fail, looking deceptively like a clean run).
+# Two separate test layers, deliberately kept apart:
 #
-# Pointing Bun's test root at an unused folder keeps `bun test` out of
-# test/ entirely, so the mistake fails obviously instead of looking
-# green. Always run the suite via `bun run test` (see package.json) —
-# that's a plain script invocation, unaffected by this file.
+#   - test/*.spec.js  — the hand-rolled Playwright E2E regression suite
+#     (test/run-all.js), run via `bun run test`. NOT Bun's own test
+#     format, even though the *.spec.js naming happens to match Bun's
+#     default test-file glob.
+#   - test/unit/*.test.js — real Bun test-runner unit tests (bun:test's
+#     describe/test/expect) for dependency-free logic, run via
+#     `bun run test:unit` (= bare `bun test`, scoped here).
+#
+# Pointing Bun's test root at test/unit keeps a bare `bun test` out of
+# test/*.spec.js entirely — otherwise it would "discover" those files
+# too (same glob) and silently no-op them (0 pass / 0 fail, looking
+# deceptively like a clean run) instead of actually running the
+# Playwright suite. Always run the E2E suite via `bun run test`, never
+# bare `bun test`.
 [test]
-root = "test/.bun-test-root-unused"
+root = "test/unit"

@@ -6,7 +6,7 @@
    "сколько строк кода в нашем репозитории?" — so the effect
    feels like it's about this team, not an abstract quiz.
 ========================================================= */
-function renderCrowdWisdomGame(){
+function renderCrowdWisdomGame() {
   const NAMES = state.participants.slice();
   const DEFAULT_VALUE = 420; // tons — real mass of the ISS
   const DEFAULT_QUESTION = 'Сколько тонн весит Международная космическая станция?';
@@ -18,7 +18,7 @@ function renderCrowdWisdomGame(){
   let UNIT = DEFAULT_UNIT;
   let isCustomQuestion = false;
 
-  let data = NAMES.map(n => ({ name:n, guess:null }));
+  let data = NAMES.map((n) => ({ name: n, guess: null }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   app.innerHTML = `
@@ -197,11 +197,13 @@ function renderCrowdWisdomGame(){
 
   Screen.wireBackHome('crowd-wisdom');
 
-  Persist.offerRestore('crowd-wisdom', 'draft-mount-crowd-wisdom',
+  Persist.offerRestore(
+    'crowd-wisdom',
+    'draft-mount-crowd-wisdom',
     (p) => Array.isArray(p.data) && p.data.length === NAMES.length,
     (p) => {
       data = p.data;
-      if(p.question){
+      if (p.question) {
         QUESTION = p.question.text;
         TRUE_VALUE = p.question.value;
         UNIT = p.question.unit;
@@ -211,25 +213,26 @@ function renderCrowdWisdomGame(){
       buildEntryRows();
       updateFillProgress();
       cwGoTo(1);
-    });
+    },
+  );
 
-  function updateQuestionDisplay(){
+  function updateQuestionDisplay() {
     document.getElementById('cw-question-text').innerHTML =
       `«${QUESTION}» Каждый молча думает над своей оценкой, не советуясь с соседями.`;
   }
 
-  document.getElementById('custom-q-toggle').addEventListener('click', ()=>{
+  document.getElementById('custom-q-toggle').addEventListener('click', () => {
     const panel = document.getElementById('custom-q-panel');
     panel.hidden = !panel.hidden;
   });
 
-  document.getElementById('custom-q-apply').addEventListener('click', ()=>{
+  document.getElementById('custom-q-apply').addEventListener('click', () => {
     const text = document.getElementById('custom-q-text').value.trim();
     const answerRaw = document.getElementById('custom-q-answer').value;
     const unit = document.getElementById('custom-q-unit').value.trim();
     const answer = Number(answerRaw);
     const statusEl = document.getElementById('custom-q-status');
-    if(!text || answerRaw === '' || isNaN(answer)){
+    if (!text || answerRaw === '' || isNaN(answer)) {
       statusEl.textContent = 'Впишите текст вопроса и числовой правильный ответ.';
       return;
     }
@@ -242,7 +245,7 @@ function renderCrowdWisdomGame(){
     document.getElementById('custom-q-reset').hidden = false;
   });
 
-  document.getElementById('custom-q-reset').addEventListener('click', ()=>{
+  document.getElementById('custom-q-reset').addEventListener('click', () => {
     QUESTION = DEFAULT_QUESTION;
     TRUE_VALUE = DEFAULT_VALUE;
     UNIT = DEFAULT_UNIT;
@@ -251,11 +254,12 @@ function renderCrowdWisdomGame(){
     document.getElementById('custom-q-text').value = '';
     document.getElementById('custom-q-answer').value = '';
     document.getElementById('custom-q-unit').value = '';
-    document.getElementById('custom-q-status').textContent = '✓ Вернули стандартный вопрос про МКС.';
+    document.getElementById('custom-q-status').textContent =
+      '✓ Вернули стандартный вопрос про МКС.';
     document.getElementById('custom-q-reset').hidden = true;
   });
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     const body = document.getElementById('entry-body');
     body.innerHTML = '';
     data.forEach((row, i) => {
@@ -267,100 +271,180 @@ function renderCrowdWisdomGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     let v = e.target.value === '' ? null : Number(e.target.value);
-    if(v !== null && v < 0) v = 0;
+    if (v !== null && v < 0) v = 0;
     data[idx].guess = v;
     updateFillProgress();
   }
 
-  function updateFillProgress(){
-    const filled = data.filter(d => d.guess !== null).length;
+  function updateFillProgress() {
+    const filled = data.filter((d) => d.guess !== null).length;
     Screen.updateProgress('', filled, NAMES.length, 'show-results-btn', 2);
-    if(hydrated){
+    if (hydrated) {
       Persist.save('crowd-wisdom', {
         data: data,
-        question: isCustomQuestion ? { text: QUESTION, value: TRUE_VALUE, unit: UNIT } : null
+        question: isCustomQuestion ? { text: QUESTION, value: TRUE_VALUE, unit: UNIT } : null,
       });
     }
   }
 
-  window.cwGoTo = function(screenIdx){
+  window.cwGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  function median(arr){
-    const s = arr.slice().sort((a,b)=>a-b);
+  function median(arr) {
+    const s = arr.slice().sort((a, b) => a - b);
     const n = s.length;
-    const mid = Math.floor(n/2);
-    return n % 2 ? s[mid] : (s[mid-1]+s[mid])/2;
+    const mid = Math.floor(n / 2);
+    return n % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   }
 
-  function fmt(v){
+  function fmt(v) {
     return Math.round(v) + (UNIT ? ' ' + UNIT : '');
   }
 
-  function drawChart(filled){
+  function drawChart(filled) {
     const svg = document.getElementById('cw-chart');
     svg.innerHTML = '';
-    const W=640,H=220, ML=20, MR=20, MT=40, MB=36;
-    const plotW = W-ML-MR;
-    const guesses = filled.map(d=>d.guess);
+    const W = 640,
+      H = 220,
+      ML = 20,
+      MR = 20,
+      MT = 40,
+      MB = 36;
+    const plotW = W - ML - MR;
+    const guesses = filled.map((d) => d.guess);
     const allVals = guesses.concat([TRUE_VALUE]);
     const maxV = Math.max(...allVals) * 1.15;
     const minV = Math.min(0, Math.min(...allVals) * 0.9);
 
-    function xOf(v){ return ML + (v-minV)/(maxV-minV) * plotW; }
-    function ns(tag, attrs){
+    function xOf(v) {
+      return ML + ((v - minV) / (maxV - minV)) * plotW;
+    }
+    function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-      for(const k in attrs) el.setAttribute(k, attrs[k]);
+      for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
 
-    svg.appendChild(ns('line',{x1:ML,y1:H-MB,x2:ML+plotW,y2:H-MB,stroke:'#1E2A32','stroke-width':1.2}));
+    svg.appendChild(
+      ns('line', {
+        x1: ML,
+        y1: H - MB,
+        x2: ML + plotW,
+        y2: H - MB,
+        stroke: '#1E2A32',
+        'stroke-width': 1.2,
+      }),
+    );
 
-    [0,0.25,0.5,0.75,1].forEach(t=>{
-      const v = minV + t*(maxV-minV);
+    [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
+      const v = minV + t * (maxV - minV);
       const x = xOf(v);
-      svg.appendChild(ns('line',{x1:x,y1:H-MB,x2:x,y2:H-MB+5,stroke:'#4B5B63','stroke-width':1}));
-      const lx = ns('text',{x:x,y:H-MB+18,'font-size':10.5,'font-family':'IBM Plex Mono, monospace',fill:'#4B5B63','text-anchor':'middle'});
+      svg.appendChild(
+        ns('line', {
+          x1: x,
+          y1: H - MB,
+          x2: x,
+          y2: H - MB + 5,
+          stroke: '#4B5B63',
+          'stroke-width': 1,
+        }),
+      );
+      const lx = ns('text', {
+        x: x,
+        y: H - MB + 18,
+        'font-size': 10.5,
+        'font-family': 'IBM Plex Mono, monospace',
+        fill: '#4B5B63',
+        'text-anchor': 'middle',
+      });
       lx.textContent = Math.round(v);
       svg.appendChild(lx);
     });
 
     const trueX = xOf(TRUE_VALUE);
-    svg.appendChild(ns('line',{x1:trueX,y1:24,x2:trueX,y2:H-MB,stroke:'#B5502E','stroke-width':1.5,'stroke-dasharray':'5,4'}));
-    const trueLabel = ns('text',{x:trueX,y:16,'font-size':10.5,'font-family':'IBM Plex Mono, monospace',fill:'#B5502E','text-anchor':'middle'});
+    svg.appendChild(
+      ns('line', {
+        x1: trueX,
+        y1: 24,
+        x2: trueX,
+        y2: H - MB,
+        stroke: '#B5502E',
+        'stroke-width': 1.5,
+        'stroke-dasharray': '5,4',
+      }),
+    );
+    const trueLabel = ns('text', {
+      x: trueX,
+      y: 16,
+      'font-size': 10.5,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#B5502E',
+      'text-anchor': 'middle',
+    });
     trueLabel.textContent = 'правильный ответ';
     svg.appendChild(trueLabel);
 
-    const avg = guesses.reduce((a,b)=>a+b,0)/guesses.length;
+    const avg = guesses.reduce((a, b) => a + b, 0) / guesses.length;
     const avgX = xOf(avg);
-    svg.appendChild(ns('line',{x1:avgX,y1:24,x2:avgX,y2:H-MB,stroke:'#3E6E64','stroke-width':1.5}));
-    const avgLabel = ns('text',{x:avgX,y:H-MB+30,'font-size':10.5,'font-family':'IBM Plex Mono, monospace',fill:'#3E6E64','text-anchor':'middle'});
+    svg.appendChild(
+      ns('line', {
+        x1: avgX,
+        y1: 24,
+        x2: avgX,
+        y2: H - MB,
+        stroke: '#3E6E64',
+        'stroke-width': 1.5,
+      }),
+    );
+    const avgLabel = ns('text', {
+      x: avgX,
+      y: H - MB + 30,
+      'font-size': 10.5,
+      'font-family': 'IBM Plex Mono, monospace',
+      fill: '#3E6E64',
+      'text-anchor': 'middle',
+    });
     avgLabel.textContent = 'среднее';
     svg.appendChild(avgLabel);
 
     const rowH = 20;
-    filled.forEach((p,i)=>{
+    filled.forEach((p, i) => {
       const x = xOf(p.guess);
-      const y = H-MB-14-((i%6)*rowH);
-      const c = ns('circle',{cx:x,cy:y,r:5.5,fill:'#3E6E64','fill-opacity':0.85,stroke:'#F5F3EC','stroke-width':1.3});
+      const y = H - MB - 14 - (i % 6) * rowH;
+      const c = ns('circle', {
+        cx: x,
+        cy: y,
+        r: 5.5,
+        fill: '#3E6E64',
+        'fill-opacity': 0.85,
+        stroke: '#F5F3EC',
+        'stroke-width': 1.3,
+      });
       svg.appendChild(c);
-      ChartTip.attachToPoint(svg, ns, x, y, () => `<b>${p.name}</b><span class="tip-row"><span>Оценка</span><span>${fmt(p.guess)}</span></span>`);
+      ChartTip.attachToPoint(
+        svg,
+        ns,
+        x,
+        y,
+        () =>
+          `<b>${p.name}</b><span class="tip-row"><span>Оценка</span><span>${fmt(p.guess)}</span></span>`,
+      );
     });
   }
 
-  window.cwShowResults = function(){
-    const filled = data.filter(d => d.guess !== null);
-    const guesses = filled.map(d=>d.guess);
-    const avg = guesses.reduce((a,b)=>a+b,0)/guesses.length;
+  window.cwShowResults = () => {
+    const filled = data.filter((d) => d.guess !== null);
+    const guesses = filled.map((d) => d.guess);
+    const avg = guesses.reduce((a, b) => a + b, 0) / guesses.length;
     const med = median(guesses);
     const avgErr = Math.abs(avg - TRUE_VALUE);
     const medErr = Math.abs(med - TRUE_VALUE);
@@ -375,7 +459,7 @@ function renderCrowdWisdomGame(){
     document.getElementById('median-value').textContent = fmt(med);
     document.getElementById('median-error').textContent = '±' + Math.round(medErr);
 
-    const worseThanAvg = filled.filter(d => Math.abs(d.guess-TRUE_VALUE) > avgErr).length;
+    const worseThanAvg = filled.filter((d) => Math.abs(d.guess - TRUE_VALUE) > avgErr).length;
     document.getElementById('cw-compare-text').textContent =
       `У ${worseThanAvg} из ${filled.length} человек личная ошибка больше, чем ошибка среднего по команде — среднее оказалось точнее, чем большинство участников поодиночке.`;
 
@@ -383,7 +467,7 @@ function renderCrowdWisdomGame(){
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(d=>{
+    filled.forEach((d) => {
       const err = Math.abs(d.guess - TRUE_VALUE);
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(d.name)}</td><td>${fmt(d.guess)}</td><td>±${Math.round(err)}</td>`;
@@ -392,16 +476,19 @@ function renderCrowdWisdomGame(){
 
     Print.mount('print-header-crowd-wisdom', {
       title: 'Мудрость толпы',
-      subtitle: isCustomQuestion ? QUESTION : 'Средняя оценка группы обходит по точности почти всех поодиночке.',
+      subtitle: isCustomQuestion
+        ? QUESTION
+        : 'Средняя оценка группы обходит по точности почти всех поодиночке.',
       meta: Print.meta(filled.length),
-      explanation: 'У каждого человека своя случайная ошибка в оценке, но при независимом усреднении эти ошибки частично гасят друг друга. Явление описал Фрэнсис Гальтон в 1907 году: медиана 787 независимых оценок веса быка на деревенской ярмарке разошлась с реальным весом всего на 9 фунтов — точнее большинства профессиональных скотоводов.'
+      explanation:
+        'У каждого человека своя случайная ошибка в оценке, но при независимом усреднении эти ошибки частично гасят друг друга. Явление описал Фрэнсис Гальтон в 1907 году: медиана 787 независимых оценок веса быка на деревенской ярмарке разошлась с реальным весом всего на 9 фунтов — точнее большинства профессиональных скотоводов.',
     });
 
     cwGoTo(2);
   };
 
-  window.cwReset = function(){
-    data = NAMES.map(n => ({ name:n, guess:null }));
+  window.cwReset = () => {
+    data = NAMES.map((n) => ({ name: n, guess: null }));
     buildEntryRows();
     updateFillProgress();
     cwGoTo(0);

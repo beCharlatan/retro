@@ -53,7 +53,7 @@
        <button class="ghost" id="pdf-btn" onclick="Print.run()">🖨️  Сохранить / отправить PDF</button>
      </div>
 ========================================================= */
-const Print = (function () {
+const Print = (() => {
   const ORIGINAL_TITLE = document.title;
   let pendingFilename = null;
 
@@ -100,20 +100,27 @@ const Print = (function () {
 
   // Standard "N участников · дата" meta line, reused by every game.
   function meta(count, extra) {
-    const date = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    const date = new Date().toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
     const base = `${count} ${peopleWord(count)} · ${date}`;
     return extra ? `${base} · ${extra}` : base;
   }
 
   function peopleWord(n) {
-    const mod10 = n % 10, mod100 = n % 100;
+    const mod10 = n % 10,
+      mod100 = n % 100;
     if (mod10 === 1 && mod100 !== 11) return 'участник';
     if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'участника';
     return 'участников';
   }
 
   function run() {
-    if (pendingFilename) { document.title = pendingFilename; }
+    if (pendingFilename) {
+      document.title = pendingFilename;
+    }
     window.print();
   }
 

@@ -41,14 +41,18 @@ const GAMES = [
   {
     id: 'crowd-wisdom',
     name: 'Мудрость толпы',
-    async toEntryScreen(page) { await page.click('text=Вносить данные →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Вносить данные →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
       const n = opts.count ?? inputs.length;
       for (let i = 0; i < n; i++) await inputs[i].fill(String(300 + i * 10));
       return n;
     },
-    async toResults(page) { await page.click('text=Показать результаты →'); },
+    async toResults(page) {
+      await page.click('text=Показать результаты →');
+    },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
       return n.includes('420');
@@ -58,7 +62,9 @@ const GAMES = [
     id: 'dictator',
     name: 'Игра диктатора',
     multiScreen: true,
-    async toEntryScreen(page) { await page.click('text=Раунд 1 →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Раунд 1 →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-1 input');
       const n = opts.count ?? inputs.length;
@@ -81,7 +87,9 @@ const GAMES = [
     id: 'public-goods',
     name: 'Общественное благо',
     multiScreen: true,
-    async toEntryScreen(page) { await page.click('text=Раунд 1 →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Раунд 1 →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-1 input');
       const n = opts.count ?? inputs.length;
@@ -103,7 +111,9 @@ const GAMES = [
   {
     id: 'false-consensus',
     name: 'Ложный консенсус',
-    async toEntryScreen(page) { await page.click('text=Вносить данные →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Вносить данные →');
+    },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body .entry-row');
       const n = opts.count ?? rows.length;
@@ -114,7 +124,9 @@ const GAMES = [
       }
       return n;
     },
-    async toResults(page) { await page.click('text=Показать результаты →'); },
+    async toResults(page) {
+      await page.click('text=Показать результаты →');
+    },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
       return n.includes('%');
@@ -123,14 +135,18 @@ const GAMES = [
   {
     id: 'barnum',
     name: 'Эффект Барнума',
-    async toEntryScreen(page) { await page.click('text=Вносить данные →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Вносить данные →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
       const n = opts.count ?? inputs.length;
-      for (let i = 0; i < n; i++) await inputs[i].fill(String((i % 6)));
+      for (let i = 0; i < n; i++) await inputs[i].fill(String(i % 6));
       return n;
     },
-    async toResults(page) { await page.click('text=Показать результаты →'); },
+    async toResults(page) {
+      await page.click('text=Показать результаты →');
+    },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
       return n.includes('/ 5');
@@ -140,7 +156,9 @@ const GAMES = [
     id: 'availability',
     name: 'Эвристика доступности',
     multiScreen: true,
-    async toEntryScreen(page) { await page.click('text=Начать вопросы →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Начать вопросы →');
+    },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body-0 .entry-row');
       const n = opts.count ?? rows.length;
@@ -167,7 +185,9 @@ const GAMES = [
   {
     id: 'planning-fallacy',
     name: 'Ошибка планирования',
-    async toEntryScreen(page) { await page.click('text=Вносить данные →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Вносить данные →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
       const rows = inputs.length / 2;
@@ -178,7 +198,9 @@ const GAMES = [
       }
       return n;
     },
-    async toResults(page) { await page.click('text=Показать результаты →'); },
+    async toResults(page) {
+      await page.click('text=Показать результаты →');
+    },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
       return n.includes('×');
@@ -188,7 +210,9 @@ const GAMES = [
     id: 'calibration',
     name: 'Калибровка уверенности',
     multiScreen: true,
-    async toEntryScreen(page) { await page.click('text=Начать вопросы →'); },
+    async toEntryScreen(page) {
+      await page.click('text=Начать вопросы →');
+    },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-0 input');
       const rows = inputs.length / 2;
@@ -203,11 +227,17 @@ const GAMES = [
       await page.click('#next-btn-0');
       await page.waitForTimeout(80);
       let inputs = await page.$$('.screen.active input');
-      for (let i = 0; i < inputs.length; i += 2) { await inputs[i].fill('5000'); await inputs[i + 1].fill('6000'); }
+      for (let i = 0; i < inputs.length; i += 2) {
+        await inputs[i].fill('5000');
+        await inputs[i + 1].fill('6000');
+      }
       await page.click('#next-btn-1');
       await page.waitForTimeout(80);
       inputs = await page.$$('.screen.active input');
-      for (let i = 0; i < inputs.length; i += 2) { await inputs[i].fill('3000'); await inputs[i + 1].fill('4000'); }
+      for (let i = 0; i < inputs.length; i += 2) {
+        await inputs[i].fill('3000');
+        await inputs[i + 1].fill('4000');
+      }
       await page.click('#next-btn-2');
     },
     async verifyResults(page) {
@@ -260,7 +290,9 @@ const GAMES = [
       for (let i = 0; i < n; i++) await (await rows[i].$('button[data-val="2"]')).click();
       return n;
     },
-    async toResults(page) { await page.click('text=Показать результаты →'); },
+    async toResults(page) {
+      await page.click('text=Показать результаты →');
+    },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
       return n.length > 0;

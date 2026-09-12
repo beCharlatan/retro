@@ -37,7 +37,10 @@ async function run() {
       await page.click('text=Эффект якоря');
       await page.click('text=Вносить данные →');
       const inputs = await page.$$('#entry-body input');
-      const vals = [12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29, 60, 40, 25, 30, 33, 33];
+      const vals = [
+        12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29, 60, 40, 25,
+        30, 33, 33,
+      ];
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(vals[i]));
       await page.click('text=Показать результаты →');
 
@@ -48,8 +51,11 @@ async function run() {
       const visible = await page.isVisible('.chart-tooltip.visible');
       report.check('anchoring: tooltip appears on hover', visible);
       const html = await page.innerHTML('.chart-tooltip');
-      report.check('anchoring: tooltip names the right person and shows both values',
-        html.includes('Михаил') && html.includes('12') && html.includes('20%'), html.replace(/\s+/g, ' '));
+      report.check(
+        'anchoring: tooltip names the right person and shows both values',
+        html.includes('Михаил') && html.includes('12') && html.includes('20%'),
+        html.replace(/\s+/g, ' '),
+      );
 
       await page.mouse.move(5, 5);
       await page.waitForTimeout(200);
@@ -70,8 +76,11 @@ async function run() {
 
       await hoverHitCircle(page, '#cw-chart circle');
       const html = await page.innerHTML('.chart-tooltip');
-      report.check('crowd-wisdom: tooltip shows a name and the guessed value',
-        html.includes('Михаил') && html.includes('300'), html.replace(/\s+/g, ' '));
+      report.check(
+        'crowd-wisdom: tooltip shows a name and the guessed value',
+        html.includes('Михаил') && html.includes('300'),
+        html.replace(/\s+/g, ' '),
+      );
 
       await page.close();
     }
@@ -91,8 +100,11 @@ async function run() {
 
       await hoverHitCircle(page, '#dict-chart circle');
       const html1 = await page.innerHTML('.chart-tooltip');
-      report.check('dictator: round-1 dot tooltip is labelled as round 1 with the round-1 value',
-        html1.includes('Раунд 1') && html1.includes('100'), html1.replace(/\s+/g, ' '));
+      report.check(
+        'dictator: round-1 dot tooltip is labelled as round 1 with the round-1 value',
+        html1.includes('Раунд 1') && html1.includes('100'),
+        html1.replace(/\s+/g, ' '),
+      );
 
       // The 3rd/4th circles in DOM order are person 2's round-1 pair
       // (visible+hit); circles 2/3 (0-indexed) belong to the SAME
@@ -105,8 +117,11 @@ async function run() {
       await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 3 });
       await page.waitForTimeout(150);
       const html2 = await page.innerHTML('.chart-tooltip');
-      report.check('dictator: a different dot is labelled as round 2 with the round-2 value',
-        html2.includes('Раунд 2') && html2.includes('150'), html2.replace(/\s+/g, ' '));
+      report.check(
+        'dictator: a different dot is labelled as round 2 with the round-2 value',
+        html2.includes('Раунд 2') && html2.includes('150'),
+        html2.replace(/\s+/g, ' '),
+      );
 
       await page.close();
     }
@@ -118,5 +133,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

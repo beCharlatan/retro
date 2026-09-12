@@ -27,7 +27,7 @@
    it's safe to build the string from data that might be referenced
    by closure — no need to worry about stale values.
 ========================================================= */
-const ChartTip = (function () {
+const ChartTip = (() => {
   let el = null;
 
   function ensure() {
@@ -73,8 +73,11 @@ const ChartTip = (function () {
   // has one); `content` works exactly like attach()'s.
   function attachToPoint(svg, ns, cx, cy, content, hitRadius) {
     const hit = ns('circle', {
-      cx: cx, cy: cy, r: hitRadius || 12,
-      fill: 'transparent', 'pointer-events': 'all',
+      cx: cx,
+      cy: cy,
+      r: hitRadius || 12,
+      fill: 'transparent',
+      'pointer-events': 'all',
     });
     svg.appendChild(hit);
     attach(hit, content);

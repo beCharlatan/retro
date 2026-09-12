@@ -21,7 +21,11 @@ async function run() {
         await page.waitForTimeout(100);
 
         const crumb = await page.textContent('.crumb-current').catch(() => null);
-        report.check(`${game.name}: breadcrumb shows game name`, crumb && crumb.trim() === game.name, crumb);
+        report.check(
+          `${game.name}: breadcrumb shows game name`,
+          crumb && crumb.trim() === game.name,
+          crumb,
+        );
 
         await game.toEntryScreen(page);
         await page.waitForTimeout(100);
@@ -39,17 +43,28 @@ async function run() {
         report.check(`${game.name}: reveal content looks sane`, resultsOk);
 
         const tableRows = await page.$$('.results-table tbody tr').catch(() => []);
-        report.check(`${game.name}: results table has rows`, tableRows.length > 0, `rows=${tableRows.length}`);
+        report.check(
+          `${game.name}: results table has rows`,
+          tableRows.length > 0,
+          `rows=${tableRows.length}`,
+        );
 
         await page.click('button:has-text("Что это было")');
         await page.waitForTimeout(100);
         const contextH1 = await page.textContent('.screen.active h1').catch(() => '');
-        report.check(`${game.name}: context screen reveals a title`, contextH1 && contextH1.trim().length > 0, contextH1);
+        report.check(
+          `${game.name}: context screen reveals a title`,
+          contextH1 && contextH1.trim().length > 0,
+          contextH1,
+        );
 
         await page.click('text=← Все игры');
         await page.waitForTimeout(80);
         const home = await page.textContent('h1').catch(() => '');
-        report.check(`${game.name}: back-link returns to home`, home.includes('5 минут общего развития'));
+        report.check(
+          `${game.name}: back-link returns to home`,
+          home.includes('5 минут общего развития'),
+        );
       } catch (e) {
         report.fail(`${game.name}: threw during smoke flow`, e.message);
       } finally {
@@ -64,5 +79,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

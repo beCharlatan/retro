@@ -1,7 +1,7 @@
 /* =========================================================
    GAME: Эффект фрейминга (framing)
 ========================================================= */
-function renderFramingGame(){
+function renderFramingGame() {
   let groups = Roles.makeGroups(state.participants);
   let entries = buildEntries();
   let hydrated = false; // guards against overwriting a not-yet-restored draft
@@ -10,9 +10,9 @@ function renderFramingGame(){
 
   const GROUP_LABEL = { A: 'А', B: 'Б' };
 
-  function buildEntries(){
-    const a = groups.groupA.map(n => ({ name:n, group:'A', choice:null }));
-    const b = groups.groupB.map(n => ({ name:n, group:'B', choice:null }));
+  function buildEntries() {
+    const a = groups.groupA.map((n) => ({ name: n, group: 'A', choice: null }));
+    const b = groups.groupB.map((n) => ({ name: n, group: 'B', choice: null }));
     return a.concat(b);
   }
 
@@ -197,7 +197,9 @@ function renderFramingGame(){
 
   Screen.wireBackHome('framing');
 
-  Persist.offerRestore('framing', 'draft-mount-framing',
+  Persist.offerRestore(
+    'framing',
+    'draft-mount-framing',
     (p) => Array.isArray(p.entries) && p.entries.length === state.participants.length,
     (p) => {
       groups = p.groups;
@@ -206,40 +208,46 @@ function renderFramingGame(){
       renderEntryRows();
       updateFillProgress();
       frGoTo(3);
-    });
+    },
+  );
 
   // Spoiler + copy-to-clipboard for each group's scenario text, so the
   // facilitator can send the right wording privately instead of
   // reading both aloud off a shared screen.
   const SCENARIO_TEXT = {
-    a: 'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
-       'Программа 1 — спасено ровно 200 человек.\n' +
-       'Программа 2 — с вероятностью 1/3 спасены все 600, с вероятностью 2/3 не спасён никто.\n\n' +
-       'Какую программу вы выбираете?',
-    b: 'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
-       'Программа 1 — умрёт ровно 400 человек.\n' +
-       'Программа 2 — с вероятностью 1/3 никто не умрёт, с вероятностью 2/3 умрут все 600.\n\n' +
-       'Какую программу вы выбираете?',
+    a:
+      'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
+      'Программа 1 — спасено ровно 200 человек.\n' +
+      'Программа 2 — с вероятностью 1/3 спасены все 600, с вероятностью 2/3 не спасён никто.\n\n' +
+      'Какую программу вы выбираете?',
+    b:
+      'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
+      'Программа 1 — умрёт ровно 400 человек.\n' +
+      'Программа 2 — с вероятностью 1/3 никто не умрёт, с вероятностью 2/3 умрут все 600.\n\n' +
+      'Какую программу вы выбираете?',
   };
-  ['a','b'].forEach(key=>{
+  ['a', 'b'].forEach((key) => {
     const toggleBtn = document.getElementById('toggle-' + key);
     const copyBtn = document.getElementById('copy-' + key);
     const textEl = document.getElementById('text-' + key);
     const placeholderEl = document.getElementById('placeholder-' + key);
-    toggleBtn.addEventListener('click', ()=>{
+    toggleBtn.addEventListener('click', () => {
       const nowHidden = !textEl.hidden;
       textEl.hidden = nowHidden;
       placeholderEl.hidden = !nowHidden;
       toggleBtn.textContent = nowHidden ? '👁 Показать' : '🙈 Скрыть';
     });
-    copyBtn.addEventListener('click', ()=>{
+    copyBtn.addEventListener('click', () => {
       copyToClipboard(SCENARIO_TEXT[key], copyBtn);
     });
   });
 
-  function renderGroupsHolder(){
+  function renderGroupsHolder() {
     const el = document.getElementById('groups-holder');
-    el.innerHTML = Roles.groupsHTML(groups.groupA, groups.groupB, { labelA:'Группа А', labelB:'Группа Б' });
+    el.innerHTML = Roles.groupsHTML(groups.groupA, groups.groupB, {
+      labelA: 'Группа А',
+      labelB: 'Группа Б',
+    });
     Roles.bindGroupSwap(el, () => groups, renderGroupsHolder);
   }
   renderGroupsHolder();
@@ -249,28 +257,32 @@ function renderFramingGame(){
     entries = buildEntries();
   });
 
-  window.frEnterData = function(){
+  window.frEnterData = () => {
     buildEntryRows();
     frGoTo(3);
   };
 
-  function renderEntryRows(){
+  function renderEntryRows() {
     const body = document.getElementById('entry-body');
     document.getElementById('fill-total').textContent = entries.length;
 
-    const withIdx = entries.map((e, i) => ({ ...e, idx:i }));
-    const listA = withIdx.filter(e => e.group === 'A');
-    const listB = withIdx.filter(e => e.group === 'B');
+    const withIdx = entries.map((e, i) => ({ ...e, idx: i }));
+    const listA = withIdx.filter((e) => e.group === 'A');
+    const listB = withIdx.filter((e) => e.group === 'B');
 
-    function section(title, list, cls){
-      const cards = list.map(e => `
+    function section(title, list, cls) {
+      const cards = list
+        .map(
+          (e) => `
         <div class="team-entry-card wide-control">
           <div class="team-entry-name">${avatarName(e.name)}</div>
           <div class="toggle-pair" data-idx="${e.idx}">
-            <button type="button" data-val="1" class="${e.choice==='1'?'on':''}">Программа 1</button>
-            <button type="button" data-val="2" class="${e.choice==='2'?'on':''}">Программа 2</button>
+            <button type="button" data-val="1" class="${e.choice === '1' ? 'on' : ''}">Программа 1</button>
+            <button type="button" data-val="2" class="${e.choice === '2' ? 'on' : ''}">Программа 2</button>
           </div>
-        </div>`).join('');
+        </div>`,
+        )
+        .join('');
       return `
         <div class="team-entry-group ${cls}">
           <div class="team-entry-group-title">${title} <span class="count">· ${list.length} чел.</span></div>
@@ -280,13 +292,13 @@ function renderFramingGame(){
 
     body.innerHTML = section('Группа А', listA, 'team-a') + section('Группа Б', listB, 'team-b');
 
-    Array.from(body.querySelectorAll('.toggle-pair button')).forEach(btn=>{
-      btn.addEventListener('click', e=>{
+    Array.from(body.querySelectorAll('.toggle-pair button')).forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         const wrap = e.currentTarget.closest('.toggle-pair');
         const idx = +wrap.dataset.idx;
         const val = e.currentTarget.dataset.val;
         entries[idx].choice = val;
-        Array.from(wrap.querySelectorAll('button')).forEach(b=>{
+        Array.from(wrap.querySelectorAll('button')).forEach((b) => {
           b.classList.toggle('on', b.dataset.val === val);
         });
         updateFillProgress();
@@ -294,43 +306,50 @@ function renderFramingGame(){
     });
   }
 
-  function buildEntryRows(){
+  function buildEntryRows() {
     entries = buildEntries();
     renderEntryRows();
   }
 
-  function updateFillProgress(){
-    const filled = entries.filter(e => e.choice !== null).length;
+  function updateFillProgress() {
+    const filled = entries.filter((e) => e.choice !== null).length;
     Screen.updateProgress('', filled, entries.length, 'show-results-btn', 2);
-    if(hydrated){ Persist.save('framing', { groups: groups, entries: entries }); }
+    if (hydrated) {
+      Persist.save('framing', { groups: groups, entries: entries });
+    }
   }
 
-  window.frGoTo = function(screenIdx){
+  window.frGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
-    if(screenIdx !== 3) updateFillProgress();
+    if (screenIdx !== 3) updateFillProgress();
   };
 
-  window.frShowResults = function(){
-    const filled = entries.filter(e => e.choice !== null);
-    const groupAEntries = filled.filter(e=>e.group==='A');
-    const groupBEntries = filled.filter(e=>e.group==='B');
-    const riskyPct = arr => arr.length ? Math.round(arr.filter(e=>e.choice==='2').length/arr.length*100) : null;
+  window.frShowResults = () => {
+    const filled = entries.filter((e) => e.choice !== null);
+    const groupAEntries = filled.filter((e) => e.group === 'A');
+    const groupBEntries = filled.filter((e) => e.group === 'B');
+    const riskyPct = (arr) =>
+      arr.length
+        ? Math.round((arr.filter((e) => e.choice === '2').length / arr.length) * 100)
+        : null;
     const aRisky = riskyPct(groupAEntries);
     const bRisky = riskyPct(groupBEntries);
 
-    document.getElementById('a-risky').textContent = aRisky===null ? '—' : aRisky+'%';
-    document.getElementById('b-risky').textContent = bRisky===null ? '—' : bRisky+'%';
+    document.getElementById('a-risky').textContent = aRisky === null ? '—' : aRisky + '%';
+    document.getElementById('b-risky').textContent = bRisky === null ? '—' : bRisky + '%';
 
-    if(aRisky!==null && bRisky!==null){
+    if (aRisky !== null && bRisky !== null) {
       const flipped = bRisky > aRisky;
-      document.getElementById('flip-text').textContent = flipped ? 'Формулировка сработала' : 'В этот раз без переворота';
+      document.getElementById('flip-text').textContent = flipped
+        ? 'Формулировка сработала'
+        : 'В этот раз без переворота';
       document.getElementById('flip-detail').innerHTML =
-        `<b>Группа Б выбрала риск на ${Math.abs(bRisky-aRisky)} п.п. ${bRisky>aRisky?'чаще':'реже'}</b>, чем Группа А — при абсолютно одинаковых числах внутри дилеммы, разница только в словах.`;
+        `<b>Группа Б выбрала риск на ${Math.abs(bRisky - aRisky)} п.п. ${bRisky > aRisky ? 'чаще' : 'реже'}</b>, чем Группа А — при абсолютно одинаковых числах внутри дилеммы, разница только в словах.`;
     }
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    filled.forEach(e=>{
+    filled.forEach((e) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(e.name)}</td><td>${GROUP_LABEL[e.group]}</td><td>Программа ${e.choice}</td>`;
       tbody.appendChild(tr);
@@ -338,15 +357,17 @@ function renderFramingGame(){
 
     Print.mount('print-header-framing', {
       title: 'Эффект фрейминга',
-      subtitle: 'Один и тот же выбор выглядит разумным или рискованным — в зависимости от формулировки.',
+      subtitle:
+        'Один и тот же выбор выглядит разумным или рискованным — в зависимости от формулировки.',
       meta: Print.meta(filled.length),
-      explanation: 'Одна и та же по сути информация, поданная как выигрыш или как потеря, приводит к разным решениям — хотя математически варианты идентичны. Классический эксперимент — Tversky, Kahneman (1981), легший в основу теории перспектив, за которую Канеман получил Нобелевскую премию по экономике в 2002 году.'
+      explanation:
+        'Одна и та же по сути информация, поданная как выигрыш или как потеря, приводит к разным решениям — хотя математически варианты идентичны. Классический эксперимент — Tversky, Kahneman (1981), легший в основу теории перспектив, за которую Канеман получил Нобелевскую премию по экономике в 2002 году.',
     });
 
     frGoTo(4);
   };
 
-  window.frReset = function(){
+  window.frReset = () => {
     groups = Roles.makeGroups(state.participants);
     renderGroupsHolder();
     entries = buildEntries();

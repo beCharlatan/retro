@@ -26,8 +26,11 @@ async function run() {
       await page.click('text=Показать результаты →');
       await page.waitForTimeout(150);
       const trueVal = await page.textContent('#true-value-display');
-      report.check('crowd-wisdom: default question still reveals 420 т (no regression)',
-        trueVal.trim() === '420 т', trueVal.trim());
+      report.check(
+        'crowd-wisdom: default question still reveals 420 т (no regression)',
+        trueVal.trim() === '420 т',
+        trueVal.trim(),
+      );
       await page.close();
     }
 
@@ -38,7 +41,10 @@ async function run() {
       await page.waitForTimeout(100);
 
       const panelHiddenInitially = await page.getAttribute('#custom-q-panel', 'hidden');
-      report.check('crowd-wisdom: custom-question panel starts collapsed', panelHiddenInitially !== null);
+      report.check(
+        'crowd-wisdom: custom-question panel starts collapsed',
+        panelHiddenInitially !== null,
+      );
 
       await page.click('#custom-q-toggle');
       await page.waitForTimeout(80);
@@ -49,31 +55,48 @@ async function run() {
       await page.waitForTimeout(100);
 
       const questionText = await page.textContent('#cw-question-text');
-      report.check('crowd-wisdom: instructions screen shows the custom question text',
-        questionText.includes('строк кода в нашем репозитории'), questionText);
+      report.check(
+        'crowd-wisdom: instructions screen shows the custom question text',
+        questionText.includes('строк кода в нашем репозитории'),
+        questionText,
+      );
 
       await page.click('text=Вносить данные →');
       const inputs = await page.$$('#entry-body input');
-      report.check('crowd-wisdom: entry screen still has one row per participant', inputs.length > 0);
+      report.check(
+        'crowd-wisdom: entry screen still has one row per participant',
+        inputs.length > 0,
+      );
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(40000 + i * 1000));
       await page.click('text=Показать результаты →');
       await page.waitForTimeout(150);
 
       const trueVal = await page.textContent('#true-value-display');
-      report.check('crowd-wisdom: reveal shows the custom answer + custom unit',
-        trueVal.trim() === '48000 строк', trueVal.trim());
+      report.check(
+        'crowd-wisdom: reveal shows the custom answer + custom unit',
+        trueVal.trim() === '48000 строк',
+        trueVal.trim(),
+      );
 
       const truePara = await page.textContent('#true-value-para');
-      report.check('crowd-wisdom: answer paragraph is generic (not the hardcoded ISS sentence)',
-        truePara.includes('48000 строк') && !truePara.includes('станция'), truePara.trim());
+      report.check(
+        'crowd-wisdom: answer paragraph is generic (not the hardcoded ISS sentence)',
+        truePara.includes('48000 строк') && !truePara.includes('станция'),
+        truePara.trim(),
+      );
 
       const firstRow = await page.textContent('#results-tbody tr');
-      report.check('crowd-wisdom: results table rows use the custom unit',
-        firstRow.includes('строк'), firstRow.trim());
+      report.check(
+        'crowd-wisdom: results table rows use the custom unit',
+        firstRow.includes('строк'),
+        firstRow.trim(),
+      );
 
-      const printHeader = await page.$eval('#print-header-crowd-wisdom', el => el.innerHTML);
-      report.check('crowd-wisdom: PDF subtitle uses the custom question, not the default one',
-        printHeader.includes('строк кода в нашем репозитории'));
+      const printHeader = await page.$eval('#print-header-crowd-wisdom', (el) => el.innerHTML);
+      report.check(
+        'crowd-wisdom: PDF subtitle uses the custom question, not the default one',
+        printHeader.includes('строк кода в нашем репозитории'),
+      );
 
       await page.close();
     }
@@ -91,8 +114,11 @@ async function run() {
       await page.click('#custom-q-reset');
       await page.waitForTimeout(80);
       const questionText = await page.textContent('#cw-question-text');
-      report.check('crowd-wisdom: "Вернуть стандартный" restores the ISS question',
-        questionText.includes('Международная космическая станция'), questionText);
+      report.check(
+        'crowd-wisdom: "Вернуть стандартный" restores the ISS question',
+        questionText.includes('Международная космическая станция'),
+        questionText,
+      );
       await page.close();
     }
 
@@ -102,8 +128,11 @@ async function run() {
       await page.click('text=Калибровка уверенности');
       await page.waitForTimeout(100);
       const h2 = await page.textContent('#q-heading-0');
-      report.check('calibration: default question 1 is still the Google one',
-        h2.includes('Google'), h2.trim());
+      report.check(
+        'calibration: default question 1 is still the Google one',
+        h2.includes('Google'),
+        h2.trim(),
+      );
       await page.close();
     }
 
@@ -124,9 +153,18 @@ async function run() {
       const h0 = await page.textContent('#q-heading-0');
       const h1 = await page.textContent('#q-heading-1');
       const h2 = await page.textContent('#q-heading-2');
-      report.check('calibration: question 1 stays default when only Q2 is customized', h0.includes('Google'));
-      report.check('calibration: question 2 shows the custom text', h1.includes('сотрудников в нашей компании'));
-      report.check('calibration: question 3 stays default when only Q2 is customized', h2.includes('Волга'));
+      report.check(
+        'calibration: question 1 stays default when only Q2 is customized',
+        h0.includes('Google'),
+      );
+      report.check(
+        'calibration: question 2 shows the custom text',
+        h1.includes('сотрудников в нашей компании'),
+      );
+      report.check(
+        'calibration: question 3 stays default when only Q2 is customized',
+        h2.includes('Волга'),
+      );
 
       await page.click('text=Начать вопросы →');
       await page.waitForTimeout(100);
@@ -140,8 +178,11 @@ async function run() {
         await page.waitForTimeout(100);
       }
       const reveal = await page.textContent('#answers-reveal');
-      report.check('calibration: revealed answers mix custom Q2 with default Q1/Q3',
-        reveal.includes('1998') && reveal.includes('85 человек') && reveal.includes('3530 км'), reveal.trim());
+      report.check(
+        'calibration: revealed answers mix custom Q2 with default Q1/Q3',
+        reveal.includes('1998') && reveal.includes('85 человек') && reveal.includes('3530 км'),
+        reveal.trim(),
+      );
       await page.close();
     }
 
@@ -156,8 +197,11 @@ async function run() {
       await page.waitForTimeout(80);
       const status = await page.textContent('#custom-q-status');
       const h0 = await page.textContent('#q-heading-0');
-      report.check('calibration: half-filled question slot shows a validation message, not applied',
-        status.length > 0 && h0.includes('Google'), status.trim());
+      report.check(
+        'calibration: half-filled question slot shows a validation message, not applied',
+        status.length > 0 && h0.includes('Google'),
+        status.trim(),
+      );
       await page.close();
     }
 
@@ -167,8 +211,11 @@ async function run() {
       await page.click('text=Ложный консенсус');
       await page.waitForTimeout(100);
       const qText = await page.textContent('#fc-question-text');
-      report.check('false-consensus: default question is still the presentation one (no regression)',
-        qText.includes('презентацию'), qText.trim());
+      report.check(
+        'false-consensus: default question is still the presentation one (no regression)',
+        qText.includes('презентацию'),
+        qText.trim(),
+      );
       await page.close();
     }
 
@@ -179,26 +226,41 @@ async function run() {
       await page.waitForTimeout(100);
 
       const panelHiddenInitially = await page.getAttribute('#custom-q-panel', 'hidden');
-      report.check('false-consensus: custom-question panel starts collapsed', panelHiddenInitially !== null);
+      report.check(
+        'false-consensus: custom-question panel starts collapsed',
+        panelHiddenInitially !== null,
+      );
 
       await page.click('#custom-q-toggle');
       await page.waitForTimeout(80);
       await page.click('#custom-q-apply'); // empty text -> should be rejected
       await page.waitForTimeout(80);
       const emptyStatus = await page.textContent('#custom-q-status');
-      report.check('false-consensus: applying an empty question shows a validation message',
-        emptyStatus.length > 0, emptyStatus.trim());
+      report.check(
+        'false-consensus: applying an empty question shows a validation message',
+        emptyStatus.length > 0,
+        emptyStatus.trim(),
+      );
 
-      await page.fill('#custom-q-text', 'Готовы ли вы прямо сейчас взяться за тикет без документации?');
+      await page.fill(
+        '#custom-q-text',
+        'Готовы ли вы прямо сейчас взяться за тикет без документации?',
+      );
       await page.click('#custom-q-apply');
       await page.waitForTimeout(100);
       const qText = await page.textContent('#fc-question-text');
-      report.check('false-consensus: instructions screen shows the custom question text',
-        qText.includes('тикет без документации'), qText.trim());
+      report.check(
+        'false-consensus: instructions screen shows the custom question text',
+        qText.includes('тикет без документации'),
+        qText.trim(),
+      );
 
       await page.click('text=Вносить данные →');
       const rows = await page.$$('#entry-body .entry-row');
-      report.check('false-consensus: entry screen still has one row per participant', rows.length > 0);
+      report.check(
+        'false-consensus: entry screen still has one row per participant',
+        rows.length > 0,
+      );
       for (let i = 0; i < rows.length; i++) {
         const val = i % 2 === 0 ? 'yes' : 'no';
         await (await rows[i].$(`button[data-val="${val}"]`)).click();
@@ -207,9 +269,11 @@ async function run() {
       await page.click('text=Показать результаты →');
       await page.waitForTimeout(150);
 
-      const printHeader = await page.$eval('#print-header-false-consensus', el => el.innerHTML);
-      report.check('false-consensus: PDF subtitle uses the custom question, not the default one',
-        printHeader.includes('тикет без документации'));
+      const printHeader = await page.$eval('#print-header-false-consensus', (el) => el.innerHTML);
+      report.check(
+        'false-consensus: PDF subtitle uses the custom question, not the default one',
+        printHeader.includes('тикет без документации'),
+      );
 
       await page.close();
     }
@@ -226,8 +290,11 @@ async function run() {
       await page.click('#custom-q-reset');
       await page.waitForTimeout(80);
       const qText = await page.textContent('#fc-question-text');
-      report.check('false-consensus: "Вернуть стандартный" restores the presentation question',
-        qText.includes('презентацию'), qText.trim());
+      report.check(
+        'false-consensus: "Вернуть стандартный" restores the presentation question',
+        qText.includes('презентацию'),
+        qText.trim(),
+      );
       await page.close();
     }
   });
@@ -238,5 +305,5 @@ async function run() {
 module.exports = { run };
 
 if (require.main === module) {
-  run().then(r => process.exit(r.summary() ? 0 : 1));
+  run().then((r) => process.exit(r.summary() ? 0 : 1));
 }

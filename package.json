@@ -16,11 +16,19 @@
     "test:custom-question": "bun test/run-all.js --only=custom-question",
     "test:privacy": "bun test/run-all.js --only=privacy",
     "test:chart-tip": "bun test/run-all.js --only=chart-tip",
+    "test:unit": "bun test",
     "verify": "bun run build && bun run test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "install-hooks": "bun scripts/install-hooks.js",
     "postinstall": "bun scripts/install-hooks.js"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "playwright": "^1.56.0"
+  },
+  "dependencies": {
+    "lit": "^3.3.3"
   }
 }

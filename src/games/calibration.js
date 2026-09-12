@@ -8,25 +8,28 @@
    by anchoring.js) — simpler to fill in live, one question at
    a time, same rhythm as reading questions aloud.
 ========================================================= */
-function renderCalibrationGame(){
+function renderCalibrationGame() {
   const NAMES = state.participants.slice();
   const DEFAULT_QUESTIONS = [
     { q: 'В каком году была основана компания Google?', answer: 1998, unit: '' },
     { q: 'Какова высота горы Килиманджаро, в метрах?', answer: 5895, unit: ' м' },
     { q: 'Какова длина реки Волга, в километрах?', answer: 3530, unit: ' км' },
   ];
-  let QUESTIONS = DEFAULT_QUESTIONS.map(q => ({ ...q }));
-  let entries = NAMES.map(n => ({ name:n, ranges: QUESTIONS.map(()=>({low:null, high:null})) }));
+  let QUESTIONS = DEFAULT_QUESTIONS.map((q) => ({ ...q }));
+  let entries = NAMES.map((n) => ({
+    name: n,
+    ranges: QUESTIONS.map(() => ({ low: null, high: null })),
+  }));
   let hydrated = false; // guards against overwriting a not-yet-restored draft
 
   const TOTAL_SCREENS = 3 + QUESTIONS.length; // instructions + Qn + results + context
 
-  function questionScreenHTML(qIdx){
+  function questionScreenHTML(qIdx) {
     const isLast = qIdx === QUESTIONS.length - 1;
     const nextLabel = isLast ? 'Показать результаты →' : 'Следующий вопрос →';
     return `
-      <section class="screen" id="screen-${1+qIdx}">
-        <p class="eyebrow">Вопрос ${qIdx+1} из ${QUESTIONS.length}</p>
+      <section class="screen" id="screen-${1 + qIdx}">
+        <p class="eyebrow">Вопрос ${qIdx + 1} из ${QUESTIONS.length}</p>
         <h2 id="q-heading-${qIdx}">${QUESTIONS[qIdx].q}</h2>
         <p class="lede">Для каждого — диапазон, в который он уверен на 90%, что попадёт правильный ответ.</p>
 
@@ -90,9 +93,10 @@ function renderCalibrationGame(){
         </div>
         <div class="custom-q-panel" id="custom-q-panel" hidden>
           <p class="note" style="margin:0 0 14px;">Можно заменить любой из трёх вопросов — оставьте поле пустым, чтобы оставить стандартный.</p>
-          ${QUESTIONS.map((q,i)=>`
+          ${QUESTIONS.map(
+            (q, i) => `
             <div class="custom-q-block">
-              <div class="custom-q-block-title">Вопрос ${i+1} <span class="custom-q-default-hint">по умолчанию: «${q.q}», ответ ${q.answer}${q.unit}</span></div>
+              <div class="custom-q-block-title">Вопрос ${i + 1} <span class="custom-q-default-hint">по умолчанию: «${q.q}», ответ ${q.answer}${q.unit}</span></div>
               <div class="custom-q-field">
                 <label for="custom-q-text-${i}">Текст вопроса</label>
                 <input type="text" id="custom-q-text-${i}" placeholder="${q.q}">
@@ -108,7 +112,8 @@ function renderCalibrationGame(){
                 </div>
               </div>
             </div>
-          `).join('')}
+          `,
+          ).join('')}
           <div class="custom-q-actions">
             <button type="button" class="primary" id="custom-q-apply">Применить</button>
             <button type="button" class="ghost" id="custom-q-reset" hidden>↺ Вернуть все стандартные</button>
@@ -122,9 +127,9 @@ function renderCalibrationGame(){
         </div>
       </section>
 
-      ${QUESTIONS.map((_,i)=>questionScreenHTML(i)).join('')}
+      ${QUESTIONS.map((_, i) => questionScreenHTML(i)).join('')}
 
-      <section class="screen" id="screen-${1+QUESTIONS.length}">
+      <section class="screen" id="screen-${1 + QUESTIONS.length}">
         <p class="eyebrow">Результаты</p>
         <h2>Что получилось у вашей команды</h2>
         <div class="print-header" id="print-header-calibration"></div>
@@ -143,7 +148,7 @@ function renderCalibrationGame(){
           <thead>
             <tr>
               <th>Участник</th>
-              ${QUESTIONS.map((_,i)=>`<th>В${i+1}</th>`).join('')}
+              ${QUESTIONS.map((_, i) => `<th>В${i + 1}</th>`).join('')}
               <th>Попаданий</th>
             </tr>
           </thead>
@@ -159,11 +164,11 @@ function renderCalibrationGame(){
 
         <div class="nav-row">
           <button class="ghost" onclick="calGoTo(${QUESTIONS.length})">← Назад</button>
-          <button class="primary" onclick="calGoTo(${2+QUESTIONS.length})">Что это было? →</button>
+          <button class="primary" onclick="calGoTo(${2 + QUESTIONS.length})">Что это было? →</button>
         </div>
       </section>
 
-      <section class="screen" id="screen-${2+QUESTIONS.length}">
+      <section class="screen" id="screen-${2 + QUESTIONS.length}">
         <p class="eyebrow">А теперь — контекст</p>
         <h1>Калибровка уверенности</h1>
         <p class="lede">Люди систематически переоценивают точность собственных знаний: когда просят дать 90%-й диапазон, правильный ответ попадает в него куда реже, чем в 90% случаев.</p>
@@ -199,72 +204,79 @@ function renderCalibrationGame(){
 
   Screen.wireBackHome('calibration');
 
-  Persist.offerRestore('calibration', 'draft-mount-calibration',
+  Persist.offerRestore(
+    'calibration',
+    'draft-mount-calibration',
     (p) => Array.isArray(p.entries) && p.entries.length === NAMES.length,
     (p) => {
       entries = p.entries;
-      if(p.questions){
+      if (p.questions) {
         QUESTIONS = p.questions;
         isCustomQuestions = true;
         updateQuestionDisplay();
       }
-      QUESTIONS.forEach((_,qi)=>{
+      QUESTIONS.forEach((_, qi) => {
         buildEntryRows(qi);
         updateFillProgress(qi);
       });
       calGoTo(1);
-    });
+    },
+  );
 
   let isCustomQuestions = false;
 
-  function updateQuestionDisplay(){
-    QUESTIONS.forEach((q,i)=>{
+  function updateQuestionDisplay() {
+    QUESTIONS.forEach((q, i) => {
       const el = document.getElementById('q-heading-' + i);
-      if(el) el.textContent = q.q;
+      if (el) el.textContent = q.q;
     });
   }
 
-  document.getElementById('custom-q-toggle').addEventListener('click', ()=>{
+  document.getElementById('custom-q-toggle').addEventListener('click', () => {
     const panel = document.getElementById('custom-q-panel');
     panel.hidden = !panel.hidden;
   });
 
-  document.getElementById('custom-q-apply').addEventListener('click', ()=>{
+  document.getElementById('custom-q-apply').addEventListener('click', () => {
     const statusEl = document.getElementById('custom-q-status');
     const next = DEFAULT_QUESTIONS.map((def, i) => {
       const text = document.getElementById('custom-q-text-' + i).value.trim();
       const answerRaw = document.getElementById('custom-q-answer-' + i).value;
       const unit = document.getElementById('custom-q-unit-' + i).value.trim();
-      if(!text && answerRaw === '') return { ...def }; // slot left blank — keep default
+      if (!text && answerRaw === '') return { ...def }; // slot left blank — keep default
       const answer = Number(answerRaw);
-      if(!text || answerRaw === '' || isNaN(answer)) return null; // invalid partial fill
+      if (!text || answerRaw === '' || isNaN(answer)) return null; // invalid partial fill
       return { q: text, answer: answer, unit: unit ? ' ' + unit : '' };
     });
-    if(next.some(q => q === null)){
-      statusEl.textContent = 'Для каждого заполненного вопроса нужен и текст, и числовой ответ — либо оставьте оба поля пустыми.';
+    if (next.some((q) => q === null)) {
+      statusEl.textContent =
+        'Для каждого заполненного вопроса нужен и текст, и числовой ответ — либо оставьте оба поля пустыми.';
       return;
     }
     QUESTIONS = next;
-    isCustomQuestions = next.some((q,i) => q.q !== DEFAULT_QUESTIONS[i].q || q.answer !== DEFAULT_QUESTIONS[i].answer);
+    isCustomQuestions = next.some(
+      (q, i) => q.q !== DEFAULT_QUESTIONS[i].q || q.answer !== DEFAULT_QUESTIONS[i].answer,
+    );
     updateQuestionDisplay();
     statusEl.textContent = '✓ Вопросы обновлены — используются при сборе данных и в результатах.';
     document.getElementById('custom-q-reset').hidden = false;
   });
 
-  document.getElementById('custom-q-reset').addEventListener('click', ()=>{
-    QUESTIONS = DEFAULT_QUESTIONS.map(q => ({ ...q }));
+  document.getElementById('custom-q-reset').addEventListener('click', () => {
+    QUESTIONS = DEFAULT_QUESTIONS.map((q) => ({ ...q }));
     isCustomQuestions = false;
     updateQuestionDisplay();
-    DEFAULT_QUESTIONS.forEach((_,i)=>{
+    DEFAULT_QUESTIONS.forEach((_, i) => {
       document.getElementById('custom-q-text-' + i).value = '';
       document.getElementById('custom-q-answer-' + i).value = '';
       document.getElementById('custom-q-unit-' + i).value = '';
     });
-    document.getElementById('custom-q-status').textContent = '✓ Вернули все три стандартных вопроса.';
+    document.getElementById('custom-q-status').textContent =
+      '✓ Вернули все три стандартных вопроса.';
     document.getElementById('custom-q-reset').hidden = true;
   });
 
-  function buildEntryRows(qIdx){
+  function buildEntryRows(qIdx) {
     const body = document.getElementById('entry-body-' + qIdx);
     body.innerHTML = '';
     entries.forEach((e, i) => {
@@ -278,12 +290,12 @@ function renderCalibrationGame(){
       `;
       body.appendChild(div);
     });
-    Array.from(body.querySelectorAll('input')).forEach(inp=>{
+    Array.from(body.querySelectorAll('input')).forEach((inp) => {
       inp.addEventListener('input', onEntryInput);
     });
   }
 
-  function onEntryInput(e){
+  function onEntryInput(e) {
     const idx = +e.target.dataset.idx;
     const qIdx = +e.target.dataset.q;
     const field = e.target.dataset.field;
@@ -292,74 +304,85 @@ function renderCalibrationGame(){
     updateFillProgress(qIdx);
   }
 
-  function updateFillProgress(qIdx){
-    const filled = entries.filter(e => {
+  function updateFillProgress(qIdx) {
+    const filled = entries.filter((e) => {
       const r = e.ranges[qIdx];
       return r.low !== null && r.high !== null;
     }).length;
     Screen.updateProgress('-' + qIdx, filled, NAMES.length, 'next-btn-' + qIdx, 2);
-    if(hydrated){
+    if (hydrated) {
       Persist.save('calibration', {
         entries: entries,
-        questions: isCustomQuestions ? QUESTIONS : null
+        questions: isCustomQuestions ? QUESTIONS : null,
       });
     }
   }
 
-  window.calGoTo = function(screenIdx){
+  window.calGoTo = (screenIdx) => {
     Screen.goTo(screenIdx);
   };
 
-  window.calNext = function(qIdx){
-    if(qIdx === QUESTIONS.length - 1){
+  window.calNext = (qIdx) => {
+    if (qIdx === QUESTIONS.length - 1) {
       calShowResults();
     } else {
       calGoTo(2 + qIdx);
     }
   };
 
-  window.calShowResults = function(){
-    const hitsPerQuestion = QUESTIONS.map(()=>0);
-    let totalHits = 0, totalAnswered = 0;
+  window.calShowResults = () => {
+    const hitsPerQuestion = QUESTIONS.map(() => 0);
+    let totalHits = 0,
+      totalAnswered = 0;
 
-    entries.forEach(e=>{
-      QUESTIONS.forEach((q,qi)=>{
+    entries.forEach((e) => {
+      QUESTIONS.forEach((q, qi) => {
         const r = e.ranges[qi];
-        if(r.low === null || r.high === null) return;
-        const lo = Math.min(r.low, r.high), hi = Math.max(r.low, r.high);
+        if (r.low === null || r.high === null) return;
+        const lo = Math.min(r.low, r.high),
+          hi = Math.max(r.low, r.high);
         const hit = q.answer >= lo && q.answer <= hi;
-        if(hit){ hitsPerQuestion[qi]++; totalHits++; }
+        if (hit) {
+          hitsPerQuestion[qi]++;
+          totalHits++;
+        }
         totalAnswered++;
       });
     });
 
-    document.getElementById('hit-rate').textContent =
-      totalAnswered ? Math.round(totalHits/totalAnswered*100) + '%' : '—';
+    document.getElementById('hit-rate').textContent = totalAnswered
+      ? Math.round((totalHits / totalAnswered) * 100) + '%'
+      : '—';
 
     const statsEl = document.getElementById('per-question-stats');
-    statsEl.innerHTML = QUESTIONS.map((q,qi)=>{
-      const answered = entries.filter(e=>e.ranges[qi].low!==null && e.ranges[qi].high!==null).length;
-      const pct = answered ? Math.round(hitsPerQuestion[qi]/answered*100) : 0;
-      return `<div class="stat"><div class="n">${pct}%</div><div class="lab">попаданий в вопросе ${qi+1}</div></div>`;
+    statsEl.innerHTML = QUESTIONS.map((q, qi) => {
+      const answered = entries.filter(
+        (e) => e.ranges[qi].low !== null && e.ranges[qi].high !== null,
+      ).length;
+      const pct = answered ? Math.round((hitsPerQuestion[qi] / answered) * 100) : 0;
+      return `<div class="stat"><div class="n">${pct}%</div><div class="lab">попаданий в вопросе ${qi + 1}</div></div>`;
     }).join('');
 
     document.getElementById('answers-reveal').textContent =
-      'Правильные ответы: ' + QUESTIONS.map((q,i)=>`(${i+1}) ${q.answer}${q.unit}`).join(' · ');
+      'Правильные ответы: ' +
+      QUESTIONS.map((q, i) => `(${i + 1}) ${q.answer}${q.unit}`).join(' · ');
 
     const tbody = document.getElementById('results-tbody');
     tbody.innerHTML = '';
-    entries.forEach(e=>{
-      let hits = 0, answered = 0;
-      const cells = QUESTIONS.map((q,qi)=>{
+    entries.forEach((e) => {
+      let hits = 0,
+        answered = 0;
+      const cells = QUESTIONS.map((q, qi) => {
         const r = e.ranges[qi];
-        if(r.low === null || r.high === null) return '<td>—</td>';
+        if (r.low === null || r.high === null) return '<td>—</td>';
         answered++;
-        const lo = Math.min(r.low, r.high), hi = Math.max(r.low, r.high);
+        const lo = Math.min(r.low, r.high),
+          hi = Math.max(r.low, r.high);
         const hit = q.answer >= lo && q.answer <= hi;
-        if(hit) hits++;
+        if (hit) hits++;
         return `<td>${hit ? '✓' : '✕'}</td>`;
       }).join('');
-      const pctText = answered ? Math.round(hits/answered*100)+'%' : '—';
+      const pctText = answered ? Math.round((hits / answered) * 100) + '%' : '—';
       const tr = document.createElement('tr');
       tr.innerHTML = `<td class="name">${avatarName(e.name)}</td>${cells}<td>${pctText}</td>`;
       tbody.appendChild(tr);
@@ -369,15 +392,19 @@ function renderCalibrationGame(){
       title: 'Калибровка уверенности',
       subtitle: 'Уверены на 90%? Реальное попадание обычно куда ниже.',
       meta: Print.meta(entries.length),
-      explanation: 'Люди систематически переоценивают точность собственных знаний: если попросить 90%-й доверительный интервал, правильный ответ на деле попадает в него заметно реже, чем в 90% случаев. Классическая работа — Alpert M., Raiffa H. (1982) в сборнике Kahneman, Slovic, Tversky «Judgment Under Uncertainty».'
+      explanation:
+        'Люди систематически переоценивают точность собственных знаний: если попросить 90%-й доверительный интервал, правильный ответ на деле попадает в него заметно реже, чем в 90% случаев. Классическая работа — Alpert M., Raiffa H. (1982) в сборнике Kahneman, Slovic, Tversky «Judgment Under Uncertainty».',
     });
 
     calGoTo(1 + QUESTIONS.length);
   };
 
-  window.calReset = function(){
-    entries = NAMES.map(n => ({ name:n, ranges: QUESTIONS.map(()=>({low:null, high:null})) }));
-    QUESTIONS.forEach((_,qi)=>{
+  window.calReset = () => {
+    entries = NAMES.map((n) => ({
+      name: n,
+      ranges: QUESTIONS.map(() => ({ low: null, high: null })),
+    }));
+    QUESTIONS.forEach((_, qi) => {
       buildEntryRows(qi);
       updateFillProgress(qi);
     });
@@ -385,7 +412,7 @@ function renderCalibrationGame(){
     Persist.clear('calibration');
   };
 
-  QUESTIONS.forEach((_,qi)=>{
+  QUESTIONS.forEach((_, qi) => {
     buildEntryRows(qi);
     updateFillProgress(qi);
   });

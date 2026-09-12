@@ -51,7 +51,7 @@
    (these games have 5 screens instead of 4: instructions →
    roles → data entry → results → context).
 ========================================================= */
-const Roles = (function () {
+const Roles = (() => {
   // Fisher–Yates shuffle — returns a new array, does not mutate input.
   function shuffle(arr) {
     const a = arr.slice();
@@ -115,7 +115,8 @@ const Roles = (function () {
   // name isn't found (e.g. the odd-one-out observer).
   function swapInPairs(pairs, nameX, nameY) {
     if (nameX === nameY) return;
-    let posX = null, posY = null;
+    let posX = null,
+      posY = null;
     pairs.forEach((p, i) => {
       if (p.a === nameX) posX = { i, side: 'a' };
       if (p.b === nameX) posX = { i, side: 'b' };
@@ -181,9 +182,10 @@ const Roles = (function () {
         </div>`;
     });
     html += '</div>';
-    html += '<p class="note swap-hint">Нажмите на двух участников по очереди, чтобы поменять их местами.</p>';
-    const trioNames = pairs.filter(p => p.trio).map(p => p.a);
-    const trioUnique = [...new Set(trioNames.concat(pairs.filter(p => p.trio).map(p => p.b)))];
+    html +=
+      '<p class="note swap-hint">Нажмите на двух участников по очереди, чтобы поменять их местами.</p>';
+    const trioNames = pairs.filter((p) => p.trio).map((p) => p.a);
+    const trioUnique = [...new Set(trioNames.concat(pairs.filter((p) => p.trio).map((p) => p.b)))];
     if (trioUnique.length === 3) {
       html += `<p class="note">🔺 Нечётное число участников — ${trioUnique.join(', ')} играют трио по кругу вместо пары: каждый сыграет дважды, с двумя разными партнёрами, но зато без исключений.</p>`;
     } else if (observer) {
@@ -199,7 +201,12 @@ const Roles = (function () {
     const labelA = opts.labelA || 'Группа А';
     const labelB = opts.labelB || 'Группа Б';
     function chips(list) {
-      return list.map((n) => `<button type="button" class="role-chip" data-swap-name="${n}">${avatarName(n)}</button>`).join('');
+      return list
+        .map(
+          (n) =>
+            `<button type="button" class="role-chip" data-swap-name="${n}">${avatarName(n)}</button>`,
+        )
+        .join('');
     }
     return `
       <div class="role-groups">
@@ -264,7 +271,16 @@ const Roles = (function () {
   }
 
   return {
-    shuffle, makePairs, makeGroups, swapInPairs, swapInGroups,
-    dotsHTML, pairsHTML, groupsHTML, bindShuffle, bindPairSwap, bindGroupSwap,
+    shuffle,
+    makePairs,
+    makeGroups,
+    swapInPairs,
+    swapInGroups,
+    dotsHTML,
+    pairsHTML,
+    groupsHTML,
+    bindShuffle,
+    bindPairSwap,
+    bindGroupSwap,
   };
 })();
