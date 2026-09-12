@@ -13,7 +13,7 @@ import './games/barnum.js'; // side effect: customElements.define('retro-game-ba
 import { renderCalibrationGame } from './games/calibration.js';
 import './games/crowd-wisdom.js'; // side effect: customElements.define('retro-game-crowd-wisdom', ...)
 import './games/dictator.js'; // side effect: customElements.define('retro-game-dictator', ...)
-import { renderEndowmentGame } from './games/endowment.js';
+import './games/endowment.js'; // side effect: customElements.define('retro-game-endowment', ...)
 import './games/false-consensus.js'; // side effect: customElements.define('retro-game-false-consensus', ...)
 import { renderFramingGame } from './games/framing.js';
 import { renderPlanningFallacyGame } from './games/planning-fallacy.js';
@@ -40,7 +40,7 @@ const GAME_RENDERERS = {
   'planning-fallacy': () => renderPlanningFallacyGame(),
   ultimatum: () => mountElement('retro-game-ultimatum'),
   'prisoners-dilemma': () => mountElement('retro-game-prisoners-dilemma'),
-  endowment: () => renderEndowmentGame(),
+  endowment: () => mountElement('retro-game-endowment'),
   framing: () => renderFramingGame(),
   calibration: () => renderCalibrationGame(),
 };
