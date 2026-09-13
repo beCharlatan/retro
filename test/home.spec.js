@@ -96,7 +96,7 @@ async function run() {
       await page.waitForTimeout(100);
       const title = await page.textContent('.crumb-current').catch(() => null);
       if (title) seen.add(title.trim());
-      await page.click('text=← Все игры');
+      await page.click('button:has-text("Все игры")');
       await page.waitForTimeout(80);
       await page.click('text=Экономика / теория игр');
       await page.waitForTimeout(60);

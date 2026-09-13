@@ -28,6 +28,7 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { ICON_CHEVRON_DOWN, ICON_X } from './icons.js';
 import { openGame } from './router.js';
 import { app, avatarHTML, CATEGORY, GAMES, STRUCTURE, state } from './state.js';
 import { sharedStyles } from './styles/shared-styles.js';
@@ -154,7 +155,7 @@ export class RetroHome extends LitElement {
           }}
         >
           <span class="toggle-label">${teaserOpen ? 'Скрыть' : 'Что это?'}</span>
-          <span class="chev">▾</span>
+          <span class="chev">${unsafeHTML(ICON_CHEVRON_DOWN)}</span>
         </button>
         <p class="teaser" ?hidden=${!teaserOpen}>${g.teaser}</p>
         <div class="meta">
@@ -201,7 +202,7 @@ export class RetroHome extends LitElement {
                     aria-label="Удалить ${name}"
                     @click=${() => this._removeParticipant(i)}
                   >
-                    ×
+                    ${unsafeHTML(ICON_X)}
                   </button>
                 </span>
               `,

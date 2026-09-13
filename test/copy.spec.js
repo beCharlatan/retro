@@ -24,9 +24,9 @@ async function run() {
       page.on('pageerror', (e) => errors.push(String(e)));
       await page.goto(DIST_URL);
       await page.click('text=Эффект фрейминга');
-      await page.click('text=Распределить группы →');
+      await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(100);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(120);
 
       const aHidden = await page.getAttribute('#text-a', 'hidden');

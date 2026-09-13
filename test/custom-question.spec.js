@@ -20,10 +20,10 @@ async function run() {
       const page = await openPage(browser, report);
       await page.click('text=Мудрость толпы');
       await page.waitForTimeout(100);
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('#entry-body input');
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(400 + i * 5));
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(150);
       const trueVal = await page.textContent('#true-value-display');
       report.check(
@@ -61,14 +61,14 @@ async function run() {
         questionText,
       );
 
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('#entry-body input');
       report.check(
         'crowd-wisdom: entry screen still has one row per participant',
         inputs.length > 0,
       );
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(40000 + i * 1000));
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(150);
 
       const trueVal = await page.textContent('#true-value-display');
@@ -166,7 +166,7 @@ async function run() {
         h2.includes('Волга'),
       );
 
-      await page.click('text=Начать вопросы →');
+      await page.click('button:has-text("Начать вопросы")');
       await page.waitForTimeout(100);
       for (let q = 0; q < 3; q++) {
         const inputs = await page.$$('.screen.active input');
@@ -255,7 +255,7 @@ async function run() {
         qText.trim(),
       );
 
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const rows = await page.$$('#entry-body .entry-row');
       report.check(
         'false-consensus: entry screen still has one row per participant',
@@ -266,7 +266,7 @@ async function run() {
         await (await rows[i].$(`button[data-val="${val}"]`)).click();
         await (await rows[i].$('input')).fill(String(40 + i));
       }
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(150);
 
       const printHeader = await page.$eval('#print-header-false-consensus', (el) => el.innerHTML);

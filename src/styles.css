@@ -17,6 +17,7 @@
   --panel: #fafafa; /* Light gray 1 — слегка утопленная поверхность */
   --surface: #f2f2f2; /* Light gray 2 — заливка инпутов/селектов/свитчей/кнопки Default */
   --line: #e0e0e0; /* Light gray 4 — единственный цвет обводки во всём ките */
+  --avatar-ring: #eeeeee; /* grayLight2 — тонкая обводка вокруг аватара в Collaborator token */
   --ink-faint: #757575; /* Light — приглушённый текст, uppercase-лейблы */
   --ink-soft: #424242; /* Dark gray 2 — текст средней яркости (селект/свитч) */
   --ink: #333333; /* Dark — основной текст, подпись кнопок */
@@ -92,6 +93,17 @@ body {
 
 .mono {
   font-family: ui-monospace, "SFMono-Regular", monospace;
+}
+/* Служебные глифы кита (src/icons.js) — стрелки навигации, шеврон,
+     буфер обмена, крестик. Масштабируются с окружающим текстом (1em)
+     и красятся в его цвет (currentColor в самом SVG), поэтому не
+     нужны отдельные размеры/цвета под каждый контекст использования. */
+.icon-inline {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.125em;
+  flex: none;
 }
 a {
   color: inherit;
@@ -313,36 +325,40 @@ button.ghost:hover {
   gap: 8px;
   margin-bottom: 16px;
 }
-/* "Collaborator token" кита: пилюля сплошного Light-gray-2, аватар
-     встык к скруглённому левому краю, имя тёмным текстом — без
-     обводки и без тени (кит вообще не использует тени на токенах). */
+/* "Collaborator token" кита (Figma-узел 1268:796), точные размеры:
+     пилюля Light-gray-2, аватар 22px встык к скруглённому левому
+     краю с тонкой обводкой grayLight2, 4px до имени, 8px после —
+     без обводки самой пилюли и без тени (кит вообще не использует
+     тени на токенах). У кита здесь настоящее фото участника, нам
+     взять неоткуда — инициалы на цветном круге, стандартный fallback
+     (см. avatarInitial() в state.js), поэтому кольцо вокруг аватара
+     всё же оставлено (в ките оно обрамляет фото). */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   background: var(--surface);
   border-radius: 999px;
-  padding: 5px 9px 5px 5px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 2px 8px 2px 2px;
+  font-size: 13px;
   color: var(--ink);
   transition: background 0.15s var(--ease);
 }
 .chip:hover {
   background: var(--line);
 }
-/* Инициалы на цветном круге — у кита здесь настоящее фото участника,
-     нам взять неоткуда, инициалы — стандартный fallback (см.
-     avatarInitial() в state.js). */
+.chip .avatar {
+  border: 1px solid var(--avatar-ring);
+}
 .avatar {
   flex: none;
-  width: 25px;
-  height: 25px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: #fff;
   line-height: 1;
@@ -622,23 +638,25 @@ button.ghost:hover {
   font-weight: 400;
 }
 
-/* Кнопка случайной игры — как Button/Default */
+/* Случайная игра / перемешать пары-группы — как Text button кита
+     (711:14397): без фона и рамки, синий Semibold-текст (вариант
+     Default). Второстепенное действие рядом с основным CTA экрана,
+     поэтому не оформлено как обычная кнопка. */
 button.shuffle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
   font-size: 13px;
-  padding: 7px 14px;
-  border-radius: var(--radius);
+  padding: 0;
   border: none;
-  background: var(--surface);
-  color: var(--ink);
+  background: none;
+  color: var(--blue);
   cursor: pointer;
-  transition: background 0.16s var(--ease);
+  transition: color 0.16s var(--ease);
 }
 button.shuffle-btn:hover {
-  background: var(--line);
+  color: var(--blue-deep);
 }
 button.shuffle-btn .dice {
   display: inline-block;
@@ -1155,9 +1173,23 @@ table.results-table td.name {
 .custom-q-toggle-row {
   margin: 20px 0 0;
 }
-.custom-q-toggle-row button {
+/* "Свой вопрос" / "Вернуть стандартный" — Text button кита (711:14397),
+     не обычная кнопка: второстепенная настройка, не основное CTA. */
+.custom-q-toggle-row button,
+#custom-q-reset {
   font-size: 13px;
-  padding: 7px 14px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s var(--ease);
+}
+.custom-q-toggle-row button:hover,
+#custom-q-reset:hover {
+  background: none;
+  color: var(--blue-deep);
 }
 .custom-q-panel {
   margin-top: 12px;
@@ -1692,12 +1724,15 @@ table.results-table td.name {
 .draft-actions .draft-restore:hover {
   background: #b83e1c;
 }
+/* "Не сейчас" — Text button кита, вариант Dark (#424242): второстепенный
+     дисмисс рядом с основным действием "Восстановить". */
 .draft-actions .draft-discard {
-  background: var(--surface);
+  background: none;
+  padding: 6px 0;
   color: var(--ink-soft);
 }
 .draft-actions .draft-discard:hover {
-  background: var(--line);
+  background: none;
   color: var(--ink);
 }
 

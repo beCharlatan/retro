@@ -17,7 +17,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Ультиматум');
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
       const before = await page.$$eval('.role-pair-name', (els) => els.map((e) => e.textContent));
@@ -72,7 +72,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Эффект владения');
-      await page.click('text=Распределить группы →');
+      await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(120);
 
       const aBefore = await page.$$eval('.role-group-a .role-chip', (els) =>

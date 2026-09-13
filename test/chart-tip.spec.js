@@ -35,14 +35,14 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('[data-testid="entry-body"] input');
       const vals = [
         12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29, 60, 40, 25,
         30, 33, 33,
       ];
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(vals[i]));
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
 
       const noTooltipYet = await page.isVisible('.chart-tooltip.visible').catch(() => false);
       report.check('anchoring: no tooltip visible before hovering anything', !noTooltipYet);
@@ -69,10 +69,10 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Мудрость толпы');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('#entry-body input');
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(300 + i * 30));
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
 
       await hoverHitCircle(page, '#cw-chart circle');
       const html = await page.innerHTML('.chart-tooltip');
@@ -89,7 +89,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Игра диктатора');
-      await page.click('text=Раунд 1 →');
+      await page.click('button:has-text("Раунд 1")');
       // data-testid, not id — dictator is a Shadow DOM Lit component
       // (docs/modernization-plan.md Phase 2); Playwright's CSS engine
       // pierces open shadow roots for these the same as for ids/classes.

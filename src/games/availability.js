@@ -14,6 +14,7 @@
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { renderHome } from '../home.js';
+import { ICON_CLIPBOARD, ICON_LEFT, ICON_RIGHT } from '../icons.js';
 import { Persist, timeAgo } from '../persist.js';
 import { Print } from '../print.js';
 import { avatarName, state } from '../state.js';
@@ -179,7 +180,7 @@ export class RetroGameAvailability extends LitElement {
   _questionScreen(qIdx) {
     const q = QUESTIONS[qIdx];
     const isLast = qIdx === QUESTIONS.length - 1;
-    const nextLabel = isLast ? 'Показать результаты →' : 'Следующий вопрос →';
+    const nextLabel = isLast ? 'Показать результаты' : 'Следующий вопрос';
     const filled = this._filledCount(qIdx);
     return html`
       <section class="screen ${this.screenIdx === 1 + qIdx ? 'active' : ''}">
@@ -228,14 +229,14 @@ export class RetroGameAvailability extends LitElement {
         </div>
 
         <div class="nav-row">
-          <button class="ghost" @click=${() => this.goTo(qIdx)}>← Назад</button>
+          <button class="ghost" @click=${() => this.goTo(qIdx)}>${unsafeHTML(ICON_LEFT)} Назад</button>
           <button
             class="primary"
             id="next-btn-${qIdx}"
             ?disabled=${filled < 2}
             @click=${() => this._next(qIdx)}
           >
-            ${nextLabel}
+            ${nextLabel} ${unsafeHTML(ICON_RIGHT)}
           </button>
         </div>
       </section>
@@ -248,7 +249,7 @@ export class RetroGameAvailability extends LitElement {
     return html`
       <div class="wrap narrow">
         <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>← Все игры</button>
+          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
           <span class="crumb-sep">/</span>
           <span class="crumb-current">Эвристика доступности</span>
         </div>
@@ -274,7 +275,7 @@ export class RetroGameAvailability extends LitElement {
                 ? html`
                   <div class="draft-banner">
                     <span class="draft-text"
-                      >📋 Есть незавершённая попытка (${timeAgo(this.draft.savedAt)}) — продолжить
+                      >${unsafeHTML(ICON_CLIPBOARD)} Есть незавершённая попытка (${timeAgo(this.draft.savedAt)}) — продолжить
                       с того места?</span
                     >
                     <span class="draft-actions">
@@ -312,7 +313,7 @@ export class RetroGameAvailability extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Начать вопросы →</button>
+            <button class="primary" @click=${() => this.goTo(1)}>Начать вопросы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
         </section>
 
@@ -405,9 +406,9 @@ export class RetroGameAvailability extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(QUESTIONS.length)}>← Назад</button>
+            <button class="ghost" @click=${() => this.goTo(QUESTIONS.length)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button class="primary" @click=${() => this.goTo(2 + QUESTIONS.length)}>
-              Что это было? →
+              Что это было? ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
         </section>

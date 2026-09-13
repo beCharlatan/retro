@@ -30,7 +30,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       await page.waitForTimeout(100);
       const inputs = await page.$$('[data-testid="entry-body"] input');
 
@@ -78,7 +78,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('[data-testid="entry-body"] input');
       await inputs[0].fill('42');
       await inputs[1].fill('30');
@@ -102,7 +102,7 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Ложный консенсус');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       await page.waitForTimeout(100);
       const rows = await page.$$('#entry-body .entry-row');
       const yesBtn = await rows[0].$('button[data-val="yes"]');
@@ -137,9 +137,9 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Дилемма заключённого');
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(100);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(100);
       const card = await page.$('.pair-entry-card');
       const coopBtn = await card.$('button[data-val="C"]');
@@ -158,13 +158,13 @@ async function run() {
     {
       const page = await openPage(browser, report);
       await page.click('text=Эффект якоря');
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('[data-testid="entry-body"] input');
       for (let i = 0; i < inputs.length; i += 2) {
         await inputs[i].fill('20');
         await inputs[i + 1].fill('30');
       }
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(200);
       const hasInputsInTable = await page.$$eval('#results-table input', (els) => els.length);
       report.check(

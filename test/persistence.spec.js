@@ -75,7 +75,7 @@ async function run() {
         report.check(`${game.name}: restore repopulates the form`, restoredSomething);
 
         // --- discard path: fill again, reload, discard, confirm gone for good ---
-        await page.click('text=← Все игры');
+        await page.click('button:has-text("Все игры")');
         await page.waitForTimeout(80);
         await page.click(`text=${game.name}`);
         await page.waitForTimeout(80);

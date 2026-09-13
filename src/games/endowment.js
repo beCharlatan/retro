@@ -16,6 +16,7 @@
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { renderHome } from '../home.js';
+import { ICON_CLIPBOARD, ICON_LEFT, ICON_RIGHT } from '../icons.js';
 import { Persist, timeAgo } from '../persist.js';
 import { Print } from '../print.js';
 import { Roles } from '../roles.js';
@@ -253,7 +254,7 @@ export class RetroGameEndowment extends LitElement {
     return html`
       <div class="wrap narrow">
         <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>← Все игры</button>
+          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
           <span class="crumb-sep">/</span>
           <span class="crumb-current">Эффект владения</span>
         </div>
@@ -282,7 +283,7 @@ export class RetroGameEndowment extends LitElement {
                 ? html`
                   <div class="draft-banner">
                     <span class="draft-text"
-                      >📋 Есть незавершённая попытка (${timeAgo(this.draft.savedAt)}) — продолжить
+                      >${unsafeHTML(ICON_CLIPBOARD)} Есть незавершённая попытка (${timeAgo(this.draft.savedAt)}) — продолжить
                       с того места?</span
                     >
                     <span class="draft-actions">
@@ -327,7 +328,7 @@ export class RetroGameEndowment extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Распределить группы →</button>
+            <button class="primary" @click=${() => this.goTo(1)}>Распределить группы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
         </section>
 
@@ -345,8 +346,8 @@ export class RetroGameEndowment extends LitElement {
           </button>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>← Назад</button>
-            <button class="primary" @click=${() => this._lockGroups()}>Дальше →</button>
+            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this._lockGroups()}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
         </section>
 
@@ -365,14 +366,14 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>← Назад</button>
+            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-1"
               ?disabled=${filled1 < 2}
               @click=${() => this.goTo(3)}
             >
-              Раунд 2 — роли наоборот →
+              Раунд 2 — роли наоборот ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
         </section>
@@ -392,14 +393,14 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>← Назад</button>
+            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-2"
               ?disabled=${filled2 < 2}
               @click=${() => this._showResults()}
             >
-              Показать результаты →
+              Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
         </section>
@@ -462,8 +463,8 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(3)}>← Назад</button>
-            <button class="primary" @click=${() => this.goTo(5)}>Что это было? →</button>
+            <button class="ghost" @click=${() => this.goTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.goTo(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
         </section>
 

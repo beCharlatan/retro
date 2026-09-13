@@ -46,7 +46,7 @@ async function run() {
       const expectedInputs = expectedCards * 2;
 
       await page.click('text=Ультиматум');
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
       const totalCards = await page.$$eval('.role-pair-card', (els) => els.length);
@@ -83,7 +83,7 @@ async function run() {
         JSON.stringify(counts),
       );
 
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(120);
       const roundInputs = await page.$$('#entry-body-1 input');
       report.check(
@@ -126,7 +126,7 @@ async function run() {
       const expectedCards = (n - 3) / 2 + 3;
 
       await page.click('text=Дилемма заключённого');
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
       const trioCards = await page.$$eval('.role-pair-card.role-pair-trio', (els) => els.length);
@@ -136,7 +136,7 @@ async function run() {
         `got ${trioCards}`,
       );
 
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(120);
       const cards1 = await page.$$('#entry-body-1 .pair-entry-card');
       report.check(
@@ -158,7 +158,7 @@ async function run() {
         `got ${recapRows}`,
       );
 
-      await page.click('text=Раунд 2 →');
+      await page.click('button:has-text("Раунд 2")');
       await page.waitForTimeout(120);
       const cards2 = await page.$$('#entry-body-2 .pair-entry-card');
       report.check(
@@ -190,7 +190,7 @@ async function run() {
       const expectedCards = n / 2;
 
       await page.click('text=Ультиматум');
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
       const trioCards = await page.$$eval('.role-pair-card.role-pair-trio', (els) => els.length);
       report.check(

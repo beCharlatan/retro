@@ -18,7 +18,7 @@ const GAMES = [
     id: 'anchoring',
     name: 'Эффект якоря',
     async toEntryScreen(page) {
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('[data-testid="entry-body"] input');
@@ -31,7 +31,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -42,7 +42,7 @@ const GAMES = [
     id: 'crowd-wisdom',
     name: 'Мудрость толпы',
     async toEntryScreen(page) {
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
@@ -51,7 +51,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -70,7 +70,7 @@ const GAMES = [
     // consistent hook going forward). Playwright's CSS engine pierces
     // open shadow roots automatically for these, same as for ids/classes.
     async toEntryScreen(page) {
-      await page.click('text=Раунд 1 →');
+      await page.click('button:has-text("Раунд 1")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('[data-testid="entry-body-1"] input');
@@ -97,7 +97,7 @@ const GAMES = [
     // Shadow DOM Lit component (docs/modernization-plan.md Phase 3) —
     // data-testid instead of id, same as dictator's pilot.
     async toEntryScreen(page) {
-      await page.click('text=Раунд 1 →');
+      await page.click('button:has-text("Раунд 1")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('[data-testid="entry-body-1"] input');
@@ -121,7 +121,7 @@ const GAMES = [
     id: 'false-consensus',
     name: 'Ложный консенсус',
     async toEntryScreen(page) {
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body .entry-row');
@@ -134,7 +134,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -145,7 +145,7 @@ const GAMES = [
     id: 'barnum',
     name: 'Эффект Барнума',
     async toEntryScreen(page) {
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
@@ -154,7 +154,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -166,7 +166,7 @@ const GAMES = [
     name: 'Эвристика доступности',
     multiScreen: true,
     async toEntryScreen(page) {
-      await page.click('text=Начать вопросы →');
+      await page.click('button:has-text("Начать вопросы")');
     },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body-0 .entry-row');
@@ -195,7 +195,7 @@ const GAMES = [
     id: 'planning-fallacy',
     name: 'Ошибка планирования',
     async toEntryScreen(page) {
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body input');
@@ -208,7 +208,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -220,7 +220,7 @@ const GAMES = [
     name: 'Калибровка уверенности',
     multiScreen: true,
     async toEntryScreen(page) {
-      await page.click('text=Начать вопросы →');
+      await page.click('button:has-text("Начать вопросы")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-0 input');
@@ -260,9 +260,9 @@ const GAMES = [
     hasRoles: true,
     multiScreen: true,
     async toEntryScreen(page) {
-      await page.click('text=Распределить группы →');
+      await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(80);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-1 input');
@@ -287,11 +287,11 @@ const GAMES = [
     name: 'Эффект фрейминга',
     hasRoles: true,
     async toEntryScreen(page) {
-      await page.click('text=Распределить группы →');
+      await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(80);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(80);
-      await page.click('text=Вносить данные →');
+      await page.click('button:has-text("Вносить данные")');
     },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body .team-entry-card');
@@ -300,7 +300,7 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
-      await page.click('text=Показать результаты →');
+      await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -313,9 +313,9 @@ const GAMES = [
     hasRoles: true,
     multiScreen: true,
     async toEntryScreen(page) {
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(80);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
     },
     async fill(page, opts = {}) {
       const cards = await page.$$('#entry-body-1 .pair-entry-card');
@@ -330,7 +330,7 @@ const GAMES = [
     async toResults(page) {
       await page.click('#next-btn-1');
       await page.waitForTimeout(80);
-      await page.click('text=Раунд 2 →');
+      await page.click('button:has-text("Раунд 2")');
       await page.waitForTimeout(80);
       const cards = await page.$$('#entry-body-2 .pair-entry-card');
       for (const c of cards) {
@@ -351,9 +351,9 @@ const GAMES = [
     hasRoles: true,
     multiScreen: true,
     async toEntryScreen(page) {
-      await page.click('text=Распределить пары →');
+      await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(80);
-      await page.click('text=Дальше →');
+      await page.click('button:has-text("Дальше")');
     },
     async fill(page, opts = {}) {
       const inputs = await page.$$('#entry-body-1 input');

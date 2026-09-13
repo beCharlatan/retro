@@ -58,7 +58,7 @@ async function run() {
           contextH1,
         );
 
-        await page.click('text=← Все игры');
+        await page.click('button:has-text("Все игры")');
         await page.waitForTimeout(80);
         const home = await page.textContent('h1').catch(() => '');
         report.check(
