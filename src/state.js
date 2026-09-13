@@ -32,20 +32,23 @@ export const state = {
   structureFilter: 'all',
 };
 
+// color/pillBg точно повторяют Choice-токен кита для своего оттенка:
+// pillBg — фон Light2, color — заданный в ките (не производный)
+// тёмный текст поверх именно этого фона. См. --*-on-light2 в styles.css.
 export const CATEGORY = {
   cognitive: {
     label: 'Когнитивные искажения',
-    color: 'var(--blue-deep)',
+    color: 'var(--blue-on-light2)',
     pillBg: 'var(--blue-soft)',
   },
   econ: {
     label: 'Экономика / теория игр',
-    color: 'var(--orange-deep)',
+    color: 'var(--orange-on-light2)',
     pillBg: 'var(--orange-soft)',
   },
   social: {
     label: 'Социальная психология',
-    color: 'var(--purple-deep)',
+    color: 'var(--purple-on-light2)',
     pillBg: 'var(--purple-soft)',
   },
 };

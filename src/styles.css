@@ -1,59 +1,57 @@
 /* =====================================================
      5 минут общего развития — визуальная система
-     Направление: переосмыслено по мотивам "Airtable Apps UI Kit"
-     (community-кит для кастомных приложений на Airtable, см.
-     docs/modernization-plan.md, раздел "Airtable-kit редизайн"):
-     чистые карточки на светлом нейтральном фоне, один
-     гротескный шрифт везде вместо антиквы+моно, скруглённые
-     кнопки трёх видов, цветные лейблы-пилюли для категорий,
-     плоские мягкие тени вместо "бумажного" тиснения. Оговорка:
-     токены ниже подобраны по скриншотам кита, а не выгружены
-     из Figma один-в-один (см. ту же секцию плана) — это
-     стилизация "в духе", а не точные значения дизайнера.
+     Источник: "Airtable Apps UI Kit" (Figma community), на этот раз
+     — точные значения, выгруженные через Figma Dev Mode MCP
+     (get_variable_defs/get_design_context на файле с реальным
+     доступом), а не подобранные на глаз по скриншотам (см.
+     docs/modernization-plan.md, раздел "Airtable-kit редизайн:
+     точные токены"). Кит собран на настоящей палитре продукта
+     Airtable (9 акцентных оттенков × 5 тонов) и системном шрифте
+     Apple (SF Pro Text/Display) — здесь это system-ui/-apple-system,
+     т.к. сам шрифт SF Pro нельзя подключить как веб-фонт.
   ===================================================== */
 :root {
-  /* Чернила и фон */
-  --ink: #1d1f24;
-  --ink-soft: #5f6b76;
-  --ink-faint: #8a94a1;
-  --bg: #f6f7f9;
-  --line: #e3e6ea;
-  --line-strong: #d2d7dd;
-  --panel: #fafbfc;
+  /* Нейтральные — дословно "Light gray 1..4" / "Light" / "Dark gray 2"
+       / "Dark" из Figma-токенов кита */
   --white: #ffffff;
+  --panel: #fafafa; /* Light gray 1 — слегка утопленная поверхность */
+  --surface: #f2f2f2; /* Light gray 2 — заливка инпутов/селектов/свитчей/кнопки Default */
+  --line: #e0e0e0; /* Light gray 4 — единственный цвет обводки во всём ките */
+  --ink-faint: #757575; /* Light — приглушённый текст, uppercase-лейблы */
+  --ink-soft: #424242; /* Dark gray 2 — текст средней яркости (селект/свитч) */
+  --ink: #333333; /* Dark — основной текст, подпись кнопок */
 
-  /* Основной акцент — синий (кнопка Primary в ките), категория
-       "Когнитивные искажения" */
+  /* Синий (blueBright/blueDark1/blueLight2) — Button/Primary в ките,
+       наш основной акцент; --blue-on-light2 — точный тёмный текст
+       Choice-токена поверх blueLight2 (категория "Когнитивные искажения") */
   --blue: #2d7ff9;
-  --blue-deep: #1554b3;
-  --blue-soft: #eaf2ff;
+  --blue-deep: #2750ae;
+  --blue-soft: #cfdfff;
+  --blue-on-light2: #102046;
 
-  /* Категория "Экономика/теория игр" + предупреждающие плашки
-       (черновик) — оранжевый из палитры кита */
-  --orange: #ee7d2b;
-  --orange-deep: #a8501a;
-  --orange-soft: #fef0e2;
+  /* Оранжевый (orangeBright/orangeDark1/orangeLight2) — предупреждающая
+       плашка черновика; --orange-on-light2 — категория "Экономика" */
+  --orange: #ff6f2c;
+  --orange-deep: #d74d26;
+  --orange-soft: #fee2d5;
+  --orange-on-light2: #6b2613;
 
-  /* Категория "Социальная психология" — фиолетовый из палитры кита */
-  --purple: #8c5ce0;
-  --purple-deep: #5a34a3;
-  --purple-soft: #f3eefe;
+  /* Фиолетовый — только категория "Социальная психология" (Choice
+       token poверх purpleLight2) */
+  --purple-soft: #ede3fe;
+  --purple-on-light2: #280b42;
 
-  /* Второй акцент для сравнений/итогового числа — красный из кита
-       (там же, где раньше была "ржавчина") */
-  --red: #e8384f;
-  --red-soft: #fdeaec;
+  /* Красный (кит: просто "red", это же Button/Danger) — второй акцент
+       для сравнений и главного числа результата */
+  --red: #ef3061;
+  --red-soft: #ffdce5;
 
-  /* Золотисто-жёлтый — декоративные акценты: номера шагов,
+  /* yellowDark1/yellowLight2 — декоративный акцент: номера шагов,
        разделители, "vs" в парах, значок трио */
-  --gold: #a9760a;
-  --gold-soft: #fdecc4;
+  --gold: #b87503;
+  --gold-soft: #ffeab6;
 
-  /* Плоские мягкие тени — вместо многослойного "бумажного" тиснения */
-  --shadow-1: 0 1px 2px rgba(23, 26, 32, 0.06);
-  --shadow-2: 0 1px 2px rgba(23, 26, 32, 0.04), 0 6px 16px -6px rgba(23, 26, 32, 0.14);
-  --shadow-3: 0 4px 10px rgba(23, 26, 32, 0.07), 0 18px 36px -14px rgba(23, 26, 32, 0.2);
-
+  --radius: 3px; /* единственный радиус кита — карточки, кнопки, инпуты, свитчи */
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -70,9 +68,14 @@ html {
 }
 
 body {
-  background: var(--bg);
+  background: var(--panel);
   color: var(--ink);
-  font-family: "Inter", system-ui, sans-serif;
+  /* Кит набран в SF Pro Text/Display (системный шрифт Apple, не
+       распространяется как веб-фонт) — здесь его точный аналог:
+       нативный системный шрифт на каждой платформе (San Francisco на
+       Mac/iOS, Segoe UI на Windows, Roboto на Android/Chrome OS),
+       без загрузки внешнего файла шрифта. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -103,22 +106,24 @@ a {
   max-width: 772px;
 }
 
-/* ---------- Типографика ---------- */
+/* ---------- Типографика ----------
+     Размеры/начертания — из именованных Text-/Heading-токенов кита
+     (Figma-узел "Headings"/"Text"/"Fonts"): Heading/xxlarge для h1,
+     Heading/default для h2 (в самом ките секционные заголовки набраны
+     Semibold, а не Medium из именованного токена — берём то, что
+     реально применено, а не только табличное имя стиля). */
 h1 {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 700;
-  font-size: clamp(28px, 4.6vw, 42px);
-  line-height: 1.12;
-  letter-spacing: -0.022em;
+  font-weight: 600;
+  font-size: 35px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   margin: 0 0 14px;
   text-wrap: balance;
 }
 h2 {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 21px;
-  line-height: 1.25;
-  letter-spacing: -0.013em;
+  line-height: 1.24;
   margin: 0 0 14px;
   text-wrap: balance;
 }
@@ -136,13 +141,15 @@ p {
   max-width: 58ch;
   margin-bottom: 8px;
 }
+/* Heading/xsmall-caps в ките: 11px Bold, tracking 5 (~0.45em на 11px) —
+     используется для всех служебных uppercase-подписей ("COLLABORATOR
+     TOKENS", "BUTTON / DEFAULT" и т.п.). */
 .eyebrow {
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   margin: 0 0 12px;
 }
 .note {
@@ -160,66 +167,49 @@ hr {
   background: var(--line);
 }
 
-/* ---------- Кнопки ---------- */
+/* ---------- Кнопки ----------
+     Точные значения Button-компонента кита (default-размер): radius
+     3px, паддинг 7px/12px, подпись SF-текстом Semibold 13px/18px.
+     .primary = Button/Primary (bg blueBright, белый текст).
+     .ghost = Button/Default (bg Light gray 2, тёмный текст) — в ките
+     это нейтральная, не прозрачная кнопка; у кита есть ещё Secondary
+     (совсем без фона) и Danger, но у нас только два слота в разметке. */
 button.primary,
 button.ghost {
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 14.5px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.001em;
-  padding: 12px 24px;
-  border-radius: 8px;
+  padding: 7px 12px;
+  border-radius: var(--radius);
+  border: none;
   cursor: pointer;
   transition:
-    transform 0.16s var(--ease),
-    box-shadow 0.16s var(--ease),
     background 0.16s var(--ease),
-    border-color 0.16s var(--ease);
+    color 0.16s var(--ease);
 }
 button.primary {
-  border: 1px solid var(--blue-deep);
   background: var(--blue);
   color: #fff;
-  box-shadow: var(--shadow-1);
 }
 button.primary:hover {
   background: var(--blue-deep);
-  box-shadow: var(--shadow-2);
-  transform: translateY(-1px);
-}
-button.primary:active {
-  transform: translateY(0);
-  box-shadow: var(--shadow-1);
 }
 button.primary:disabled {
   background: var(--line);
-  border-color: var(--line-strong);
   color: var(--ink-faint);
   cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
 }
 button.ghost {
-  border: 1px solid var(--line-strong);
-  background: var(--white);
+  background: var(--surface);
   color: var(--ink);
-  box-shadow: var(--shadow-1);
 }
 button.ghost:hover {
-  border-color: var(--blue);
-  background: var(--blue-soft);
-  color: var(--blue-deep);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
-}
-button.ghost:active {
-  transform: translateY(0);
+  background: var(--line);
 }
 
 :where(button, input, [tabindex]):focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 .nav-row {
@@ -242,7 +232,6 @@ button.ghost:active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--ink-faint);
@@ -256,11 +245,10 @@ button.ghost:active {
   color: var(--ink);
 }
 .game-crumb .crumb-sep {
-  color: var(--line-strong);
+  color: var(--line);
   font-size: 12.5px;
 }
 .game-crumb .crumb-current {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
@@ -285,7 +273,6 @@ button.ghost:active {
   border-top: 1px solid var(--line);
 }
 .masthead-rule .colophon {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11.5px;
   color: var(--ink-faint);
   letter-spacing: 0.02em;
@@ -297,12 +284,11 @@ button.ghost:active {
 
 /* ---------- Панель участников ---------- */
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: var(--white);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 24px 26px;
   margin: 0 0 36px;
-  box-shadow: var(--shadow-1);
 }
 .panel-head {
   display: flex;
@@ -318,7 +304,6 @@ button.ghost:active {
   font-size: 16px;
 }
 .panel-head .count {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   color: var(--ink-faint);
 }
@@ -328,29 +313,27 @@ button.ghost:active {
   gap: 8px;
   margin-bottom: 16px;
 }
+/* "Collaborator token" кита: пилюля сплошного Light-gray-2, аватар
+     встык к скруглённому левому краю, имя тёмным текстом — без
+     обводки и без тени (кит вообще не использует тени на токенах). */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--white);
-  border: 1px solid var(--line-strong);
+  background: var(--surface);
   border-radius: 999px;
   padding: 5px 9px 5px 5px;
   font-size: 14px;
   font-weight: 500;
-  box-shadow: var(--shadow-1);
-  transition:
-    box-shadow 0.15s var(--ease),
-    transform 0.15s var(--ease);
+  color: var(--ink);
+  transition: background 0.15s var(--ease);
 }
 .chip:hover {
-  box-shadow: var(--shadow-2);
-  transform: translateY(-1px);
+  background: var(--line);
 }
-/* Initials avatar — the kit's "Collaborator tokens" component uses a
-     real photo per person; we have no photos, so a letter on a
-     colored circle is the standard fallback (see avatarInitial() in
-     state.js). */
+/* Инициалы на цветном круге — у кита здесь настоящее фото участника,
+     нам взять неоткуда, инициалы — стандартный fallback (см.
+     avatarInitial() в state.js). */
 .avatar {
   flex: none;
   width: 25px;
@@ -359,7 +342,6 @@ button.ghost:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   color: #fff;
@@ -422,30 +404,28 @@ button.ghost:active {
   display: flex;
   gap: 10px;
 }
+/* Input кита: заливка Light gray 2, БЕЗ обводки, radius 3px — не
+     белый бордюр-инпут, как в предыдущей версии. */
 .add-row input {
   flex: 1;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 15px;
-  padding: 11px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--white);
-  color: var(--ink);
-  transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease);
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: box-shadow 0.15s var(--ease);
 }
 .add-row input::placeholder {
   color: var(--ink-faint);
 }
 .add-row input:focus-visible {
   outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px var(--blue-soft);
+  box-shadow: inset 0 0 0 2px var(--blue);
 }
 .add-row button {
-  padding: 11px 20px;
-  font-size: 14.5px;
+  padding: 8px 16px;
+  font-size: 14px;
 }
 
 /* ---------- Фильтры ---------- */
@@ -461,9 +441,8 @@ button.ghost:active {
 }
 .filter-label {
   flex: none;
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
   letter-spacing: 0.05em;
@@ -472,34 +451,30 @@ button.ghost:active {
 .filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 6px;
   margin-bottom: 0;
 }
+/* Кнопка-фильтр — как Button/Default, только с состоянием "active" */
 .filter-pill {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 13px;
-  padding: 8px 15px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: var(--white);
+  padding: 6px 13px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--surface);
   color: var(--ink-soft);
   cursor: pointer;
   transition:
-    border-color 0.15s var(--ease),
     color 0.15s var(--ease),
-    background 0.15s var(--ease),
-    box-shadow 0.15s var(--ease);
+    background 0.15s var(--ease);
 }
 .filter-pill:hover {
-  border-color: var(--blue);
+  background: var(--line);
   color: var(--ink);
 }
 .filter-pill.active {
-  border-color: var(--blue-deep);
   background: var(--blue);
   color: #fff;
   font-weight: 600;
-  box-shadow: var(--shadow-1);
 }
 .toolbar-row {
   display: flex;
@@ -516,23 +491,25 @@ button.ghost:active {
   grid-template-columns: repeat(2, 1fr);
   gap: 18px;
 }
+/* Как Record card кита: белый фон, обводка 2px Light-gray-4, radius
+     3px, без тени в состоянии покоя — лёгкий подъём только по hover
+     как affordance клика (кит статичен и hover не документирует). */
 .game-card {
   position: relative;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 22px 22px 18px;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
   transition:
     transform 0.2s var(--ease),
     box-shadow 0.2s var(--ease),
     border-color 0.2s var(--ease);
 }
 .game-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-3);
-  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -8px rgba(51, 51, 51, 0.25);
+  border-color: var(--ink-faint);
 }
 .game-card.disabled {
   cursor: default;
@@ -540,7 +517,8 @@ button.ghost:active {
 }
 .game-card.disabled:hover {
   transform: none;
-  box-shadow: var(--shadow-1);
+  box-shadow: none;
+  border-color: var(--line);
 }
 
 .game-card .top-row {
@@ -565,14 +543,12 @@ button.ghost:active {
   transform: scale(1.1) rotate(-4deg);
 }
 .game-card .year {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   color: var(--gold);
   letter-spacing: 0.03em;
 }
 .game-card .status {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 10.5px;
   font-weight: 600;
   padding: 3px 9px;
@@ -582,11 +558,9 @@ button.ghost:active {
   color: var(--ink-soft);
 }
 .game-card .name {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 17px;
   line-height: 1.28;
-  letter-spacing: -0.008em;
   margin: 0 0 10px;
 }
 .game-card .teaser {
@@ -600,7 +574,6 @@ button.ghost:active {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ink-faint);
@@ -628,52 +601,44 @@ button.ghost:active {
   gap: 9px;
   align-items: center;
   flex-wrap: wrap;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11.5px;
   color: var(--ink-faint);
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-/* Цветная пилюля категории — как поле-лейбл ("Cat"/"Dog") в
-     Record card кита: мягкий тон фона + текст того же оттенка,
-     вместо цветного корешка по краю всей карточки. */
+/* Choice token кита: пилюля 999px, фон = Light2 своего оттенка, текст
+     — точный тёмный оттенок ИЗ ТОГО ЖЕ Choice-токена (не просто
+     "тёмная версия акцента", а отдельно заданный в ките цвет —
+     см. --*-on-light2 в :root). state.js передаёт --cat-bg/--cat-color
+     под конкретную категорию. */
 .game-card .cat-tag {
   display: inline-flex;
   align-items: center;
-  padding: 2px 9px;
-  border-radius: 6px;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
   background: var(--cat-bg, var(--blue-soft));
-  color: var(--cat-color, var(--blue-deep));
-  font-weight: 600;
+  color: var(--cat-color, var(--blue-on-light2));
+  font-weight: 400;
 }
 
-/* Кнопка случайной игры */
+/* Кнопка случайной игры — как Button/Default */
 button.shuffle-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: "Inter", system-ui, sans-serif;
   font-weight: 600;
-  font-size: 13.5px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: var(--white);
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  box-shadow: var(--shadow-1);
-  transition:
-    border-color 0.16s var(--ease),
-    transform 0.16s var(--ease),
-    box-shadow 0.16s var(--ease);
+  transition: background 0.16s var(--ease);
 }
 button.shuffle-btn:hover {
-  border-color: var(--gold);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
-}
-button.shuffle-btn:active {
-  transform: translateY(0);
+  background: var(--line);
 }
 button.shuffle-btn .dice {
   display: inline-block;
@@ -689,7 +654,9 @@ button.shuffle-btn.spin .dice {
   }
 }
 
-/* ---------- Уведомление ---------- */
+/* ---------- Уведомление ----------
+     Как Tooltip-компонент кита: bg #333 (= var(--ink)), radius 3px,
+     белый текст 13px — не пилюля. */
 #toast {
   position: fixed;
   left: 50%;
@@ -697,13 +664,11 @@ button.shuffle-btn.spin .dice {
   transform: translateX(-50%) translateY(16px);
   background: var(--ink);
   color: var(--white);
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 14px;
-  padding: 13px 24px;
-  border-radius: 999px;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
   opacity: 0;
   pointer-events: none;
-  box-shadow: var(--shadow-3);
   transition:
     opacity 0.25s var(--ease),
     transform 0.25s var(--ease);
@@ -754,7 +719,6 @@ button.shuffle-btn.spin .dice {
 }
 .progress .dot.active {
   background: var(--blue);
-  box-shadow: 0 1px 3px rgba(45, 127, 249, 0.35);
 }
 
 /* Числовые плашки */
@@ -765,22 +729,19 @@ button.shuffle-btn.spin .dice {
   flex-wrap: wrap;
 }
 .stat {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--white);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 18px 20px;
   flex: 1;
   min-width: 158px;
-  box-shadow: var(--shadow-1);
 }
 .stat .n {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 29px;
   color: var(--blue-deep);
   line-height: 1;
   margin-bottom: 8px;
-  letter-spacing: -0.02em;
 }
 .stat .lab {
   font-size: 12.5px;
@@ -812,7 +773,6 @@ button.shuffle-btn.spin .dice {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--gold);
@@ -836,9 +796,8 @@ button.shuffle-btn.spin .dice {
   grid-template-columns: 1fr 130px 130px;
   gap: 12px;
   padding: 0 6px 11px;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
   letter-spacing: 0.05em;
@@ -874,57 +833,50 @@ button.shuffle-btn.spin .dice {
 
 .entry-row input {
   width: 100%;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 15px;
-  padding: 10px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--white);
-  color: var(--ink);
-  transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease);
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: box-shadow 0.15s var(--ease);
 }
 .entry-row input::placeholder {
   color: var(--ink-faint);
 }
 .entry-row input:focus-visible {
   outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px var(--blue-soft);
+  box-shadow: inset 0 0 0 2px var(--blue);
 }
 
-/* Сегментированный контрол — как "Select buttons" в ките: ровная
-     полоса без теней, активная опция получает сплошную заливку. */
+/* Select buttons кита: серая заливка-контейнер, паддинг/gap 4px,
+     активная опция — сплошной ink-faint (#757575), НЕ синий. */
 .toggle-pair {
   display: flex;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border-radius: var(--radius);
 }
 .toggle-pair button {
   flex: 1;
   border: none;
-  background: var(--white);
+  border-radius: var(--radius);
+  background: transparent;
   color: var(--ink-soft);
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 10px 0;
+  padding: 6px 0;
   cursor: pointer;
   transition:
     background 0.15s var(--ease),
     color 0.15s var(--ease);
 }
 .toggle-pair button:hover {
-  background: var(--panel);
-  color: var(--ink);
-}
-.toggle-pair button + button {
-  border-left: 1px solid var(--line-strong);
+  background: var(--line);
 }
 .toggle-pair button.on {
-  background: var(--blue);
+  background: var(--ink-faint);
   color: #fff;
   filter: blur(4px);
   transition:
@@ -933,7 +885,7 @@ button.shuffle-btn.spin .dice {
     filter 0.2s var(--ease);
 }
 .toggle-pair button.on:hover {
-  background: var(--blue);
+  background: var(--ink-faint);
   color: #fff;
 }
 /* Briefly un-blurred right after a click (see the delegated
@@ -962,7 +914,6 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
 
 .fill-progress {
   margin: 22px 0 6px;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   color: var(--ink-faint);
 }
@@ -979,24 +930,24 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
   transition: width 0.4s var(--ease);
 }
 
-/* Главный результат — самый громкий момент интерфейса */
+/* Главный результат — самый громкий момент интерфейса. Кит не даёт
+     прямого образца для этого (нет подобного "hero"-блока среди
+     компонентов) — оставляем как собственное решение, но на точных
+     цветах кита (redLight2 фон / red текст). */
 .reveal {
   position: relative;
   background: var(--red-soft);
-  border: 1px solid rgba(232, 56, 79, 0.28);
-  border-radius: 12px;
+  border: 2px solid var(--red);
+  border-radius: var(--radius);
   padding: 28px 30px;
   margin: 10px 0 34px;
-  box-shadow: var(--shadow-2);
 }
 .reveal .n {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(38px, 6.6vw, 54px);
   color: var(--red);
   line-height: 1;
   margin-bottom: 12px;
-  letter-spacing: -0.03em;
 }
 .reveal p {
   margin: 10px 0 0;
@@ -1005,12 +956,11 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
 }
 
 .chart-wrap {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: var(--white);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 22px 22px 10px;
   margin-bottom: 30px;
-  box-shadow: var(--shadow-1);
 }
 .chart-wrap .cap {
   font-size: 12.5px;
@@ -1021,19 +971,18 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
   border-top: 1px solid var(--line);
 }
 
-/* Подсказка при наведении на точку графика (chart-tip.js) */
+/* Подсказка при наведении на точку графика (chart-tip.js) — тот же
+     Tooltip кита, что и #toast. */
 .chart-tooltip {
   position: fixed;
   z-index: 70;
   pointer-events: none;
   background: var(--ink);
   color: var(--white);
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   line-height: 1.45;
-  padding: 9px 13px;
-  border-radius: 8px;
-  box-shadow: var(--shadow-3);
+  padding: 8px 12px;
+  border-radius: var(--radius);
   opacity: 0;
   transform: translate(-50%, calc(-100% - 12px));
   transition: opacity 0.12s var(--ease);
@@ -1068,8 +1017,7 @@ table.results-table {
 }
 table.results-table th {
   text-align: left;
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 11px;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -1089,7 +1037,6 @@ table.results-table tbody tr:hover {
   background: var(--panel);
 }
 table.results-table td.name {
-  font-family: "Inter", system-ui, sans-serif;
   font-weight: 500;
 }
 
@@ -1103,10 +1050,9 @@ table.results-table td.name {
   flex: 1;
   min-width: 194px;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 18px 20px;
-  box-shadow: var(--shadow-1);
 }
 .group-compare .g.low {
   border-left: 3px solid var(--blue);
@@ -1121,10 +1067,8 @@ table.results-table td.name {
   margin-bottom: 8px;
 }
 .group-compare .g .v {
-  font-family: "Inter", system-ui, sans-serif;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 25px;
-  letter-spacing: -0.02em;
 }
 
 .fact {
@@ -1149,13 +1093,12 @@ table.results-table td.name {
 }
 
 .quote-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--white);
+  border: 2px solid var(--line);
   border-left: 3px solid var(--blue);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 22px 26px;
   margin: 22px 0 10px;
-  box-shadow: var(--shadow-1);
 }
 .quote-card p {
   font-style: italic;
@@ -1185,7 +1128,7 @@ table.results-table td.name {
 }
 .spoiler-actions button {
   font-size: 12.5px;
-  padding: 7px 13px;
+  padding: 6px 12px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1214,16 +1157,15 @@ table.results-table td.name {
 }
 .custom-q-toggle-row button {
   font-size: 13px;
-  padding: 9px 16px;
+  padding: 7px 14px;
 }
 .custom-q-panel {
   margin-top: 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--white);
+  border: 2px solid var(--line);
   border-left: 3px solid var(--gold);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 18px 20px;
-  box-shadow: var(--shadow-1);
 }
 .custom-q-field {
   margin-bottom: 12px;
@@ -1233,9 +1175,8 @@ table.results-table td.name {
 }
 .custom-q-field label {
   display: block;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
   letter-spacing: 0.04em;
@@ -1243,24 +1184,20 @@ table.results-table td.name {
 }
 .custom-q-field input {
   width: 100%;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 14.5px;
-  padding: 10px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--white);
-  color: var(--ink);
-  transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease);
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: box-shadow 0.15s var(--ease);
 }
 .custom-q-field input::placeholder {
   color: var(--ink-faint);
 }
 .custom-q-field input:focus-visible {
   outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px var(--blue-soft);
+  box-shadow: inset 0 0 0 2px var(--blue);
 }
 .custom-q-row {
   display: grid;
@@ -1275,8 +1212,8 @@ table.results-table td.name {
   align-items: center;
 }
 .custom-q-actions button {
-  font-size: 13.5px;
-  padding: 10px 18px;
+  font-size: 13px;
+  padding: 7px 14px;
 }
 #custom-q-status {
   margin: 10px 0 0;
@@ -1306,7 +1243,6 @@ table.results-table td.name {
 }
 .custom-q-default-hint {
   display: block;
-  font-family: "Inter", system-ui, sans-serif;
   font-weight: 400;
   font-size: 11px;
   color: var(--ink-faint);
@@ -1324,7 +1260,6 @@ table.results-table td.name {
   margin-bottom: 20px;
 }
 .role-toolbar .count {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   color: var(--ink-faint);
 }
@@ -1342,10 +1277,9 @@ table.results-table td.name {
   justify-content: space-between;
   gap: 12px;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 17px 16px;
-  box-shadow: var(--shadow-1);
 }
 .role-pair-card.role-pair-trio {
   border-color: var(--gold);
@@ -1356,10 +1290,8 @@ table.results-table td.name {
   left: 50%;
   transform: translateX(-50%);
   background: var(--gold-soft);
-  border: 1px solid var(--gold);
   border-radius: 999px;
   padding: 2px 9px;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
   color: var(--gold);
@@ -1378,10 +1310,9 @@ table.results-table td.name {
 .role-pair-name {
   font-weight: 600;
   font-size: 15px;
-  font-family: "Inter", system-ui, sans-serif;
   background: none;
   border: 1.5px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 3px 8px;
   margin: -3px -8px;
   color: var(--ink);
@@ -1392,21 +1323,18 @@ table.results-table td.name {
     transform 0.1s var(--ease);
 }
 .role-pair-name:hover {
-  background: var(--blue-soft);
-  border-color: var(--line-strong);
+  background: var(--surface);
 }
 .role-pair-name.swap-selected {
   background: var(--gold-soft);
   border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--gold-soft);
 }
 .role-pair-name:active {
   transform: scale(0.97);
 }
 .role-pair-label {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
   margin-top: 3px;
@@ -1415,7 +1343,6 @@ table.results-table td.name {
   flex: none;
   width: 28px;
   text-align: center;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 13px;
   font-weight: 600;
   color: var(--gold);
@@ -1430,11 +1357,10 @@ table.results-table td.name {
 .role-group-col {
   flex: 1;
   min-width: 232px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--white);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 18px 20px;
-  box-shadow: var(--shadow-1);
 }
 .role-group-col.role-group-a {
   border-left: 3px solid var(--blue);
@@ -1452,28 +1378,27 @@ table.results-table td.name {
   flex-wrap: wrap;
   gap: 7px;
 }
+/* "Linked record token" кита: фон #E9EEF9 (не входит в именованную
+     палитру акцентов — отдельный нейтрально-голубой оттенок именно
+     для ссылок на записи/людей), radius 3px — НЕ пилюля, в отличие
+     от Choice token. */
 .role-group-chips .role-chip {
-  font-family: "Inter", system-ui, sans-serif;
-  background: var(--white);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 5px 13px;
+  background: #e9eef9;
+  border: none;
+  border-radius: var(--radius);
+  padding: 4px 10px;
   font-size: 13.5px;
   color: var(--ink);
   cursor: pointer;
   transition:
     background 0.15s var(--ease),
-    border-color 0.15s var(--ease),
     transform 0.1s var(--ease);
 }
 .role-group-chips .role-chip:hover {
   background: var(--blue-soft);
-  border-color: var(--blue);
 }
 .role-group-chips .role-chip.swap-selected {
   background: var(--gold-soft);
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--gold-soft);
 }
 .role-group-chips .role-chip:active {
   transform: scale(0.96);
@@ -1497,10 +1422,9 @@ table.results-table td.name {
   align-items: center;
   gap: 12px;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 15px 18px;
-  box-shadow: var(--shadow-1);
 }
 .pair-entry-card.role-pair-trio {
   border-color: var(--gold);
@@ -1519,41 +1443,33 @@ table.results-table td.name {
 }
 .pair-entry-name span {
   display: block;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   color: var(--ink-faint);
   margin-top: 3px;
 }
 .pair-entry-card input {
   width: 100%;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 14px;
   text-align: center;
-  padding: 9px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink);
-  transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease),
-    background 0.15s var(--ease);
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: box-shadow 0.15s var(--ease);
 }
 .pair-entry-card input::placeholder {
   color: var(--ink-faint);
 }
 .pair-entry-card input:focus-visible {
   outline: none;
-  border-color: var(--blue);
-  background: var(--white);
-  box-shadow: 0 0 0 3px var(--blue-soft);
+  box-shadow: inset 0 0 0 2px var(--blue);
 }
 .pair-entry-connector {
   text-align: center;
   color: var(--gold);
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12px;
   font-weight: 600;
 }
@@ -1578,7 +1494,6 @@ table.results-table td.name {
   margin-bottom: 12px;
 }
 .team-entry-group-title .count {
-  font-family: "Inter", system-ui, sans-serif;
   font-weight: 500;
   font-size: 11.5px;
   color: var(--ink-faint);
@@ -1602,10 +1517,9 @@ table.results-table td.name {
   align-items: center;
   gap: 12px;
   background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
   padding: 13px 16px;
-  box-shadow: var(--shadow-1);
 }
 .team-entry-card.wide-control {
   grid-template-columns: 1fr 220px;
@@ -1616,27 +1530,21 @@ table.results-table td.name {
 }
 .team-entry-card input {
   width: 100%;
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 14px;
   text-align: center;
-  padding: 9px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink);
-  transition:
-    border-color 0.15s var(--ease),
-    box-shadow 0.15s var(--ease),
-    background 0.15s var(--ease);
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  transition: box-shadow 0.15s var(--ease);
 }
 .team-entry-card input::placeholder {
   color: var(--ink-faint);
 }
 .team-entry-card input:focus-visible {
   outline: none;
-  border-color: var(--blue);
-  background: var(--white);
-  box-shadow: 0 0 0 3px var(--blue-soft);
+  box-shadow: inset 0 0 0 2px var(--blue);
 }
 
 @media (max-width: 560px) {
@@ -1753,11 +1661,10 @@ table.results-table td.name {
   gap: 14px;
   flex-wrap: wrap;
   background: var(--orange-soft);
-  border: 1px solid var(--orange);
-  border-radius: 10px;
+  border: 2px solid var(--orange);
+  border-radius: var(--radius);
   padding: 12px 16px;
   margin-bottom: 24px;
-  box-shadow: var(--shadow-1);
 }
 .draft-text {
   font-size: 13.5px;
@@ -1770,32 +1677,27 @@ table.results-table td.name {
   flex: none;
 }
 .draft-actions button {
-  font-family: "Inter", system-ui, sans-serif;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 7px 13px;
-  border-radius: 999px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition:
-    transform 0.15s var(--ease),
-    background 0.15s var(--ease);
+  transition: background 0.15s var(--ease);
 }
 .draft-actions .draft-restore {
-  border: 1px solid var(--orange-deep);
   background: var(--orange-deep);
   color: #fff;
 }
 .draft-actions .draft-restore:hover {
-  background: #8a3f0d;
-  transform: translateY(-1px);
+  background: #b83e1c;
 }
 .draft-actions .draft-discard {
-  border: 1px solid var(--line-strong);
-  background: var(--white);
+  background: var(--surface);
   color: var(--ink-soft);
 }
 .draft-actions .draft-discard:hover {
-  border-color: var(--ink-faint);
+  background: var(--line);
   color: var(--ink);
 }
 
@@ -1822,8 +1724,8 @@ table.results-table td.name {
   margin: 6px 0 6px;
 }
 .pdf-row button.ghost {
-  font-size: 13.5px;
-  padding: 10px 18px;
+  font-size: 13px;
+  padding: 7px 14px;
 }
 
 @media print {
@@ -1873,32 +1775,29 @@ table.results-table td.name {
     display: block !important;
     margin-bottom: 12px;
     padding-bottom: 9px;
-    border-bottom: 1.5px solid #a9760a;
+    border-bottom: 1.5px solid #b87503;
   }
   .print-kicker {
-    font-family: "Inter", system-ui, sans-serif;
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.05em;
-    color: #8a94a1;
+    color: #757575;
     text-transform: uppercase;
   }
   .print-title {
-    font-family: "Inter", system-ui, sans-serif;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 20px;
     margin: 2px 0;
-    color: #1d1f24;
+    color: #333333;
   }
   .print-subtitle {
     font-size: 10.5px;
-    color: #5f6b76;
+    color: #424242;
     margin-bottom: 5px;
   }
   .print-meta {
-    font-family: "Inter", system-ui, sans-serif;
     font-size: 9px;
-    color: #8a94a1;
+    color: #757575;
   }
 
   h2 {
@@ -1909,7 +1808,6 @@ table.results-table td.name {
   .reveal {
     padding: 12px 14px !important;
     margin: 0 0 10px !important;
-    box-shadow: none !important;
     border-width: 1px !important;
     break-inside: avoid;
   }
@@ -1926,7 +1824,7 @@ table.results-table td.name {
   .chart-wrap {
     padding: 8px 10px !important;
     margin: 0 0 10px !important;
-    box-shadow: none !important;
+    border-width: 1px !important;
     break-inside: avoid;
   }
   .chart-wrap .cap {
@@ -1948,7 +1846,7 @@ table.results-table td.name {
   .stat,
   .group-compare .g {
     padding: 7px 9px !important;
-    box-shadow: none !important;
+    border-width: 1px !important;
     min-width: 0 !important;
   }
   .stat .n,
@@ -1985,30 +1883,28 @@ table.results-table td.name {
     display: block !important;
     margin-top: 14px;
     padding-top: 11px;
-    border-top: 1px solid #e3e6ea;
+    border-top: 1px solid #e0e0e0;
     break-inside: avoid;
   }
   .print-footer-title {
-    font-family: "Inter", system-ui, sans-serif;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #a9760a;
+    color: #b87503;
     margin-bottom: 5px;
   }
   .print-footer-text {
-    font-family: "Inter", system-ui, sans-serif;
     font-size: 10.5px;
     line-height: 1.55;
-    color: #1d1f24;
+    color: #333333;
     max-width: none;
   }
 
   .quote-card {
     padding: 9px 11px !important;
     margin: 0 0 10px !important;
-    box-shadow: none !important;
+    border-width: 1px !important;
     break-inside: avoid;
   }
   .quote-card p {
