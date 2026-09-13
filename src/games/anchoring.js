@@ -12,7 +12,7 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
 import { Persist, timeAgo } from '../persist.js';
 import { Print } from '../print.js';
 import { avatarName, state } from '../state.js';
@@ -530,7 +530,7 @@ export class RetroGameAnchoring extends LitElement {
 
           <div class="pdf-row">
             <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              🖨️ Сохранить / отправить PDF
+              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
             </button>
           </div>
 

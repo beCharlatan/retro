@@ -16,7 +16,7 @@
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
 import { Persist, timeAgo } from '../persist.js';
 import { Print } from '../print.js';
 import { Roles } from '../roles.js';
@@ -342,7 +342,7 @@ export class RetroGameEndowment extends LitElement {
             class="shuffle-btn ${this.shuffleSpin ? 'spin' : ''}"
             @click=${() => this._onShuffle()}
           >
-            🎲 Перемешать группы
+            ${unsafeHTML(ICON_SHUFFLE)} Перемешать группы
           </button>
 
           <div class="nav-row">
@@ -458,7 +458,7 @@ export class RetroGameEndowment extends LitElement {
 
           <div class="pdf-row">
             <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              🖨️ Сохранить / отправить PDF
+              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
             </button>
           </div>
 

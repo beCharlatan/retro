@@ -109,10 +109,13 @@ export function avatarName(name) {
   return `<span class="name-with-avatar">${avatarHTML(name, 'sm')}${name}</span>`;
 }
 
+// `icon` — a key into ICONS (src/icon-assets.js): decorative 3D-render
+// glyphs, assigned per game arbitrarily (no thematic meaning intended,
+// unlike the previous per-game emoji) — see docs/modernization-plan.md.
 export const GAMES = [
   {
     id: 'anchoring',
-    icon: '⚓',
+    icon: 'helix',
     name: 'Эффект якоря',
     category: 'cognitive',
     teaser: 'Случайное число незаметно сдвигает вашу же числовую оценку.',
@@ -123,7 +126,7 @@ export const GAMES = [
   },
   {
     id: 'crowd-wisdom',
-    icon: '🐂',
+    icon: 'spheres',
     name: 'Мудрость толпы',
     category: 'cognitive',
     teaser: 'Средняя оценка группы обходит по точности почти всех поодиночке.',
@@ -134,7 +137,7 @@ export const GAMES = [
   },
   {
     id: 'ultimatum',
-    icon: '⚖️',
+    icon: 'cube-1',
     name: 'Ультиматум',
     category: 'econ',
     teaser: 'Люди отвергают выгодные предложения, если те кажутся нечестными.',
@@ -145,7 +148,7 @@ export const GAMES = [
   },
   {
     id: 'dictator',
-    icon: '👑',
+    icon: 'icosahedron',
     name: 'Игра диктатора',
     category: 'econ',
     teaser: 'Никто не заставляет делиться — но почти все делятся.',
@@ -156,7 +159,7 @@ export const GAMES = [
   },
   {
     id: 'public-goods',
-    icon: '🪙',
+    icon: 'torus-knot',
     name: 'Общественное благо',
     category: 'econ',
     teaser: 'Группе выгодно вкладываться всем — каждому по отдельности выгоднее не вкладываться.',
@@ -167,7 +170,7 @@ export const GAMES = [
   },
   {
     id: 'false-consensus',
-    icon: '🙋',
+    icon: 'pill',
     name: 'Ложный консенсус',
     category: 'social',
     teaser: 'Мы уверены, что наше мнение разделяют куда больше людей, чем на самом деле.',
@@ -178,7 +181,7 @@ export const GAMES = [
   },
   {
     id: 'endowment',
-    icon: '☕',
+    icon: 'cylinder-1',
     name: 'Эффект владения',
     category: 'cognitive',
     teaser: 'Та же вещь внезапно дороже для того, кто ей уже владеет.',
@@ -189,7 +192,7 @@ export const GAMES = [
   },
   {
     id: 'barnum',
-    icon: '🔮',
+    icon: 'sphere',
     name: 'Эффект Барнума',
     category: 'social',
     teaser: 'Расплывчатое описание личности кажется удивительно «прямо про меня».',
@@ -200,7 +203,7 @@ export const GAMES = [
   },
   {
     id: 'prisoners-dilemma',
-    icon: '🔒',
+    icon: 'pyramid-1',
     name: 'Дилемма заключённого',
     category: 'econ',
     teaser: 'Рационально предать — но если встреча не последняя, правила меняются.',
@@ -211,7 +214,7 @@ export const GAMES = [
   },
   {
     id: 'framing',
-    icon: '🖼️',
+    icon: 'cube-2',
     name: 'Эффект фрейминга',
     category: 'cognitive',
     teaser:
@@ -223,7 +226,7 @@ export const GAMES = [
   },
   {
     id: 'availability',
-    icon: '⚡',
+    icon: 'torus-1',
     name: 'Эвристика доступности',
     category: 'cognitive',
     teaser: 'Мы оцениваем риск по тому, что легче вспоминается, а не по статистике.',
@@ -234,7 +237,7 @@ export const GAMES = [
   },
   {
     id: 'planning-fallacy',
-    icon: '⏳',
+    icon: 'flat-cylinder',
     name: 'Ошибка планирования',
     category: 'cognitive',
     teaser: '«В лучшем случае» и «по факту» — почти никогда не одно и то же число.',
@@ -245,7 +248,7 @@ export const GAMES = [
   },
   {
     id: 'calibration',
-    icon: '🎯',
+    icon: 'pyramid-2',
     name: 'Калибровка уверенности',
     category: 'cognitive',
     teaser: 'Уверены на 90%? Реальное попадание обычно куда ниже.',

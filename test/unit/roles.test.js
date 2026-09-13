@@ -180,6 +180,69 @@ describe('Roles.swapInPairs', () => {
     Roles.swapInPairs(pairs, 'А', 'Наблюдатель');
     expect(pairs).toEqual([{ a: 'А', b: 'Б' }]);
   });
+
+  test('regression: corrupts a trio when one of the two names is a trio member (self-pairing bug)', () => {
+    // The exact trio triangle makePairs() produces for 3 people — "Б"
+    // sits in two slots (pairs[0].b and pairs[1].a). Swapping "Б" (found
+    // last at pairs[1].a) with "Г" resolves BOTH of "Б"'s occurrences to
+    // that same last-found slot, so pairs[0].b never actually changes —
+    // it's still "Б" — while pairs[1].a becomes "Г". Net effect: "Б" is
+    // untouched at pairs[0], and pairs[1] becomes {a:'Г', b:'В'}, i.e.
+    // "Г" got swapped in without "Б" ever leaving. This test pins down
+    // that swapInPairs is unsafe here — swapPairsAt below is the fix.
+    const pairs = [
+      { a: 'А', b: 'Б', trio: true },
+      { a: 'Б', b: 'В', trio: true },
+      { a: 'В', b: 'А', trio: true },
+    ];
+    Roles.swapInPairs(pairs, 'Б', 'Г');
+    // "Б" was never actually removed from the trio — this is the bug.
+    expect(pairs[0].b).toBe('Б');
+  });
+});
+
+describe('Roles.swapPairsAt', () => {
+  test('swaps two people in different pairs, by exact slot', () => {
+    const pairs = [
+      { a: 'А', b: 'Б' },
+      { a: 'В', b: 'Г' },
+    ];
+    Roles.swapPairsAt(pairs, { i: 0, side: 'b' }, { i: 1, side: 'a' });
+    expect(pairs).toEqual([
+      { a: 'А', b: 'В' },
+      { a: 'Б', b: 'Г' },
+    ]);
+  });
+
+  test('swaps two people within the same pair (flips sides)', () => {
+    const pairs = [{ a: 'А', b: 'Б' }];
+    Roles.swapPairsAt(pairs, { i: 0, side: 'a' }, { i: 0, side: 'b' });
+    expect(pairs).toEqual([{ a: 'Б', b: 'А' }]);
+  });
+
+  test('is a no-op when both positions are the exact same slot', () => {
+    const pairs = [{ a: 'А', b: 'Б' }];
+    Roles.swapPairsAt(pairs, { i: 0, side: 'a' }, { i: 0, side: 'a' });
+    expect(pairs).toEqual([{ a: 'А', b: 'Б' }]);
+  });
+
+  test('correctly swaps a trio member out by exact slot, without self-pairing or duplicating', () => {
+    // Same trio triangle as the swapInPairs regression above, but now
+    // identifying "Б"'s clicked occurrence unambiguously by slot
+    // (pairs[0].b) instead of by name — swapped with a slot holding a
+    // different value ("В" at pairs[2].a) so the swap actually changes
+    // something observable.
+    const pairs = [
+      { a: 'А', b: 'Б', trio: true },
+      { a: 'Б', b: 'В', trio: true },
+      { a: 'В', b: 'А', trio: true },
+    ];
+    Roles.swapPairsAt(pairs, { i: 0, side: 'b' }, { i: 2, side: 'a' });
+    expect(pairs[0]).toEqual({ a: 'А', b: 'В', trio: true });
+    expect(pairs[2]).toEqual({ a: 'Б', b: 'А', trio: true });
+    // No self-pair anywhere, no name duplicated within a single pair.
+    for (const p of pairs) expect(p.a).not.toBe(p.b);
+  });
 });
 
 describe('Roles.swapInGroups', () => {

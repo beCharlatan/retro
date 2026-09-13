@@ -53,6 +53,16 @@ retro/
 │   ├── persist.js               — общий паттерн: черновики в sessionStorage
 │   │                                + timeAgo() для баннера восстановления
 │   ├── print.js                 — общий паттерн: экспорт результатов в PDF
+│   ├── icons.js                 — служебные SVG-глифы кита Airtable Apps UI
+│   │                                Kit (стрелки, шеврон, буфер обмена,
+│   │                                крестик, print/edit/surprise/shuffle) —
+│   │                                НЕ тематические иконки игр, см. ниже
+│   ├── icon-assets.js           — декоративные 3D-иконки карточек игр,
+│   │                                ключ → data:-URI (сгенерирован из
+│   │                                src/icons/*.png, см. docs/
+│   │                                modernization-plan.md)
+│   ├── icons/                    — исходные PNG для icon-assets.js
+│   │                                (160×160, уменьшены из оригиналов)
 │   ├── styles/
 │   │   └── shared-styles.js        — весь styles.css как Lit `css` для
 │   │                                  Shadow DOM (import ... with {type:'text'})

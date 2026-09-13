@@ -28,7 +28,8 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { ICON_CHEVRON_DOWN, ICON_X } from './icons.js';
+import { ICONS } from './icon-assets.js';
+import { ICON_CHEVRON_DOWN, ICON_SURPRISE, ICON_X } from './icons.js';
 import { openGame } from './router.js';
 import { app, avatarHTML, CATEGORY, GAMES, STRUCTURE, state } from './state.js';
 import { sharedStyles } from './styles/shared-styles.js';
@@ -139,7 +140,7 @@ export class RetroHome extends LitElement {
         @click=${() => this._openGame(g)}
       >
         <div class="top-row">
-          <span class="icon">${g.icon}</span>
+          <img class="icon" src="${ICONS[g.icon]}" alt="" />
           <div class="top-row-right">
             <span class="year">№ ${String(index + 1).padStart(2, '0')}</span>
             ${g.ready ? '' : html`<span class="status soon">Скоро</span>`}
@@ -238,7 +239,7 @@ export class RetroHome extends LitElement {
             </div>
           </div>
           <button class="shuffle-btn" id="random-game-btn" @click=${() => this._pickRandomGame()}>
-            🎲 Случайная игра
+            ${unsafeHTML(ICON_SURPRISE)} Случайная игра
           </button>
         </div>
 

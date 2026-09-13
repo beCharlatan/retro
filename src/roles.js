@@ -23,17 +23,20 @@
      this.assignment = Roles.makePairs(state.participants);
      // assignment = { pairs: [{a,b}, ...], observer: name|null, trio: [3 names]|null }
 
-     // click-to-select-then-swap, tracked as reactive state:
-     _onSwapClick(name) {
-       if (this.selectedSwapName === null) { this.selectedSwapName = name; return; }
-       if (this.selectedSwapName === name) { this.selectedSwapName = null; return; }
-       Roles.swapInPairs(this.assignment.pairs, this.selectedSwapName, name);
-       this.selectedSwapName = null;
+     // click-to-select-then-swap, tracked BY POSITION (not name — see
+     // swapPairsAt's comment for why: makePairs()'s trio triangle puts
+     // the same name in two different pair slots on purpose):
+     _onSwapClick(i, side, name) {
+       if (this.selectedSwap === null) { this.selectedSwap = { i, side, name }; return; }
+       if (this.selectedSwap.i === i && this.selectedSwap.side === side) { this.selectedSwap = null; return; }
+       Roles.swapPairsAt(this.assignment.pairs, this.selectedSwap, { i, side });
+       this.selectedSwap = null;
        this.assignment = { ...this.assignment }; // new reference so Lit re-renders
      }
 
-   For a two-group game, swap makePairs/swapInPairs for
-   makeGroups/swapInGroups — same pattern.
+   For a two-group game, swap makePairs/swapPairsAt for
+   makeGroups/swapInGroups — group membership has no trio-style
+   duplication, so the simpler name-based swapInGroups is safe there.
 ========================================================= */
 export const Roles = (() => {
   // Fisher–Yates shuffle — returns a new array, does not mutate input.
@@ -93,10 +96,24 @@ export const Roles = (() => {
     return { groupA: shuffled.slice(0, mid), groupB: shuffled.slice(mid) };
   }
 
-  // Swaps two people's positions within a pairs array IN PLACE —
-  // works whether they're in the same pair (flips their roles) or
-  // different pairs (splits/reunites partnerships). No-op if either
-  // name isn't found (e.g. the odd-one-out observer).
+  // Swaps two people's positions within a pairs array IN PLACE, found
+  // by NAME — works whether they're in the same pair (flips their
+  // roles) or different pairs (splits/reunites partnerships). No-op
+  // if either name isn't found (e.g. the odd-one-out observer).
+  //
+  // UNSAFE whenever a name can appear in more than one slot — which
+  // is exactly what makePairs()'s trio triangle does on purpose (each
+  // of the 3 trio members sits in 2 of the 3 trio pairs). This
+  // function's forEach just keeps overwriting posX/posY on every
+  // match, so it resolves to whichever occurrence comes LAST in the
+  // array — not necessarily the one a person actually clicked —
+  // silently corrupting the trio (a real bug found this way: clicking
+  // to swap a trio member produced a pair with the same name on both
+  // sides). Games with a possible trio (ultimatum.js,
+  // prisoners-dilemma.js) must use swapPairsAt() below instead, which
+  // identifies each side by its exact {pairIndex, side} slot and has
+  // no such ambiguity. This name-based version is kept only for
+  // simple pairs data with no possible duplicates.
   function swapInPairs(pairs, nameX, nameY) {
     if (nameX === nameY) return;
     let posX = null,
@@ -108,6 +125,19 @@ export const Roles = (() => {
       if (p.b === nameY) posY = { i, side: 'b' };
     });
     if (!posX || !posY) return;
+    pairs[posX.i][posX.side] = nameY;
+    pairs[posY.i][posY.side] = nameX;
+  }
+
+  // Swaps two people by their exact slot — { pairIndex, side: 'a'|'b' }
+  // — instead of by name, so it's unambiguous even when the two names
+  // are identical (adjacent duplicate participant names) or the same
+  // name occupies two different slots (a trio member). No-op if both
+  // positions are literally the same slot.
+  function swapPairsAt(pairs, posX, posY) {
+    if (posX.i === posY.i && posX.side === posY.side) return;
+    const nameX = pairs[posX.i][posX.side];
+    const nameY = pairs[posY.i][posY.side];
     pairs[posX.i][posX.side] = nameY;
     pairs[posY.i][posY.side] = nameX;
   }
@@ -135,5 +165,5 @@ export const Roles = (() => {
     to[to.indexOf(nameY)] = nameX;
   }
 
-  return { shuffle, makePairs, makeGroups, swapInPairs, swapInGroups };
+  return { shuffle, makePairs, makeGroups, swapInPairs, swapPairsAt, swapInGroups };
 })();

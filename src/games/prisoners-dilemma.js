@@ -19,7 +19,7 @@
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
 import { Persist, timeAgo } from '../persist.js';
 import { Print } from '../print.js';
 import { Roles } from '../roles.js';
@@ -57,7 +57,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
     entries: { state: true },
     draft: { state: true },
     results: { state: true },
-    selectedSwapName: { state: true },
+    selectedSwap: { state: true },
     shuffleSpin: { state: true },
   };
 
@@ -67,7 +67,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
     this.assignment = Roles.makePairs(state.participants);
     this.entries = buildEntries(this.assignment);
     this.results = null;
-    this.selectedSwapName = null;
+    this.selectedSwap = null;
     this.shuffleSpin = false;
 
     const loaded = Persist.load('prisoners-dilemma');
@@ -98,24 +98,28 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
   _onShuffle() {
     this.assignment = Roles.makePairs(state.participants);
-    this.selectedSwapName = null;
+    this.selectedSwap = null;
     this.shuffleSpin = true;
     setTimeout(() => {
       this.shuffleSpin = false;
     }, 350);
   }
 
-  _onSwapClick(name) {
-    if (this.selectedSwapName === null) {
-      this.selectedSwapName = name;
+  // Tracked by exact slot ({ i: pair index, side: 'a'|'b' }), not by
+  // name — a trio member sits in two different pair slots at once
+  // (see roles.js's swapPairsAt), so identifying the clicked slot by
+  // name alone can't tell them apart and silently corrupts the trio.
+  _onSwapClick(i, side) {
+    if (this.selectedSwap === null) {
+      this.selectedSwap = { i, side };
       return;
     }
-    if (this.selectedSwapName === name) {
-      this.selectedSwapName = null;
+    if (this.selectedSwap.i === i && this.selectedSwap.side === side) {
+      this.selectedSwap = null;
       return;
     }
-    Roles.swapInPairs(this.assignment.pairs, this.selectedSwapName, name);
-    this.selectedSwapName = null;
+    Roles.swapPairsAt(this.assignment.pairs, this.selectedSwap, { i, side });
+    this.selectedSwap = null;
     this.assignment = { ...this.assignment };
   }
 
@@ -184,16 +188,16 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
   _reset() {
     this.assignment = Roles.makePairs(state.participants);
-    this.selectedSwapName = null;
+    this.selectedSwap = null;
     this.entries = buildEntries(this.assignment);
     this.results = null;
     Persist.clear('prisoners-dilemma');
     this.goTo(0);
   }
 
-  _pairCard(p) {
-    const selectedA = this.selectedSwapName === p.a;
-    const selectedB = this.selectedSwapName === p.b;
+  _pairCard(p, i) {
+    const selectedA = this.selectedSwap?.i === i && this.selectedSwap?.side === 'a';
+    const selectedB = this.selectedSwap?.i === i && this.selectedSwap?.side === 'b';
     return html`
       <div class="role-pair-card ${p.trio ? 'role-pair-trio' : ''}">
         ${p.trio ? html`<span class="role-pair-trio-badge">🔺 трио</span>` : ''}
@@ -201,7 +205,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
           <button
             type="button"
             class="role-pair-name ${selectedA ? 'swap-selected' : ''}"
-            @click=${() => this._onSwapClick(p.a)}
+            @click=${() => this._onSwapClick(i, 'a')}
           >
             ${unsafeHTML(avatarName(p.a))}
           </button>
@@ -211,7 +215,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
           <button
             type="button"
             class="role-pair-name ${selectedB ? 'swap-selected' : ''}"
-            @click=${() => this._onSwapClick(p.b)}
+            @click=${() => this._onSwapClick(i, 'b')}
           >
             ${unsafeHTML(avatarName(p.b))}
           </button>
@@ -223,19 +227,25 @@ export class RetroGamePrisonersDilemma extends LitElement {
   _pairsHolder() {
     const { pairs, observer, trio } = this.assignment;
     return html`
-      <div class="role-pairs">${pairs.map((p) => this._pairCard(p))}</div>
+      <div class="role-pairs">${pairs.map((p, i) => this._pairCard(p, i))}</div>
       <p class="note swap-hint">Нажмите на двух участников по очереди, чтобы поменять их местами.</p>
       ${
         trio
-          ? html`<p class="note">
-            🔺 Нечётное число участников — ${trio.join(', ')} играют трио по кругу вместо пары:
-            каждый сыграет дважды, с двумя разными партнёрами, но зато без исключений.
-          </p>`
+          ? html`<div class="info-tip">
+            <span class="tip-icon">🔺</span>
+            <span
+              >Нечётное число участников — ${trio.join(', ')} играют трио по кругу вместо пары:
+              каждый сыграет дважды, с двумя разными партнёрами, но зато без исключений.</span
+            >
+          </div>`
           : observer
-            ? html`<p class="note">
-              ${observer} — нечётное число участников, в этом раунде наблюдатель: ведёт протокол
-              или подыгрывает за отсутствующего.
-            </p>`
+            ? html`<div class="info-tip">
+              <span class="tip-icon">🔺</span>
+              <span
+                >${observer} — нечётное число участников, в этом раунде наблюдатель: ведёт
+                протокол или подыгрывает за отсутствующего.</span
+              >
+            </div>`
             : ''
       }
     `;
@@ -394,7 +404,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
             class="shuffle-btn ${this.shuffleSpin ? 'spin' : ''}"
             @click=${() => this._onShuffle()}
           >
-            🎲 Перемешать пары
+            ${unsafeHTML(ICON_SHUFFLE)} Перемешать пары
           </button>
 
           <div class="nav-row">
@@ -576,7 +586,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
           <div class="pdf-row">
             <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              🖨️ Сохранить / отправить PDF
+              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
             </button>
           </div>
 

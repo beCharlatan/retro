@@ -63,7 +63,7 @@ async function run() {
         `got ${trioCards}`,
       );
 
-      const noteVisible = await page.isVisible('.note >> text=трио').catch(() => false);
+      const noteVisible = await page.isVisible('.info-tip >> text=трио').catch(() => false);
       report.check('Ultimatum: trio explanation note is shown', noteVisible);
 
       // Every trio member should appear as proposer exactly once and
