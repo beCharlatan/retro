@@ -13,9 +13,28 @@
 // count read off the page rather than hardcoded, so this suite keeps
 // working regardless of how many people are in the default roster.
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome } = require('./lib');
 
+// The roster HUD panel is collapsed by default on the map (see
+// home.js) and now animates open/closed (a CSS grid-rows transition,
+// not an instant DOM swap) — .panel-head/.count are always in the DOM,
+// just collapsed to zero height until expanded. Checking THAT
+// (.panel-head .count's visibility) to decide whether to click the
+// toggle is exactly what broke here: mid-transition it can read as
+// "not visible yet" even though the toggle was already clicked, so a
+// second call would click AGAIN and close what it just opened. Check
+// the panel's own stable `.open` class instead — an instant attribute,
+// not something a transition leaves ambiguous for a frame — and wait
+// past the transition's duration (320ms in map-styles.css) before
+// treating it as settled.
 async function currentCount(page) {
+  const isOpen = await page
+    .$eval('.roster-panel', (el) => el.classList.contains('open'))
+    .catch(() => false);
+  if (!isOpen) {
+    await page.click('.roster-toggle');
+    await page.waitForTimeout(400);
+  }
   const text = await page.textContent('.panel-head .count');
   return parseInt(text, 10);
 }
@@ -45,7 +64,7 @@ async function run() {
       const expectedCards = (n - 3) / 2 + 3; // regular disjoint pairs + the trio's 3 matches
       const expectedInputs = expectedCards * 2;
 
-      await page.click('text=Ультиматум');
+      await openGameFromHome(page, 'ultimatum');
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
@@ -125,7 +144,7 @@ async function run() {
       const n = await ensureParity(page, true);
       const expectedCards = (n - 3) / 2 + 3;
 
-      await page.click('text=Дилемма заключённого');
+      await openGameFromHome(page, 'prisoners-dilemma');
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
@@ -189,7 +208,7 @@ async function run() {
       const n = await ensureParity(page, false);
       const expectedCards = n / 2;
 
-      await page.click('text=Ультиматум');
+      await openGameFromHome(page, 'ultimatum');
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
       const trioCards = await page.$$eval('.role-pair-card.role-pair-trio', (els) => els.length);

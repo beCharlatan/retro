@@ -5,7 +5,7 @@
 //
 // Usage:
 //   bun run build && bun run test
-//   bun test/run-all.js --only=persistence,pdf
+//   bun test/run-all.js --only=persistence,export
 
 const path = require('node:path');
 
@@ -13,12 +13,13 @@ const ALL_SUITES = [
   'smoke',
   'home',
   'persistence',
-  'pdf',
+  'export',
   'swap',
   'copy',
   'trio',
   'custom-question',
-  'privacy',
+  'timer',
+  'exit-dialog',
   'chart-tip',
 ];
 
@@ -42,22 +43,22 @@ async function main() {
   console.log(`Running ${suites.length} suite(s) against dist/index.html: ${suites.join(', ')}`);
 
   for (const name of suites) {
-    const mod = require(path.join(__dirname, name + '.spec.js'));
+    const mod = require(path.join(__dirname, `${name}.spec.js`));
     const report = await mod.run();
     totalPassed += report.passed;
     totalFailed += report.failed;
     report.failures.forEach((f) => {
-      allFailures.push(`[${name}] ${f.label}${f.detail ? ': ' + f.detail : ''}`);
+      allFailures.push(`[${name}] ${f.label}${f.detail ? `: ${f.detail}` : ''}`);
     });
   }
 
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
-  console.log('\n' + '='.repeat(50));
+  console.log(`\n${'='.repeat(50)}`);
   console.log(`TOTAL: ${totalPassed} passed, ${totalFailed} failed  (${seconds}s)`);
   if (totalFailed > 0) {
     console.log('\nFailures:');
     allFailures.forEach((f) => {
-      console.log('  - ' + f);
+      console.log(`  - ${f}`);
     });
   }
   console.log('='.repeat(50));

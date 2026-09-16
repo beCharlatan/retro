@@ -9,36 +9,47 @@
    Lit/Shadow DOM component (docs/modernization-plan.md Phase 3) —
    same pattern as the src/games/dictator.js pilot (Phase 2): see that
    file's header comment for the architecture notes (declarative
-   screen switching, draft banner, Print.mount(..., this.renderRoot),
+   screen switching, draft banner, ReportExport.register(..., this.renderRoot),
    data-testid test hooks). This game has no chart, so it's actually
    simpler than dictator — no imperative SVG-drawing step at all.
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import {
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { formatSigned } from '../logic/format.js';
+import { publicGoodsResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const STAKE = 100;
 const TOTAL_SCREENS = 5;
-
-function roundStats(filled, field) {
-  const n = filled.length;
-  const sumContrib = filled.reduce((a, b) => a + b[field], 0);
-  const pot = sumContrib * 2;
-  const totalPayoff = Math.round(n * STAKE - sumContrib + pot);
-  const avg = sumContrib / n;
-  return { avg, totalPayoff };
-}
+const ROUND_TITLES = [
+  'Общий котёл — дважды подряд',
+  'Впишите вклад каждого участника',
+  `Снова ${STAKE} фишек, тот же котёл`,
+  'Что получилось у вашей команды',
+  'Общественное благо',
+];
 
 export class RetroGamePublicGoods extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -47,31 +58,25 @@ export class RetroGamePublicGoods extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
 
-    const loaded = Persist.load('public-goods');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('public-goods'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, r1: null, r2: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -85,46 +90,40 @@ export class RetroGamePublicGoods extends LitElement {
   }
 
   _onEntryInput(e, idx, field) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      if (v < 0) v = 0;
-      if (v > STAKE) v = STAKE;
-    }
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, [field]: v } : row));
+    this.data = patchRow(this.data, idx, {
+      [field]: parseNumberInput(e.target.value, { min: 0, max: STAKE }),
+    });
     Persist.save('public-goods', { data: this.data });
   }
 
   _filledCount(field) {
-    return this.data.filter((d) => d[field] !== null).length;
+    return countFilled(this.data, hasFields(field));
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.r1 !== null && d.r2 !== null);
-    const s1 = roundStats(filled, 'r1');
-    const s2 = roundStats(filled, 'r2');
-    this.results = { filled, s1, s2, delta: s2.avg - s1.avg };
+    this.results = publicGoodsResults(this.data, STAKE);
+    const { filled } = this.results;
 
-    Print.mount(
-      'print-header-public-goods',
+    ReportExport.register(
+      'public-goods',
       {
-        title: 'Общественное благо',
         subtitle:
           'Группе выгодно вкладываться всем — каждому по отдельности выгоднее не вкладываться.',
-        meta: Print.meta(filled.length, '2 раунда'),
+        meta: ReportExport.meta(filled.length, '2 раунда'),
         explanation:
           'Группе выгодно, если вкладываются все, но каждому по отдельности выгоднее не вкладываться, а пользоваться чужим вкладом — классическая «проблема безбилетника». Один из первых систематических экспериментов — Marwell G., Ames R. (1979); устойчивый результат в литературе — вклады обычно снижаются при повторении игры с одной и той же группой.',
       },
       this.renderRoot,
     );
-
-    this.goTo(3);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('public-goods');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _entryRow(row, idx, field) {
@@ -150,24 +149,15 @@ export class RetroGamePublicGoods extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Общественное благо</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('public-goods')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 10 минут</p>
           <h1>Общий котёл — дважды подряд</h1>
           <p class="lede">
@@ -229,11 +219,14 @@ export class RetroGamePublicGoods extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Раунд 1 ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Раунд 1 ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Раунд 1 из 2</p>
           <h2>Впишите вклад каждого участника</h2>
           <p class="lede">Сколько из ${STAKE} фишек каждый вложил в общий котёл.</p>
@@ -254,19 +247,22 @@ export class RetroGamePublicGoods extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               data-testid="next-btn-1"
-              ?disabled=${filled1 < 2}
-              @click=${() => this.goTo(2)}
+              ?disabled=${!hasEnough(filled1)}
+              @click=${() => this.flow.advance(2)}
             >
               Раунд 2 ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Раунд 2 из 2</p>
           <h2>Снова ${STAKE} фишек, тот же котёл</h2>
           <p class="lede">Те же правила, новая попытка — с теми же людьми.</p>
@@ -287,30 +283,26 @@ export class RetroGamePublicGoods extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               data-testid="next-btn-2"
-              ?disabled=${filled2 < 2}
-              @click=${() => this._showResults()}
+              ?disabled=${!hasEnough(filled2)}
+              @click=${() => this.flow.advance(3, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-public-goods"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? (r.delta >= 0 ? '+' : '') + r.delta.toFixed(1) : '—'}</div>
-            <p>
-              <b>Насколько изменился средний вклад</b> между раундами — раунд 2 минус раунд 1, в
-              фишках.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? (r.delta >= 0 ? '+' : '') + r.delta.toFixed(1) : '—', ...REVEAL_COPY.publicGoods(r ? { avgR1: r.s1.avg, avgR2: r.s2.avg, delta: r.delta, stake: STAKE } : null) })}
 
           <div class="group-compare">
             <div class="g low">
@@ -347,14 +339,12 @@ export class RetroGamePublicGoods extends LitElement {
               ${
                 r
                   ? r.filled.map((d) => {
-                      const diff = d.r2 - d.r1;
-                      const diffText = (diff >= 0 ? '+' : '') + diff;
                       return html`
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(d.name))}</td>
                         <td>${d.r1}</td>
                         <td>${d.r2}</td>
-                        <td>${diffText}</td>
+                        <td>${formatSigned(d.r2 - d.r1)}</td>
                       </tr>
                     `;
                     })
@@ -363,21 +353,22 @@ export class RetroGamePublicGoods extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-public-goods"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(4)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(4)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Общественное благо</h1>
           <p class="lede">
@@ -468,7 +459,21 @@ export class RetroGamePublicGoods extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Общественное благо</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'public-goods',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

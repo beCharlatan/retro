@@ -8,36 +8,31 @@
 // the results reveal, the answer paragraph, the chart's true-value
 // line, and every row of the results table.
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome } = require('./lib');
 
 async function run() {
   const report = new Report();
   report.section('Custom questions in quiz-style games');
 
   await withBrowser(async (browser) => {
-    // --- crowd-wisdom: default (regression) ---
+    // --- crowd-wisdom: default flow (regression) ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Мудрость толпы');
+      await openGameFromHome(page, 'crowd-wisdom');
       await page.waitForTimeout(100);
-      await page.click('button:has-text("Вносить данные")');
-      const inputs = await page.$$('#entry-body input');
-      for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(400 + i * 5));
-      await page.click('button:has-text("Показать результаты")');
-      await page.waitForTimeout(150);
-      const trueVal = await page.textContent('#true-value-display');
+      const q0 = await page.textContent('#cw-question-text-0');
       report.check(
-        'crowd-wisdom: default question still reveals 420 т (no regression)',
-        trueVal.trim() === '420 т',
-        trueVal.trim(),
+        'crowd-wisdom: default question 1 is still the ISS one',
+        q0.includes('Международная космическая станция'),
+        q0.trim(),
       );
       await page.close();
     }
 
-    // --- crowd-wisdom: custom question end-to-end ---
+    // --- crowd-wisdom: replace only ONE of three questions, leave the other two default ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Мудрость толпы');
+      await openGameFromHome(page, 'crowd-wisdom');
       await page.waitForTimeout(100);
 
       const panelHiddenInitially = await page.getAttribute('#custom-q-panel', 'hidden');
@@ -48,54 +43,65 @@ async function run() {
 
       await page.click('#custom-q-toggle');
       await page.waitForTimeout(80);
-      await page.fill('#custom-q-text', 'Сколько строк кода в нашем репозитории?');
-      await page.fill('#custom-q-answer', '48000');
-      await page.fill('#custom-q-unit', 'строк');
+      await page.fill('#custom-q-text-1', 'Сколько строк кода в нашем репозитории?');
+      await page.fill('#custom-q-answer-1', '48000');
+      await page.fill('#custom-q-unit-1', 'строк');
       await page.click('#custom-q-apply');
       await page.waitForTimeout(100);
 
-      const questionText = await page.textContent('#cw-question-text');
+      const q0 = await page.textContent('#cw-question-text-0');
+      const q1 = await page.textContent('#cw-question-text-1');
+      const q2 = await page.textContent('#cw-question-text-2');
       report.check(
-        'crowd-wisdom: instructions screen shows the custom question text',
-        questionText.includes('строк кода в нашем репозитории'),
-        questionText,
+        'crowd-wisdom: question 1 stays default when only Q2 is customized',
+        q0.includes('Международная космическая станция'),
+      );
+      report.check(
+        'crowd-wisdom: question 2 shows the custom text',
+        q1.includes('строк кода в нашем репозитории'),
+      );
+      report.check(
+        'crowd-wisdom: question 3 stays default when only Q2 is customized',
+        q2.includes('экватора'),
       );
 
       await page.click('button:has-text("Вносить данные")');
+      await page.waitForTimeout(100);
+      // Three inputs per participant now (one per question), not one —
+      // fill them in (Q1, Q2, Q3) triples.
       const inputs = await page.$$('#entry-body input');
       report.check(
-        'crowd-wisdom: entry screen still has one row per participant',
-        inputs.length > 0,
+        'crowd-wisdom: entry screen has three inputs per participant',
+        inputs.length > 0 && inputs.length % 3 === 0,
+        `count=${inputs.length}`,
       );
-      for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(40000 + i * 1000));
+      for (let i = 0; i < inputs.length; i += 3) {
+        await inputs[i].fill('400');
+        await inputs[i + 1].fill('48500');
+        await inputs[i + 2].fill('40000');
+      }
       await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(150);
 
-      const trueVal = await page.textContent('#true-value-display');
+      const reveal = await page.textContent('#answers-reveal');
       report.check(
-        'crowd-wisdom: reveal shows the custom answer + custom unit',
-        trueVal.trim() === '48000 строк',
-        trueVal.trim(),
-      );
-
-      const truePara = await page.textContent('#true-value-para');
-      report.check(
-        'crowd-wisdom: answer paragraph is generic (not the hardcoded ISS sentence)',
-        truePara.includes('48000 строк') && !truePara.includes('станция'),
-        truePara.trim(),
+        'crowd-wisdom: revealed answers mix custom Q2 with default Q1/Q3',
+        reveal.includes('420 т') && reveal.includes('48000 строк') && reveal.includes('40075 км'),
+        reveal.trim(),
       );
 
       const firstRow = await page.textContent('#results-tbody tr');
       report.check(
-        'crowd-wisdom: results table rows use the custom unit',
+        'crowd-wisdom: results table row uses the custom unit for Q2',
         firstRow.includes('строк'),
         firstRow.trim(),
       );
 
-      const printHeader = await page.$eval('#print-header-crowd-wisdom', (el) => el.innerHTML);
+      const reportSubtitle = await page.evaluate(() => window.__reportData?.subtitle ?? '');
       report.check(
-        'crowd-wisdom: PDF subtitle uses the custom question, not the default one',
-        printHeader.includes('строк кода в нашем репозитории'),
+        'crowd-wisdom: exported report subtitle switches to the "custom questions" wording',
+        reportSubtitle.includes('Три вопроса'),
+        reportSubtitle,
       );
 
       await page.close();
@@ -104,20 +110,20 @@ async function run() {
     // --- crowd-wisdom: reset-to-default button works ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Мудрость толпы');
+      await openGameFromHome(page, 'crowd-wisdom');
       await page.waitForTimeout(100);
       await page.click('#custom-q-toggle');
-      await page.fill('#custom-q-text', 'Тестовый вопрос');
-      await page.fill('#custom-q-answer', '999');
+      await page.fill('#custom-q-text-0', 'Тестовый вопрос');
+      await page.fill('#custom-q-answer-0', '999');
       await page.click('#custom-q-apply');
       await page.waitForTimeout(80);
       await page.click('#custom-q-reset');
       await page.waitForTimeout(80);
-      const questionText = await page.textContent('#cw-question-text');
+      const q0 = await page.textContent('#cw-question-text-0');
       report.check(
-        'crowd-wisdom: "Вернуть стандартный" restores the ISS question',
-        questionText.includes('Международная космическая станция'),
-        questionText,
+        'crowd-wisdom: "Вернуть все стандартные" restores the ISS question',
+        q0.includes('Международная космическая станция'),
+        q0.trim(),
       );
       await page.close();
     }
@@ -125,7 +131,7 @@ async function run() {
     // --- calibration: default flow (regression) ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Калибровка уверенности');
+      await openGameFromHome(page, 'calibration');
       await page.waitForTimeout(100);
       const h2 = await page.textContent('#q-heading-0');
       report.check(
@@ -139,7 +145,7 @@ async function run() {
     // --- calibration: replace only ONE of three questions, leave the other two default ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Калибровка уверенности');
+      await openGameFromHome(page, 'calibration');
       await page.waitForTimeout(100);
       await page.click('#custom-q-toggle');
       await page.waitForTimeout(80);
@@ -169,7 +175,10 @@ async function run() {
       await page.click('button:has-text("Начать вопросы")');
       await page.waitForTimeout(100);
       for (let q = 0; q < 3; q++) {
-        const inputs = await page.$$('.screen.active input');
+        // #entry-body-N directly (N = question index) — ".screen.active"
+        // matches nothing now that every round is always in the DOM
+        // (src/game-shell.js).
+        const inputs = await page.$$(`#entry-body-${q} input`);
         for (let i = 0; i < inputs.length; i += 2) {
           await inputs[i].fill('0');
           await inputs[i + 1].fill('999999');
@@ -189,7 +198,7 @@ async function run() {
     // --- calibration: partial fill (text without answer) is rejected, not silently applied ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Калибровка уверенности');
+      await openGameFromHome(page, 'calibration');
       await page.waitForTimeout(100);
       await page.click('#custom-q-toggle');
       await page.fill('#custom-q-text-0', 'Только текст, без ответа');
@@ -208,7 +217,7 @@ async function run() {
     // --- false-consensus: default flow (regression) ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Ложный консенсус');
+      await openGameFromHome(page, 'false-consensus');
       await page.waitForTimeout(100);
       const qText = await page.textContent('#fc-question-text');
       report.check(
@@ -222,7 +231,7 @@ async function run() {
     // --- false-consensus: custom question end-to-end ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Ложный консенсус');
+      await openGameFromHome(page, 'false-consensus');
       await page.waitForTimeout(100);
 
       const panelHiddenInitially = await page.getAttribute('#custom-q-panel', 'hidden');
@@ -269,10 +278,11 @@ async function run() {
       await page.click('button:has-text("Показать результаты")');
       await page.waitForTimeout(150);
 
-      const printHeader = await page.$eval('#print-header-false-consensus', (el) => el.innerHTML);
+      const reportSubtitle = await page.evaluate(() => window.__reportData?.subtitle ?? '');
       report.check(
-        'false-consensus: PDF subtitle uses the custom question, not the default one',
-        printHeader.includes('тикет без документации'),
+        'false-consensus: exported report subtitle uses the custom question, not the default one',
+        reportSubtitle.includes('тикет без документации'),
+        reportSubtitle,
       );
 
       await page.close();
@@ -281,7 +291,7 @@ async function run() {
     // --- false-consensus: reset-to-default button works ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Ложный консенсус');
+      await openGameFromHome(page, 'false-consensus');
       await page.waitForTimeout(100);
       await page.click('#custom-q-toggle');
       await page.fill('#custom-q-text', 'Тестовый вопрос');

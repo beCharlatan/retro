@@ -7,20 +7,37 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import {
+  countFilled,
+  hasEnough,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { isUsablePlanningRow, planningFallacyResults, planningRatio } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const TOTAL_SCREENS = 4;
+const ROUND_TITLES = [
+  'Сколько времени это на самом деле занимает?',
+  'Впишите оценки каждого участника',
+  'Что получилось у вашей команды',
+  'Ошибка планирования',
+];
 
 export class RetroGamePlanningFallacy extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -29,31 +46,25 @@ export class RetroGamePlanningFallacy extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
 
-    const loaded = Persist.load('planning-fallacy');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('planning-fallacy'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, best: null, actual: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -67,45 +78,39 @@ export class RetroGamePlanningFallacy extends LitElement {
   }
 
   _onEntryInput(e, idx, field) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null && v < 0) v = 0;
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, [field]: v } : row));
+    this.data = patchRow(this.data, idx, {
+      [field]: parseNumberInput(e.target.value, { min: 0 }),
+    });
     Persist.save('planning-fallacy', { data: this.data });
   }
 
   _filledCount() {
-    return this.data.filter((d) => d.best !== null && d.actual !== null && d.best > 0).length;
+    return countFilled(this.data, isUsablePlanningRow);
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.best !== null && d.actual !== null && d.best > 0);
-    const ratios = filled.map((d) => d.actual / d.best);
-    const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-    const accurateCount = ratios.filter((r) => r < 1.3).length;
-    const overrunCount = ratios.filter((r) => r > 1.5).length;
+    this.results = planningFallacyResults(this.data);
+    const { filled } = this.results;
 
-    this.results = { filled, avgRatio, accurateCount, overrunCount };
-
-    Print.mount(
-      'print-header-planning-fallacy',
+    ReportExport.register(
+      'planning-fallacy',
       {
-        title: 'Ошибка планирования',
         subtitle: '«В лучшем случае» и «по факту» — почти никогда не одно и то же число.',
-        meta: Print.meta(filled.length),
+        meta: ReportExport.meta(filled.length),
         explanation:
           'Люди систематически недооценивают, сколько времени займёт задача, даже прекрасно помня, что прошлые похожие задачи тоже заняли больше запланированного. Термин ввели Дэниел Канеман и Амос Тверски в 1977–1979 годах; классический разбор — исследование Roger Buehler, Dale Griffin и Michael Ross (1994) о студентах и сроках дипломных работ.',
       },
       this.renderRoot,
     );
-
-    this.goTo(2);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('planning-fallacy');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _entryRow(row, idx) {
@@ -139,24 +144,15 @@ export class RetroGamePlanningFallacy extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Ошибка планирования</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('planning-fallacy')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 6 минут</p>
           <h1>Сколько времени это на самом деле занимает?</h1>
           <p class="lede">
@@ -215,11 +211,14 @@ export class RetroGamePlanningFallacy extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите оценки каждого участника</h2>
           <p class="lede">В часах: «лучший случай» и «по факту в среднем».</p>
@@ -239,34 +238,30 @@ export class RetroGamePlanningFallacy extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(2, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-planning-fallacy"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.avgRatio.toFixed(2) + '×' : '—'}</div>
-            <p>
-              <b>В среднем по команде</b> факт превышает «лучший случай» именно во столько раз —
-              и это никого не должно удивлять, так работает почти у всех.
-            </p>
-          </div>
+          ${renderReveal({ value: r && r.avgRatio !== null ? `${r.avgRatio.toFixed(2)}×` : '—', ...REVEAL_COPY.planningFallacy(r && r.avgRatio !== null ? { avgRatio: r.avgRatio, accurateCount: r.accurateCount, overrunCount: r.overrunCount, total: r.filled.length } : null) })}
 
           <div class="group-compare">
             <div class="g low">
               <div class="t">Превышение меньше чем в 1.3 раза</div>
-              <div class="v">${r ? r.accurateCount + ' из ' + r.filled.length : '—'}</div>
+              <div class="v">${r ? `${r.accurateCount} из ${r.filled.length}` : '—'}</div>
             </div>
             <div class="g high">
               <div class="t">Превышение больше чем в 1.5 раза</div>
-              <div class="v">${r ? r.overrunCount + ' из ' + r.filled.length : '—'}</div>
+              <div class="v">${r ? `${r.overrunCount} из ${r.filled.length}` : '—'}</div>
             </div>
           </div>
 
@@ -283,13 +278,12 @@ export class RetroGamePlanningFallacy extends LitElement {
               ${
                 r
                   ? r.filled.map((d) => {
-                      const ratio = d.actual / d.best;
                       return html`
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(d.name))}</td>
                         <td>${d.best} ч</td>
                         <td>${d.actual} ч</td>
-                        <td>${ratio.toFixed(2)}×</td>
+                        <td>${planningRatio(d).toFixed(2)}×</td>
                       </tr>
                     `;
                     })
@@ -298,21 +292,22 @@ export class RetroGamePlanningFallacy extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-planning-fallacy"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Ошибка планирования</h1>
           <p class="lede">
@@ -406,7 +401,21 @@ export class RetroGamePlanningFallacy extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Ошибка планирования</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'planning-fallacy',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

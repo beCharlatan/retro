@@ -19,13 +19,43 @@
    only ever built once at the original defaults. Keeps all original
    plain ids (q-heading-N, custom-q-text/answer/unit-N, entry-body-N,
    next-btn-N, ...).
+
+   One-continuous-scroll деталка — see framing.js for the full
+   write-up of this layout and game-shell.js for the shared navigation
+   helpers every game now uses. ROUND_TITLES isn't a fixed top-level
+   const here like in the other games — this is the one game whose
+   round titles (the question text) can change at runtime via the
+   custom-question panel, so _roundTitles() below rebuilds it from
+   `this.questions` each time instead.
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { clearQuestionSlots, readQuestionSlots } from '../custom-question-form.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_EDIT, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_EDIT,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_X,
+} from '../icons.js';
+import { buildCustomQuestions, cloneQuestions, MESSAGES } from '../logic/custom-questions.js';
+import {
+  countFilled,
+  hasEnough,
+  loadableDraft,
+  parseNumberInput,
+  patchItem,
+} from '../logic/entries.js';
+import { formatPercent, outcomeMark } from '../logic/format.js';
+import { calibrationResults, calibrationRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
@@ -36,15 +66,10 @@ const DEFAULT_QUESTIONS = [
 ];
 const TOTAL_SCREENS = 3 + DEFAULT_QUESTIONS.length; // instructions + Qn + results + context
 
-function cloneDefaults() {
-  return DEFAULT_QUESTIONS.map((q) => ({ ...q }));
-}
-
 export class RetroGameCalibration extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     questions: { state: true },
     entries: { state: true },
     draft: { state: true },
@@ -57,21 +82,18 @@ export class RetroGameCalibration extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
-    this.questions = cloneDefaults();
+    this.flow = new RoundFlowController(this, { titles: () => this._roundTitles() });
+    this.questions = cloneQuestions(DEFAULT_QUESTIONS);
     this.entries = this._blankEntries();
     this.results = null;
     this.isCustomQuestions = false;
     this.customPanelOpen = false;
     this.customQStatus = '';
 
-    const loaded = Persist.load('calibration');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.entries) &&
-      loaded.payload.entries.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('calibration'), {
+      key: 'entries',
+      length: this.names.length,
+    });
   }
 
   _blankEntries() {
@@ -81,18 +103,24 @@ export class RetroGameCalibration extends LitElement {
     }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
+  _roundTitles() {
+    return [
+      'Насколько вы на самом деле уверены?',
+      ...this.questions.map((q) => q.q),
+      'Что получилось у вашей команды',
+      'Калибровка уверенности',
+    ];
   }
 
   _restoreDraft() {
-    this.entries = this.draft.payload.entries;
-    if (this.draft.payload.questions) {
-      this.questions = this.draft.payload.questions;
-      this.isCustomQuestions = true;
-    }
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.entries = this.draft.payload.entries;
+      if (this.draft.payload.questions) {
+        this.questions = this.draft.payload.questions;
+        this.isCustomQuestions = true;
+      }
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -110,48 +138,29 @@ export class RetroGameCalibration extends LitElement {
   }
 
   _applyCustomQuestions() {
-    const next = DEFAULT_QUESTIONS.map((def, i) => {
-      const text = this.renderRoot.getElementById(`custom-q-text-${i}`).value.trim();
-      const answerRaw = this.renderRoot.getElementById(`custom-q-answer-${i}`).value;
-      const unit = this.renderRoot.getElementById(`custom-q-unit-${i}`).value.trim();
-      if (!text && answerRaw === '') return { ...def }; // slot left blank — keep default
-      const answer = Number(answerRaw);
-      if (!text || answerRaw === '' || Number.isNaN(answer)) return null; // invalid partial fill
-      return { q: text, answer: answer, unit: unit ? ' ' + unit : '' };
-    });
-    if (next.some((q) => q === null)) {
-      this.customQStatus =
-        'Для каждого заполненного вопроса нужен и текст, и числовой ответ — либо оставьте оба поля пустыми.';
+    const result = buildCustomQuestions(
+      DEFAULT_QUESTIONS,
+      readQuestionSlots(this.renderRoot, DEFAULT_QUESTIONS.length),
+    );
+    if (!result.ok) {
+      this.customQStatus = result.error;
       return;
     }
-    this.questions = next;
-    this.isCustomQuestions = next.some(
-      (q, i) => q.q !== DEFAULT_QUESTIONS[i].q || q.answer !== DEFAULT_QUESTIONS[i].answer,
-    );
-    this.customQStatus = '✓ Вопросы обновлены — используются при сборе данных и в результатах.';
+    this.questions = result.questions;
+    this.isCustomQuestions = result.isCustom;
+    this.customQStatus = result.message;
   }
 
   _resetCustomQuestions() {
-    this.questions = cloneDefaults();
+    this.questions = cloneQuestions(DEFAULT_QUESTIONS);
     this.isCustomQuestions = false;
-    this.customQStatus = '✓ Вернули все три стандартных вопроса.';
-    DEFAULT_QUESTIONS.forEach((_, i) => {
-      this.renderRoot.getElementById(`custom-q-text-${i}`).value = '';
-      this.renderRoot.getElementById(`custom-q-answer-${i}`).value = '';
-      this.renderRoot.getElementById(`custom-q-unit-${i}`).value = '';
-    });
+    this.customQStatus = MESSAGES.resetAll;
+    clearQuestionSlots(this.renderRoot, DEFAULT_QUESTIONS.length);
   }
 
   _onEntryInput(e, idx, qIdx, field) {
-    const v = e.target.value === '' ? null : Number(e.target.value);
-    this.entries = this.entries.map((entry, i) =>
-      i === idx
-        ? {
-            ...entry,
-            ranges: entry.ranges.map((r, ri) => (ri === qIdx ? { ...r, [field]: v } : r)),
-          }
-        : entry,
-    );
+    const v = parseNumberInput(e.target.value);
+    this.entries = patchItem(this.entries, idx, 'ranges', qIdx, (r) => ({ ...r, [field]: v }));
     Persist.save('calibration', {
       entries: this.entries,
       questions: this.isCustomQuestions ? this.questions : null,
@@ -159,70 +168,45 @@ export class RetroGameCalibration extends LitElement {
   }
 
   _filledCount(qIdx) {
-    return this.entries.filter((e) => e.ranges[qIdx].low !== null && e.ranges[qIdx].high !== null)
-      .length;
+    return countFilled(
+      this.entries,
+      (e) => e.ranges[qIdx].low !== null && e.ranges[qIdx].high !== null,
+    );
   }
 
   _next(qIdx) {
     if (qIdx === this.questions.length - 1) {
-      this._showResults();
+      this.flow.advance(1 + this.questions.length, () => this._showResults());
     } else {
-      this.goTo(2 + qIdx);
+      this.flow.advance(2 + qIdx);
     }
   }
 
   _showResults() {
-    const hitsPerQuestion = this.questions.map(() => 0);
-    let totalHits = 0,
-      totalAnswered = 0;
-
-    this.entries.forEach((e) => {
-      this.questions.forEach((q, qi) => {
-        const r = e.ranges[qi];
-        if (r.low === null || r.high === null) return;
-        const lo = Math.min(r.low, r.high),
-          hi = Math.max(r.low, r.high);
-        if (q.answer >= lo && q.answer <= hi) {
-          hitsPerQuestion[qi]++;
-          totalHits++;
-        }
-        totalAnswered++;
-      });
-    });
-
-    const hitRate = totalAnswered ? Math.round((totalHits / totalAnswered) * 100) + '%' : '—';
-    const perQuestionStats = this.questions.map((_, qi) => {
-      const answered = this.entries.filter(
-        (e) => e.ranges[qi].low !== null && e.ranges[qi].high !== null,
-      ).length;
-      return { pct: answered ? Math.round((hitsPerQuestion[qi] / answered) * 100) : 0 };
-    });
     const answersReveal =
       'Правильные ответы: ' +
       this.questions.map((q, i) => `(${i + 1}) ${q.answer}${q.unit}`).join(' · ');
+    this.results = { ...calibrationResults(this.entries, this.questions), answersReveal };
 
-    this.results = { hitRate, perQuestionStats, answersReveal };
-
-    Print.mount(
-      'print-header-calibration',
+    ReportExport.register(
+      'calibration',
       {
-        title: 'Калибровка уверенности',
         subtitle: 'Уверены на 90%? Реальное попадание обычно куда ниже.',
-        meta: Print.meta(this.entries.length),
+        meta: ReportExport.meta(this.entries.length),
         explanation:
           'Люди систематически переоценивают точность собственных знаний: если попросить 90%-й доверительный интервал, правильный ответ на деле попадает в него заметно реже, чем в 90% случаев. Классическая работа — Alpert M., Raiffa H. (1982) в сборнике Kahneman, Slovic, Tversky «Judgment Under Uncertainty».',
       },
       this.renderRoot,
     );
-
-    this.goTo(1 + this.questions.length);
   }
 
-  _reset() {
+  async _reset() {
     this.entries = this._blankEntries();
     this.results = null;
     Persist.clear('calibration');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _customQuestionBlock(def, i) {
@@ -256,7 +240,8 @@ export class RetroGameCalibration extends LitElement {
     const nextLabel = isLast ? 'Показать результаты' : 'Следующий вопрос';
     const filled = this._filledCount(qIdx);
     return html`
-      <section class="screen ${this.screenIdx === 1 + qIdx ? 'active' : ''}">
+      <section class="${this.flow.roundClass(1 + qIdx)}" id="round-${1 + qIdx}">
+        <div class="round-body">
         <p class="eyebrow">Вопрос ${qIdx + 1} из ${this.questions.length}</p>
         <h2 id="q-heading-${qIdx}">${q.q}</h2>
         <p class="lede">Для каждого — диапазон, в который он уверен на 90%, что попадёт правильный ответ.</p>
@@ -299,16 +284,18 @@ export class RetroGameCalibration extends LitElement {
         </div>
 
         <div class="nav-row">
-          <button class="ghost" @click=${() => this.goTo(qIdx)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+          <button class="ghost" @click=${() => this.flow.scrollTo(qIdx)}>${unsafeHTML(ICON_LEFT)} Назад</button>
           <button
             class="primary"
             id="next-btn-${qIdx}"
-            ?disabled=${filled < 2}
+            ?disabled=${!hasEnough(filled)}
             @click=${() => this._next(qIdx)}
           >
             ${nextLabel} ${unsafeHTML(ICON_RIGHT)}
           </button>
         </div>
+        </div>
+        ${this.flow.lock(1 + qIdx)}
       </section>
     `;
   }
@@ -317,24 +304,15 @@ export class RetroGameCalibration extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Калибровка уверенности</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('calibration')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 10 минут</p>
           <h1>Насколько вы на самом деле уверены?</h1>
           <p class="lede">${this.questions.length} коротких вопроса. На каждый — не точный ответ, а диапазон.</p>
@@ -386,7 +364,7 @@ export class RetroGameCalibration extends LitElement {
           <p class="note">Задача — не угадать точно, а честно оценить границы своей уверенности.</p>
 
           <div class="custom-q-toggle-row">
-            <button type="button" class="ghost" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
+            <button type="button" class="secondary" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
               ${unsafeHTML(ICON_EDIT)} Задать свои вопросы вместо стандартных
             </button>
           </div>
@@ -402,7 +380,7 @@ export class RetroGameCalibration extends LitElement {
               </button>
               <button
                 type="button"
-                class="ghost"
+                class="secondary"
                 id="custom-q-reset"
                 ?hidden=${!this.isCustomQuestions}
                 @click=${() => this._resetCustomQuestions()}
@@ -415,24 +393,20 @@ export class RetroGameCalibration extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Начать вопросы ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Начать вопросы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
         ${this.questions.map((_, i) => this._questionScreen(i))}
 
-        <section class="screen ${this.screenIdx === 1 + this.questions.length ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1 + this.questions.length)}" id="round-${1 + this.questions.length}">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-calibration"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.hitRate : '—'}</div>
-            <p>
-              <b>Реальное попадание в свои же 90%-е диапазоны</b> — у идеально откалиброванного
-              человека здесь должно быть около 90%.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? r.hitRate : '—', ...REVEAL_COPY.calibration(r ? { hitPct: r.totalAnswered ? Math.round((r.totalHits / r.totalAnswered) * 100) : null, totalHits: r.totalHits, totalAnswered: r.totalAnswered } : null) })}
 
           <div class="stat-row">
             ${
@@ -462,50 +436,38 @@ export class RetroGameCalibration extends LitElement {
             <tbody id="results-tbody">
               ${
                 r
-                  ? this.entries.map((e) => {
-                      let hits = 0,
-                        answered = 0;
-                      const cells = this.questions.map((q, qi) => {
-                        const range = e.ranges[qi];
-                        if (range.low === null || range.high === null) return html`<td>—</td>`;
-                        answered++;
-                        const lo = Math.min(range.low, range.high),
-                          hi = Math.max(range.low, range.high);
-                        const hit = q.answer >= lo && q.answer <= hi;
-                        if (hit) hits++;
-                        return html`<td>${hit ? '✓' : '✕'}</td>`;
-                      });
-                      const pctText = answered ? Math.round((hits / answered) * 100) + '%' : '—';
-                      return html`
+                  ? calibrationRows(this.entries, this.questions).map(
+                      (row) => html`
                       <tr>
-                        <td class="name">${unsafeHTML(avatarName(e.name))}</td>
-                        ${cells}
-                        <td>${pctText}</td>
+                        <td class="name">${unsafeHTML(avatarName(row.name))}</td>
+                        ${row.outcomes.map((o) => html`<td>${outcomeMark(o)}</td>`)}
+                        <td>${formatPercent(row.pct)}</td>
                       </tr>
-                    `;
-                    })
+                    `,
+                    )
                   : ''
               }
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-calibration"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(this.questions.length)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(2 + this.questions.length)}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(this.questions.length)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(2 + this.questions.length)}>
               Что это было? ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1 + this.questions.length)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 + this.questions.length ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2 + this.questions.length)}" id="round-${2 + this.questions.length}">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Калибровка уверенности</h1>
           <p class="lede">
@@ -603,7 +565,21 @@ export class RetroGameCalibration extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(2 + this.questions.length)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Калибровка уверенности</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'calibration',
+              stepLabels: this._roundTitles(),
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

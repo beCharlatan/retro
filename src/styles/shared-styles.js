@@ -3,12 +3,11 @@
 // via `static styles = sharedStyles`.
 //
 // Deliberately the WHOLE stylesheet, not a hand-picked subset — carving
-// out "just what one game needs" risks silently missing a rule (the
-// @media print block hiding nav chrome, the CSS-only input-blur privacy
-// mechanism, a category color variable) that only shows up as a subtle
+// out "just what one game needs" risks silently missing a rule (e.g.
+// a category color variable) that only shows up as a subtle
 // visual bug or a failing test months later. A little unused CSS
 // specificity inside a component's shadow root costs nothing at
-// runtime; a missed print or privacy rule costs a real regression.
+// runtime; a missed rule costs a real regression.
 // Trimming this to a smaller per-component/shared-tokens split is a
 // legitimate later optimization (Phase 4) once every game has migrated
 // and the full picture of what's actually shared is clear.

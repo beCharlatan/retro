@@ -52,15 +52,10 @@
      // person leaves back to the menu, the draft is no longer needed:
      Persist.clear('anchoring');
 ========================================================= */
-export function timeAgo(ts) {
-  const mins = Math.round((Date.now() - ts) / 60000);
-  if (mins < 1) return 'только что';
-  if (mins === 1) return 'минуту назад';
-  if (mins < 5) return mins + ' минуты назад';
-  if (mins < 60) return mins + ' минут назад';
-  const hrs = Math.round(mins / 60);
-  return hrs === 1 ? 'час назад' : hrs + ' ч. назад';
-}
+// "Saved 3 minutes ago" for the recovery banner — lives in logic/format.js
+// (pure, unit-tested); re-exported here because every game imports it
+// alongside Persist.
+export { timeAgo } from './logic/format.js';
 
 export const Persist = (() => {
   const PREFIX = 'retro-draft-';
@@ -81,7 +76,7 @@ export const Persist = (() => {
       const raw = sessionStorage.getItem(PREFIX + gameId);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return parsed && parsed.payload ? parsed : null;
+      return parsed?.payload ? parsed : null;
     } catch {
       return null;
     }

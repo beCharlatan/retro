@@ -10,10 +10,23 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import {
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { barnumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 import { copyToClipboard } from '../toast.js';
@@ -21,12 +34,17 @@ import { copyToClipboard } from '../toast.js';
 const PROFILE_TEXT =
   'Иногда вы сомневаетесь, правильно ли поступили или приняли верное решение. Вы цените, когда вас окружают доказательства того, что вас любят и уважают, но при этом умеете быть требовательны к себе. У вас есть значительный неиспользуемый потенциал, который вы не всегда обращаете себе на пользу. Внешне вы дисциплинированы и держите себя в руках, но внутри нередко испытываете тревогу и неуверенность. Порой вы всерьёз сомневаетесь, правильный ли выбор сделали в жизни или в карьере. Вам нравится определённая доля перемен и разнообразия, а жёсткие рамки и ограничения вызывают недовольство.';
 const TOTAL_SCREENS = 4;
+const ROUND_TITLES = [
+  'Персональный психологический портрет команды',
+  'Впишите оценку каждого участника',
+  'Что получилось у вашей команды',
+  'Эффект Барнума / Форера',
+];
 
 export class RetroGameBarnum extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -35,31 +53,25 @@ export class RetroGameBarnum extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
 
-    const loaded = Persist.load('barnum');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('barnum'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, rating: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -77,44 +89,39 @@ export class RetroGameBarnum extends LitElement {
   }
 
   _onEntryInput(e, idx) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      if (v < 0) v = 0;
-      if (v > 5) v = 5;
-    }
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, rating: v } : row));
+    this.data = patchRow(this.data, idx, {
+      rating: parseNumberInput(e.target.value, { min: 0, max: 5 }),
+    });
     Persist.save('barnum', { data: this.data });
   }
 
   _filledCount() {
-    return this.data.filter((d) => d.rating !== null).length;
+    return countFilled(this.data, hasFields('rating'));
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.rating !== null);
-    const avg = filled.reduce((a, b) => a + b.rating, 0) / filled.length;
-    this.results = { filled, avg };
+    this.results = barnumResults(this.data);
+    const { filled } = this.results;
 
-    Print.mount(
-      'print-header-barnum',
+    ReportExport.register(
+      'barnum',
       {
-        title: 'Эффект Барнума',
         subtitle: 'Расплывчатое описание личности кажется удивительно «прямо про меня».',
-        meta: Print.meta(filled.length),
+        meta: ReportExport.meta(filled.length),
         explanation:
           'Расплывчатое, общее для всех описание личности воспринимается как удивительно точное и «прямо про меня» — потому что читающий сам додумывает подходящие примеры из своей жизни. Эффект впервые продемонстрировал психолог Бертрам Форер в 1949 году: все 39 студентов получили один и тот же текст и в среднем оценили его точность на 4.26 из 5.',
       },
       this.renderRoot,
     );
-
-    this.goTo(2);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('barnum');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _entryRow(row, idx) {
@@ -140,24 +147,15 @@ export class RetroGameBarnum extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Эффект Барнума</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('barnum')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 6 минут</p>
           <h1>Персональный психологический портрет команды</h1>
           <p class="lede">
@@ -230,11 +228,14 @@ export class RetroGameBarnum extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите оценку каждого участника</h2>
           <p class="lede">От 0 (совсем не про меня) до 5 (прямо в точку).</p>
@@ -253,25 +254,21 @@ export class RetroGameBarnum extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(2, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-barnum"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.avg.toFixed(2) + ' / 5' : '—'}</div>
-            <p>
-              <b>Средняя оценка точности</b> из 5 — команда в среднем сочла описание довольно
-              похожим на себя.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? `${r.avg.toFixed(2)} / 5` : '—', ...REVEAL_COPY.barnum(r ? { avg: r.avg } : null) })}
 
           <div class="quote-card">
             <p>«${PROFILE_TEXT}»</p>
@@ -304,21 +301,22 @@ export class RetroGameBarnum extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-barnum"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект Барнума / Форера</h1>
           <p class="lede">
@@ -419,7 +417,21 @@ export class RetroGameBarnum extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Эффект Барнума</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'barnum',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

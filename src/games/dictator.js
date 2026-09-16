@@ -26,14 +26,9 @@
      into a shadow root anyway) — `timeAgo` is imported standalone from
      persist.js for that. Persist.save/load/clear (pure sessionStorage,
      no DOM) are unchanged.
-   - Print.mount() gained an optional `root` parameter for exactly this
-     case — pass `this.renderRoot` so it finds `#print-header-dictator`
-     inside the shadow root rather than searching `document`.
-   - The PDF button uses a real `@click` binding instead of an inline
-     onclick="Print.run()" string — inline handler attributes run in
-     global scope and can't see anything module-scoped, which is why
-     print.js also exports `window.Print` as a bridge for the other 12
-     games that still use onclick="..." (not needed here).
+   - The export button (ReportExport.download) uses a real `@click`
+     binding, and ReportExport.register(..., this.renderRoot) gets the
+     shadow root so it can find the results screen inside it.
    - The SVG chart is still hand-built imperatively (ChartTip's hover
      wiring doesn't lend itself to a declarative rewrite) — just scoped
      to `this.renderRoot` instead of `document`.
@@ -41,24 +36,47 @@
      `sharedStyles` — see src/styles/shared-styles.js for why the whole
      file rather than a hand-picked subset.
 ========================================================= */
+import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import { stackLanes, swarmHeight } from '../logic/chart-layout.js';
+import {
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { formatSigned } from '../logic/format.js';
+import { dictatorResults } from '../logic/results.js';
+import { dodge } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const POT = 1000;
 const TOTAL_SCREENS = 5;
+const ROUND_TITLES = [
+  'Быстрое решение про деньги — дважды',
+  'Сколько каждый отдал — не зная, что решат остальные',
+  'То же решение, но уже не анонимно',
+  'Что получилось у вашей команды',
+  'Игра диктатора',
+];
 
 export class RetroGameDictator extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -67,31 +85,25 @@ export class RetroGameDictator extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
 
-    const loaded = Persist.load('dictator');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('dictator'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, r1: null, r2: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -105,50 +117,47 @@ export class RetroGameDictator extends LitElement {
   }
 
   _onEntryInput(e, idx, field) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      if (v < 0) v = 0;
-      if (v > POT) v = POT;
-    }
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, [field]: v } : row));
+    this.data = patchRow(this.data, idx, {
+      [field]: parseNumberInput(e.target.value, { min: 0, max: POT }),
+    });
     Persist.save('dictator', { data: this.data });
   }
 
   _filledCount(field) {
-    return this.data.filter((d) => d[field] !== null).length;
+    return countFilled(this.data, hasFields(field));
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.r1 !== null && d.r2 !== null);
-    const avgR1 = filled.reduce((a, b) => a + b.r1, 0) / filled.length;
-    const avgR2 = filled.reduce((a, b) => a + b.r2, 0) / filled.length;
-    this.results = { filled, avgR1, avgR2, delta: avgR2 - avgR1 };
+    this.results = dictatorResults(this.data);
+    const { filled } = this.results;
 
-    Print.mount(
-      'print-header-dictator',
+    ReportExport.register(
+      'dictator',
       {
-        title: 'Игра диктатора',
         subtitle:
           'Никто не заставляет делиться — но почти все делятся, и ещё больше, если их видят.',
-        meta: Print.meta(filled.length, '2 раунда'),
+        meta: ReportExport.meta(filled.length, '2 раунда'),
         explanation:
           'Классическая экономическая теория предсказывает, что рациональный и эгоистичный человек отдаст 0 — в реальности почти никто так не делает, а стоит убрать анонимность, отдают ещё больше. Дизайн формализован в статье Forsythe, Horowitz, Savin, Sefton (1994) как «очищенный» от переговорной стратегии тест альтруизма.',
       },
       this.renderRoot,
     );
-
-    this.goTo(3);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('dictator');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   updated() {
-    if (this.screenIdx === 3 && this.results) {
+    // No longer gated on screenIdx===3 — every round (including this
+    // one) is always in the DOM now, so "do we have results yet" is
+    // the only thing that matters for whether the chart should draw.
+    if (this.results) {
       this._drawChart(this.results.filled);
     }
   }
@@ -157,122 +166,240 @@ export class RetroGameDictator extends LitElement {
     const svg = this.renderRoot.getElementById('dict-chart');
     if (!svg) return;
     svg.innerHTML = '';
+    if (!filled.length) return;
+
+    const cs = getComputedStyle(this.renderRoot.querySelector('.wrap-wide'));
+    const accent = cs.getPropertyValue('--game-accent').trim() || '#4E7FFF';
+    const accentDeep = cs.getPropertyValue('--game-accent-deep').trim() || accent;
+    const gold = cs.getPropertyValue('--gold').trim() || '#b87503';
+
     const W = 640,
-      H = 220,
       ML = 20,
       MR = 20,
-      MT = 30,
-      MB = 36;
+      MT = 34,
+      MB = 40,
+      laneGap = 30;
     const plotW = W - ML - MR;
+    const dotR = 6;
 
-    function xOf(v) {
-      return ML + (v / POT) * plotW;
-    }
+    const x = d3
+      .scaleLinear()
+      .domain([0, POT])
+      .range([ML, ML + plotW]);
+
+    // Each round gets its own beeswarm — a tall pile in round 1 (say,
+    // everyone anchoring near a "fair" 500) doesn't need to reserve
+    // the same height in round 2, and vice versa (see crowd-wisdom.js
+    // for why a fixed height wasted space in the exported report).
+    const swarm1 = dodge(filled, (d) => x(d.r1), dotR + 1.5);
+    const swarm2 = dodge(filled, (d) => x(d.r2), dotR + 1.5);
+    const laneH1 = swarmHeight(swarm1, dotR);
+    const laneH2 = swarmHeight(swarm2, dotR);
+    const {
+      baselines: [baseline1, baseline2],
+      height: H,
+    } = stackLanes([laneH1, laneH2], { firstTop: MT, gap: laneGap, bottom: MB });
+
+    const svgSel = d3
+      .select(svg)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    // Lane backgrounds — round 2 (identified) gets the bolder tint of
+    // the pair, same "individual vs. the more consequential state"
+    // logic as crowd-wisdom's dot/average color split.
+    svgSel
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', MT - 12)
+      .attr('width', W)
+      .attr('height', laneH1 + 12)
+      .attr('rx', 14)
+      .style('fill', `color-mix(in srgb, ${accent} 6%, white)`);
+    svgSel
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', baseline1 + laneGap - 12)
+      .attr('width', W)
+      .attr('height', laneH2 + 12)
+      .attr('rx', 14)
+      .style('fill', `color-mix(in srgb, ${accentDeep} 8%, white)`);
+
+    svgSel
+      .append('text')
+      .attr('x', 12)
+      .attr('y', MT - 2)
+      .style('font-size', '12px')
+      .style('font-weight', 700)
+      .style('fill', accent)
+      .text('Раунд 1 · анонимно');
+    svgSel
+      .append('text')
+      .attr('x', 12)
+      .attr('y', baseline1 + laneGap - 2)
+      .style('font-size', '12px')
+      .style('font-weight', 700)
+      .style('fill', accentDeep)
+      .text('Раунд 2 · не анонимно');
+
+    // Shared money axis along the bottom.
+    svgSel
+      .append('line')
+      .attr('x1', ML)
+      .attr('y1', baseline2)
+      .attr('x2', ML + plotW)
+      .attr('y2', baseline2)
+      .style('stroke', 'var(--ink)')
+      .style('stroke-width', 1.2);
+    [0, 250, 500, 750, 1000].forEach((v) => {
+      const tx = x(v);
+      svgSel
+        .append('line')
+        .attr('x1', tx)
+        .attr('y1', baseline2)
+        .attr('x2', tx)
+        .attr('y2', baseline2 + 5)
+        .style('stroke', 'var(--ink-faint)');
+      svgSel
+        .append('text')
+        .attr('x', tx)
+        .attr('y', baseline2 + 18)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '10.5px')
+        .style('fill', 'var(--ink-faint)')
+        .text(v);
+    });
+
+    const halfX = x(POT / 2);
+    svgSel
+      .append('line')
+      .attr('x1', halfX)
+      .attr('y1', MT - 12)
+      .attr('x2', halfX)
+      .attr('y2', baseline2)
+      .style('stroke', gold)
+      .style('stroke-width', 1.5)
+      .style('stroke-dasharray', '5,4');
+    svgSel
+      .append('text')
+      .attr('x', halfX)
+      .attr('y', MT - 18)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '10.5px')
+      .style('font-weight', 700)
+      .style('fill', gold)
+      .text('поровну');
+
+    const points1 = swarm1.map((s) => ({ ...s.data, cx: s.x, cy: baseline1 - dotR - 2 - s.y }));
+    const points2 = swarm2.map((s) => ({ ...s.data, cx: s.x, cy: baseline2 - dotR - 2 - s.y }));
+    // Same person, both rounds, keyed by name so the connecting line
+    // below can find its matching pair regardless of dodge's sort order.
+    const p1ByName = new Map(points1.map((p) => [p.name, p]));
+    const p2ByName = new Map(points2.map((p) => [p.name, p]));
+
+    // Faint line from a person's round-1 dot to their round-2 dot —
+    // this is the actual finding the chart exists to show ("did
+    // losing anonymity move this person's number, and which way"),
+    // visible per-person instead of only as an aggregate delta.
+    const links = svgSel
+      .selectAll('line.dict-link')
+      .data(filled)
+      .join('line')
+      .attr('class', 'dict-link')
+      .attr('x1', (d) => p1ByName.get(d.name).cx)
+      .attr('y1', (d) => p1ByName.get(d.name).cy)
+      .attr('x2', (d) => p1ByName.get(d.name).cx)
+      .attr('y2', (d) => p1ByName.get(d.name).cy)
+      .style('stroke', 'var(--ink-faint)')
+      .style('stroke-width', 1)
+      .style('opacity', 0);
+
+    links
+      .transition()
+      .delay((_, i) => i * 22 + 250)
+      .duration(350)
+      .attr('x2', (d) => p2ByName.get(d.name).cx)
+      .attr('y2', (d) => p2ByName.get(d.name).cy)
+      .style('opacity', 0.35);
+
     function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
       for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
 
-    svg.appendChild(
-      ns('line', {
-        x1: ML,
-        y1: H - MB,
-        x2: ML + plotW,
-        y2: H - MB,
-        stroke: '#1E2A32',
-        'stroke-width': 1.2,
-      }),
-    );
-    [0, 250, 500, 750, 1000].forEach((v) => {
-      const x = xOf(v);
-      svg.appendChild(
-        ns('line', {
-          x1: x,
-          y1: H - MB,
-          x2: x,
-          y2: H - MB + 5,
-          stroke: '#4B5B63',
-          'stroke-width': 1,
-        }),
-      );
-      const lx = ns('text', {
-        x: x,
-        y: H - MB + 18,
-        'font-size': 10.5,
-        'font-family': 'IBM Plex Mono, monospace',
-        fill: '#4B5B63',
-        'text-anchor': 'middle',
-      });
-      lx.textContent = v;
-      svg.appendChild(lx);
-    });
+    // Draws one round's dots + hit circles, returns name -> dot node
+    // so hover wiring (below, once both rounds exist) can reach across
+    // rounds to highlight a person's OTHER dot too.
+    const drawRound = (points, color, valueKey, roundLabel) => {
+      const dots = svgSel
+        .selectAll(null)
+        .data(points)
+        .join('circle')
+        .attr('class', 'answer-dot')
+        .attr('cx', (d) => d.cx)
+        .attr('cy', (d) => d.cy)
+        .attr('r', 0)
+        .style('fill', color)
+        .style('fill-opacity', 0.9)
+        .style('stroke', 'var(--white)')
+        .style('stroke-width', 1.3);
 
-    const halfX = xOf(POT / 2);
-    svg.appendChild(
-      ns('line', {
-        x1: halfX,
-        y1: MT,
-        x2: halfX,
-        y2: H - MB,
-        stroke: '#9A7B3F',
-        'stroke-width': 1.5,
-        'stroke-dasharray': '5,4',
-      }),
-    );
-    const halfLabel = ns('text', {
-      x: halfX,
-      y: MT - 8,
-      'font-size': 10.5,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#9A7B3F',
-      'text-anchor': 'middle',
-    });
-    halfLabel.textContent = 'поровну';
-    svg.appendChild(halfLabel);
+      dots
+        .transition()
+        .delay((_, i) => i * 22)
+        .duration(400)
+        .ease(d3.easeBackOut.overshoot(1.7))
+        .attr('r', dotR);
 
-    const rowH = 16;
-    filled.forEach((p, i) => {
-      const y1 = H - MB - 14 - (i % 6) * rowH;
-      const y2 = y1 - 8;
-      const c1 = ns('circle', {
-        cx: xOf(p.r1),
-        cy: y1,
-        r: 5,
-        fill: '#3E6E64',
-        'fill-opacity': 0.85,
-        stroke: '#F5F3EC',
-        'stroke-width': 1.2,
+      const dotNodes = dots.nodes();
+      const nodesByName = new Map();
+      points.forEach((p, i) => {
+        const hit = ns('circle', {
+          cx: p.cx,
+          cy: p.cy,
+          r: dotR + 5,
+          fill: 'transparent',
+          'pointer-events': 'all',
+        });
+        dotNodes[i].after(hit);
+        ChartTip.attach(
+          hit,
+          () =>
+            `<b>${p.name}</b><span class="tip-row"><span>${roundLabel}</span><span>${p[valueKey]} ₽</span></span>`,
+        );
+        nodesByName.set(p.name, dotNodes[i]);
       });
-      svg.appendChild(c1);
-      ChartTip.attachToPoint(
-        svg,
-        ns,
-        xOf(p.r1),
-        y1,
-        () =>
-          `<b>${p.name}</b><span class="tip-row"><span>Раунд 1 · анонимно</span><span>${p.r1} ₽</span></span>`,
-        8,
-      );
-      const c2 = ns('circle', {
-        cx: xOf(p.r2),
-        cy: y2,
-        r: 5,
-        fill: '#A8482A',
-        'fill-opacity': 0.85,
-        stroke: '#F5F3EC',
-        'stroke-width': 1.2,
+      return nodesByName;
+    };
+
+    const nodes1 = drawRound(points1, accent, 'r1', 'Раунд 1 · анонимно');
+    const nodes2 = drawRound(points2, accentDeep, 'r2', 'Раунд 2 · не анонимно');
+    const linkNodes = links.nodes();
+    const linkByName = new Map(filled.map((d, i) => [d.name, linkNodes[i]]));
+
+    // Hovering either of a person's two dots highlights BOTH dots and
+    // the line between them — the pairing (did this person's number
+    // move, and which way) is the actual point of this chart, not
+    // just whichever single dot happens to be under the cursor.
+    filled.forEach((p) => {
+      const setState = (on) => {
+        [nodes1.get(p.name), nodes2.get(p.name)].forEach((node) => {
+          d3.select(node)
+            .style('fill-opacity', on ? 1 : 0.9)
+            .attr('r', on ? dotR * 1.25 : dotR);
+        });
+        const link = linkByName.get(p.name);
+        d3.select(link)
+          .style('stroke', on ? accentDeep : 'var(--ink-faint)')
+          .style('stroke-width', on ? 2 : 1)
+          .style('opacity', on ? 0.9 : 0.35);
+      };
+      [nodes1.get(p.name), nodes2.get(p.name)].forEach((node) => {
+        const hit = node.nextSibling;
+        hit.addEventListener('mouseenter', () => setState(true));
+        hit.addEventListener('mouseleave', () => setState(false));
       });
-      svg.appendChild(c2);
-      ChartTip.attachToPoint(
-        svg,
-        ns,
-        xOf(p.r2),
-        y2,
-        () =>
-          `<b>${p.name}</b><span class="tip-row"><span>Раунд 2 · не анонимно</span><span>${p.r2} ₽</span></span>`,
-        8,
-      );
     });
   }
 
@@ -299,24 +426,15 @@ export class RetroGameDictator extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Игра диктатора</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('dictator')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 7 минут</p>
           <h1>Быстрое решение про деньги — дважды</h1>
           <p class="lede">
@@ -377,11 +495,14 @@ export class RetroGameDictator extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Раунд 1 ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Раунд 1 ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Раунд 1 из 2 · Анонимно</p>
           <h2>Сколько каждый отдал — не зная, что решат остальные</h2>
           <p class="lede">Никто не узнает, кто сколько написал.</p>
@@ -402,19 +523,22 @@ export class RetroGameDictator extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               data-testid="next-btn-1"
-              ?disabled=${filled1 < 2}
-              @click=${() => this.goTo(2)}
+              ?disabled=${!hasEnough(filled1)}
+              @click=${() => this.flow.advance(2)}
             >
               Раунд 2 ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Раунд 2 из 2 · Вас увидят</p>
           <h2>То же решение, но уже не анонимно</h2>
           <p class="lede">Коллега узнает, кто именно принял это решение.</p>
@@ -435,47 +559,43 @@ export class RetroGameDictator extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               data-testid="next-btn-2"
-              ?disabled=${filled2 < 2}
-              @click=${() => this._showResults()}
+              ?disabled=${!hasEnough(filled2)}
+              @click=${() => this.flow.advance(3, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-dictator"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? (r.delta >= 0 ? '+' : '') + Math.round(r.delta) + ' ₽' : '—'}</div>
-            <p>
-              <b>Насколько изменилась средняя сумма</b>, когда решение перестало быть анонимным —
-              раунд 2 минус раунд 1.
-            </p>
-          </div>
+          ${renderReveal({ value: r && r.delta !== null ? `${(r.delta >= 0 ? '+' : '') + Math.round(r.delta)} ₽` : '—', ...REVEAL_COPY.dictator(r && r.delta !== null ? { avgR1: r.avgR1, avgR2: r.avgR2, delta: r.delta, pot: POT } : null) })}
 
           <div class="group-compare">
             <div class="g low">
               <div class="t">Раунд 1 · анонимно, в среднем</div>
-              <div class="v">${r ? Math.round(r.avgR1) + ' ₽' : '—'}</div>
+              <div class="v">${r ? `${Math.round(r.avgR1)} ₽` : '—'}</div>
             </div>
             <div class="g high">
               <div class="t">Раунд 2 · не анонимно, в среднем</div>
-              <div class="v">${r ? Math.round(r.avgR2) + ' ₽' : '—'}</div>
+              <div class="v">${r ? `${Math.round(r.avgR2)} ₽` : '—'}</div>
             </div>
           </div>
 
           <div class="chart-wrap">
-            <svg id="dict-chart" viewBox="0 0 640 220" width="100%" style="display:block;"></svg>
+            <svg id="dict-chart" class="d3-chart-svg" viewBox="0 0 640 260"></svg>
             <div class="cap">
-              Шалфейные точки — раунд 1 (анонимно), рыжие — раунд 2 (не анонимно). Каждая пара
-              точек — один человек.
+              Светлые точки — раунд 1 (анонимно), тёмные — раунд 2 (не анонимно). Линия соединяет
+              пару точек одного человека — видно, куда сдвинулась его сумма.
             </div>
           </div>
 
@@ -492,14 +612,12 @@ export class RetroGameDictator extends LitElement {
               ${
                 r
                   ? r.filled.map((d) => {
-                      const diff = d.r2 - d.r1;
-                      const diffText = (diff >= 0 ? '+' : '') + diff + ' ₽';
                       return html`
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(d.name))}</td>
                         <td>${d.r1} ₽</td>
                         <td>${d.r2} ₽</td>
-                        <td>${diffText}</td>
+                        <td>${formatSigned(d.r2 - d.r1, ' ₽')}</td>
                       </tr>
                     `;
                     })
@@ -508,21 +626,22 @@ export class RetroGameDictator extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-dictator"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(4)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(4)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Игра диктатора</h1>
           <p class="lede">
@@ -615,7 +734,21 @@ export class RetroGameDictator extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Игра диктатора</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'dictator',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

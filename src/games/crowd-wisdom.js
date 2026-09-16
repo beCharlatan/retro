@@ -1,58 +1,93 @@
 /* =========================================================
    GAME: Мудрость толпы (crowd-wisdom)
-   Defaults to the classic "how much does the ISS weigh?"
-   question, but the facilitator can swap in their own
-   fact-with-a-known-answer before collecting guesses — e.g.
-   "сколько строк кода в нашем репозитории?" — so the effect
-   feels like it's about this team, not an abstract quiz.
+   Three independent estimation questions instead of one — same
+   "does the crowd's average beat most individuals" mechanic, but
+   pooled across 3× the guesses for a bigger, more convincing
+   sample. All three are read aloud and answered together in ONE
+   entry round (unlike calibration.js's one-round-per-question
+   layout) — nothing here depends on hearing one question's
+   answer before the next, so there's no reason to split them
+   across separate screens; the facilitator just reads three
+   questions back to back and everyone fills in three numbers.
 
-   Lit/Shadow DOM component (docs/modernization-plan.md Phase 3) —
-   same pattern as dictator/public-goods/anchoring. Note on test
-   selectors: unlike those three, this game keeps its original plain
-   `id`s (custom-q-*, cw-question-text, true-value-*, entry-body, ...)
-   instead of switching to data-testid — a Shadow DOM component's ids
-   live in their own namespace (no collision risk with other
-   components any more), and Playwright's CSS engine pierces open
-   shadow roots for id selectors exactly like it does for data-testid
-   ones. data-testid was never a strict *requirement* for ids (only
-   for class names, which a future CSS Modules pass would hash) — so
-   test/custom-question.spec.js needs no changes at all for this game.
+   Defaults to three classic estimation questions, but the
+   facilitator can swap in up to three of their own
+   facts-with-a-known-answer — same "leave a slot blank to keep
+   its default" custom-question pattern as calibration.js's
+   3-question panel, generalized from that game's per-question
+   rounds to this one's single shared round.
+
+   Lit/Shadow DOM component (docs/modernization-plan.md Phase 3).
+   Note on test selectors: unlike dictator/public-goods/anchoring,
+   this game keeps its original plain `id`s (custom-q-*-N,
+   entry-body, ...) instead of switching to data-testid — a Shadow
+   DOM component's ids live in their own namespace (no collision
+   risk with other components any more), and Playwright's CSS
+   engine pierces open shadow roots for id selectors exactly like
+   it does for data-testid ones.
 ========================================================= */
+import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { clearQuestionSlots, readQuestionSlots } from '../custom-question-form.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_EDIT, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_EDIT,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_X,
+} from '../icons.js';
+import { stackLanes, swarmHeight, valueDomain } from '../logic/chart-layout.js';
+import {
+  buildCustomQuestions,
+  cloneQuestions,
+  formatValue,
+  MESSAGES,
+} from '../logic/custom-questions.js';
+import {
+  countFilled,
+  hasEnough,
+  loadableDraft,
+  minCount,
+  parseNumberInput,
+  patchItem,
+} from '../logic/entries.js';
+import { crowdWisdomResults } from '../logic/results.js';
+import { dodge } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
-const DEFAULT_VALUE = 420; // tons — real mass of the ISS
-const DEFAULT_QUESTION = 'Сколько тонн весит Международная космическая станция?';
-const DEFAULT_UNIT = 'т';
-const DEFAULT_ANSWER_LINE = 'Международная космическая станция весит около';
+const DEFAULT_QUESTIONS = [
+  { q: 'Сколько тонн весит Международная космическая станция?', answer: 420, unit: ' т' },
+  { q: 'Сколько костей в скелете взрослого человека?', answer: 206, unit: '' },
+  { q: 'Какова длина экватора Земли, в километрах?', answer: 40075, unit: ' км' },
+];
 const TOTAL_SCREENS = 4;
-
-function median(arr) {
-  const s = arr.slice().sort((a, b) => a - b);
-  const n = s.length;
-  const mid = Math.floor(n / 2);
-  return n % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-}
+const ROUND_TITLES = [
+  'Проверим, кто точнее — один человек или вся команда',
+  'Впишите оценку каждого участника',
+  'Что получилось у вашей команды',
+  'Мудрость толпы',
+];
 
 export class RetroGameCrowdWisdom extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
-    question: { state: true },
-    trueValue: { state: true },
-    unit: { state: true },
-    isCustomQuestion: { state: true },
+    questions: { state: true },
+    isCustomQuestions: { state: true },
     customPanelOpen: { state: true },
     customQStatus: { state: true },
   };
@@ -60,47 +95,33 @@ export class RetroGameCrowdWisdom extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
+    this.questions = cloneQuestions(DEFAULT_QUESTIONS);
     this.data = this._blankData();
     this.results = null;
-    this.question = DEFAULT_QUESTION;
-    this.trueValue = DEFAULT_VALUE;
-    this.unit = DEFAULT_UNIT;
-    this.isCustomQuestion = false;
+    this.isCustomQuestions = false;
     this.customPanelOpen = false;
     this.customQStatus = '';
 
-    const loaded = Persist.load('crowd-wisdom');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('crowd-wisdom'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
-    return this.names.map((n) => ({ name: n, guess: null }));
-  }
-
-  _fmt(v) {
-    return Math.round(v) + (this.unit ? ' ' + this.unit : '');
-  }
-
-  goTo(idx) {
-    this.screenIdx = idx;
+    return this.names.map((n) => ({ name: n, guesses: this.questions.map(() => null) }));
   }
 
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    if (this.draft.payload.question) {
-      this.question = this.draft.payload.question.text;
-      this.trueValue = this.draft.payload.question.value;
-      this.unit = this.draft.payload.question.unit;
-      this.isCustomQuestion = true;
-    }
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      if (this.draft.payload.questions) {
+        this.questions = this.draft.payload.questions;
+        this.isCustomQuestions = true;
+      }
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -117,264 +138,342 @@ export class RetroGameCrowdWisdom extends LitElement {
     this.customPanelOpen = !this.customPanelOpen;
   }
 
-  _applyCustomQuestion() {
-    const text = this.renderRoot.getElementById('custom-q-text').value.trim();
-    const answerRaw = this.renderRoot.getElementById('custom-q-answer').value;
-    const unit = this.renderRoot.getElementById('custom-q-unit').value.trim();
-    const answer = Number(answerRaw);
-    if (!text || answerRaw === '' || Number.isNaN(answer)) {
-      this.customQStatus = 'Впишите текст вопроса и числовой правильный ответ.';
+  _customQuestionBlock(def, i) {
+    return html`
+      <div class="custom-q-block">
+        <div class="custom-q-block-title">
+          Вопрос ${i + 1}
+          <span class="custom-q-default-hint">по умолчанию: «${def.q}», ответ ${def.answer}${def.unit}</span>
+        </div>
+        <div class="custom-q-field">
+          <label for="custom-q-text-${i}">Текст вопроса</label>
+          <input type="text" id="custom-q-text-${i}" placeholder="${def.q}" />
+        </div>
+        <div class="custom-q-row">
+          <div class="custom-q-field">
+            <label for="custom-q-answer-${i}">Правильный ответ</label>
+            <input type="number" id="custom-q-answer-${i}" placeholder="напр. ${def.answer}" />
+          </div>
+          <div class="custom-q-field">
+            <label for="custom-q-unit-${i}">Единица (необязательно)</label>
+            <input type="text" id="custom-q-unit-${i}" placeholder="напр. ${def.unit.trim() || 'штук'}" />
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _applyCustomQuestions() {
+    const result = buildCustomQuestions(
+      DEFAULT_QUESTIONS,
+      readQuestionSlots(this.renderRoot, DEFAULT_QUESTIONS.length),
+    );
+    if (!result.ok) {
+      this.customQStatus = result.error;
       return;
     }
-    this.question = text;
-    this.trueValue = answer;
-    this.unit = unit;
-    this.isCustomQuestion = true;
-    this.customQStatus = '✓ Вопрос обновлён — используется при сборе данных и в результатах.';
+    this.questions = result.questions;
+    this.isCustomQuestions = result.isCustom;
+    this.customQStatus = result.message;
   }
 
-  _resetCustomQuestion() {
-    this.question = DEFAULT_QUESTION;
-    this.trueValue = DEFAULT_VALUE;
-    this.unit = DEFAULT_UNIT;
-    this.isCustomQuestion = false;
-    this.customQStatus = '✓ Вернули стандартный вопрос про МКС.';
-    this.renderRoot.getElementById('custom-q-text').value = '';
-    this.renderRoot.getElementById('custom-q-answer').value = '';
-    this.renderRoot.getElementById('custom-q-unit').value = '';
+  _resetCustomQuestions() {
+    this.questions = cloneQuestions(DEFAULT_QUESTIONS);
+    this.isCustomQuestions = false;
+    this.customQStatus = MESSAGES.resetAll;
+    clearQuestionSlots(this.renderRoot, DEFAULT_QUESTIONS.length);
   }
 
-  _onEntryInput(e, idx) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null && v < 0) v = 0;
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, guess: v } : row));
+  _onEntryInput(e, idx, qIdx) {
+    this.data = patchItem(
+      this.data,
+      idx,
+      'guesses',
+      qIdx,
+      parseNumberInput(e.target.value, { min: 0 }),
+    );
     Persist.save('crowd-wisdom', {
       data: this.data,
-      question: this.isCustomQuestion
-        ? { text: this.question, value: this.trueValue, unit: this.unit }
-        : null,
+      questions: this.isCustomQuestions ? this.questions : null,
     });
   }
 
-  _filledCount() {
-    return this.data.filter((d) => d.guess !== null).length;
+  _filledCountFor(qIdx) {
+    return countFilled(this.data, (d) => d.guesses[qIdx] !== null);
+  }
+
+  // Gates "Показать результаты" on the WORST-covered question, not the
+  // total — a question with only 1 answer can't produce a meaningful
+  // average for itself, no matter how well-answered the other two are.
+  _minFilledCount() {
+    return minCount(this.questions.map((_, qi) => this._filledCountFor(qi)));
+  }
+
+  _totalFilledCount() {
+    return this.data.reduce((sum, d) => sum + d.guesses.filter((g) => g !== null).length, 0);
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.guess !== null);
-    const guesses = filled.map((d) => d.guess);
-    const avg = guesses.reduce((a, b) => a + b, 0) / guesses.length;
-    const med = median(guesses);
-    const avgErr = Math.abs(avg - this.trueValue);
-    const medErr = Math.abs(med - this.trueValue);
-    const worseThanAvg = filled.filter((d) => Math.abs(d.guess - this.trueValue) > avgErr).length;
+    const answersReveal =
+      'Правильные ответы: ' +
+      this.questions.map((q, i) => `(${i + 1}) ${formatValue(q.answer, q.unit)}`).join(' · ');
+    this.results = { ...crowdWisdomResults(this.data, this.questions), answersReveal };
+    const { totalAnswered } = this.results;
 
-    this.results = { filled, avg, med, avgErr, medErr, worseThanAvg };
-
-    Print.mount(
-      'print-header-crowd-wisdom',
+    ReportExport.register(
+      'crowd-wisdom',
       {
-        title: 'Мудрость толпы',
-        subtitle: this.isCustomQuestion
-          ? this.question
-          : 'Средняя оценка группы обходит по точности почти всех поодиночке.',
-        meta: Print.meta(filled.length),
+        subtitle: this.isCustomQuestions
+          ? 'Три вопроса, у каждого — независимая оценка от всей команды.'
+          : 'Средняя оценка группы обходит по точности почти всех поодиночке — сразу на трёх вопросах.',
+        meta: ReportExport.meta(this.names.length, `${totalAnswered} оценок · 3 вопроса`),
         explanation:
-          'У каждого человека своя случайная ошибка в оценке, но при независимом усреднении эти ошибки частично гасят друг друга. Явление описал Фрэнсис Гальтон в 1907 году: медиана 787 независимых оценок веса быка на деревенской ярмарке разошлась с реальным весом всего на 9 фунтов — точнее большинства профессиональных скотоводов.',
+          'У каждого человека своя случайная ошибка в оценке, но при независимом усреднении эти ошибки частично гасят друг друга. Явление описал Фрэнсис Гальтон в 1907 году: медиана 787 независимых оценок веса быка на деревенской ярмарке разошлась с реальным весом всего на 9 фунтов — точнее большинства профессиональных скотоводов. Три вопроса вместо одного дают тот же эффект на втрое большей выборке.',
       },
       this.renderRoot,
     );
-
-    this.goTo(2);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('crowd-wisdom');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   updated() {
-    if (this.screenIdx === 2 && this.results) {
-      this._drawChart(this.results.filled);
+    // No longer gated on screenIdx===2 — every round (including this
+    // one) is always in the DOM now, so "do we have results yet" is
+    // the only thing that matters for whether the chart should draw.
+    if (this.results) {
+      this._drawChart(this.results.perQuestion);
     }
   }
 
-  _drawChart(filled) {
+  // Three independent lanes, one per question — each with its OWN
+  // x-scale, own beeswarm, own true-value/average lines. Plotting all
+  // three questions on one shared axis wouldn't mean anything (tons vs.
+  // a bone count vs. kilometers); this is really three small
+  // self-contained charts stacked in one card, not one chart with
+  // three series, and each lane's height comes from its own swarm (see
+  // crowd-wisdom's original single-question version for why a fixed
+  // height wastes space in the exported report).
+  _drawChart(perQuestion) {
     const svg = this.renderRoot.getElementById('cw-chart');
     if (!svg) return;
     svg.innerHTML = '';
+    const active = perQuestion.filter((pq) => pq.filled.length > 0);
+    if (!active.length) return;
+
+    const cs = getComputedStyle(this.renderRoot.querySelector('.wrap-wide'));
+    const accent = cs.getPropertyValue('--game-accent').trim() || '#4E7FFF';
+    const accentDeep = cs.getPropertyValue('--game-accent-deep').trim() || accent;
+    const gold = cs.getPropertyValue('--gold').trim() || '#b87503';
+
     const W = 640,
-      H = 220,
       ML = 20,
       MR = 20,
       MT = 40,
-      MB = 36;
+      MB = 30,
+      laneGap = 26,
+      dotR = 6;
     const plotW = W - ML - MR;
-    const guesses = filled.map((d) => d.guess);
-    const allVals = guesses.concat([this.trueValue]);
-    const maxV = Math.max(...allVals) * 1.15;
-    const minV = Math.min(0, Math.min(...allVals) * 0.9);
 
-    function xOf(v) {
-      return ML + ((v - minV) / (maxV - minV)) * plotW;
-    }
     function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
       for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
 
-    svg.appendChild(
-      ns('line', {
-        x1: ML,
-        y1: H - MB,
-        x2: ML + plotW,
-        y2: H - MB,
-        stroke: '#1E2A32',
-        'stroke-width': 1.2,
-      }),
-    );
+    const lanes = active.map((pq) => {
+      const guesses = pq.filled.map((d) => d.guess);
+      const [minV, maxV] = valueDomain(guesses.concat([pq.question.answer]));
+      const x = d3
+        .scaleLinear()
+        .domain([minV, maxV])
+        .range([ML, ML + plotW]);
+      const swarm = dodge(pq.filled, (d) => x(d.guess), dotR + 1.5);
+      return { pq, x, swarm, contentH: swarmHeight(swarm, dotR) };
+    });
 
-    [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
-      const v = minV + t * (maxV - minV);
-      const x = xOf(v);
-      svg.appendChild(
-        ns('line', {
-          x1: x,
-          y1: H - MB,
-          x2: x,
-          y2: H - MB + 5,
-          stroke: '#4B5B63',
-          'stroke-width': 1,
-        }),
-      );
-      const lx = ns('text', {
-        x: x,
-        y: H - MB + 18,
-        'font-size': 10.5,
-        'font-family': 'IBM Plex Mono, monospace',
-        fill: '#4B5B63',
-        'text-anchor': 'middle',
+    // Each lane: MT above its content, MB below its axis, laneGap to the next.
+    const { baselines, height: H } = stackLanes(
+      lanes.map((lane) => lane.contentH),
+      { firstTop: MT, gap: MT + MB + laneGap, bottom: MB },
+    );
+    const laneLayout = lanes.map((lane, i) => ({
+      ...lane,
+      baseline: baselines[i],
+      top: baselines[i] - lane.contentH - MT,
+    }));
+
+    const svgSel = d3
+      .select(svg)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    laneLayout.forEach((lane, qi) => {
+      const { pq, x, swarm, top, baseline } = lane;
+
+      svgSel
+        .append('rect')
+        .attr('x', 0)
+        .attr('y', top)
+        .attr('width', W)
+        .attr('height', baseline - top + MB - 8)
+        .attr('rx', 14)
+        .style('fill', `color-mix(in srgb, ${accent} 6%, white)`);
+
+      const label = pq.question.q.length > 60 ? `${pq.question.q.slice(0, 57)}…` : pq.question.q;
+      svgSel
+        .append('text')
+        .attr('x', 12)
+        .attr('y', top + 16)
+        .style('font-size', '12px')
+        .style('font-weight', 700)
+        .style('fill', accentDeep)
+        .text(`Вопрос ${qi + 1} · ${label}`);
+
+      const trueX = x(pq.question.answer);
+      svgSel
+        .append('line')
+        .attr('x1', trueX)
+        .attr('y1', top + 24)
+        .attr('x2', trueX)
+        .attr('y2', baseline)
+        .style('stroke', gold)
+        .style('stroke-width', 1.5)
+        .style('stroke-dasharray', '5,4');
+
+      const avgX = x(pq.avg);
+      svgSel
+        .append('line')
+        .attr('x1', avgX)
+        .attr('y1', top + 24)
+        .attr('x2', avgX)
+        .attr('y2', baseline)
+        .style('stroke', accentDeep)
+        .style('stroke-width', 1.5);
+
+      svgSel
+        .append('line')
+        .attr('x1', ML)
+        .attr('y1', baseline)
+        .attr('x2', ML + plotW)
+        .attr('y2', baseline)
+        .style('stroke', 'var(--ink)')
+        .style('stroke-width', 1.2);
+
+      x.ticks(4).forEach((v) => {
+        const tx = x(v);
+        svgSel
+          .append('line')
+          .attr('x1', tx)
+          .attr('y1', baseline)
+          .attr('x2', tx)
+          .attr('y2', baseline + 5)
+          .style('stroke', 'var(--ink-faint)');
+        svgSel
+          .append('text')
+          .attr('x', tx)
+          .attr('y', baseline + 17)
+          .attr('text-anchor', 'middle')
+          .style('font-size', '10px')
+          .style('fill', 'var(--ink-faint)')
+          .text(Math.round(v));
       });
-      lx.textContent = Math.round(v);
-      svg.appendChild(lx);
-    });
 
-    const trueX = xOf(this.trueValue);
-    svg.appendChild(
-      ns('line', {
-        x1: trueX,
-        y1: 24,
-        x2: trueX,
-        y2: H - MB,
-        stroke: '#B5502E',
-        'stroke-width': 1.5,
-        'stroke-dasharray': '5,4',
-      }),
-    );
-    const trueLabel = ns('text', {
-      x: trueX,
-      y: 16,
-      'font-size': 10.5,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#B5502E',
-      'text-anchor': 'middle',
-    });
-    trueLabel.textContent = 'правильный ответ';
-    svg.appendChild(trueLabel);
+      const points = swarm.map((s) => ({ ...s.data, cx: s.x, cy: baseline - dotR - 2 - s.y }));
 
-    const avg = guesses.reduce((a, b) => a + b, 0) / guesses.length;
-    const avgX = xOf(avg);
-    svg.appendChild(
-      ns('line', {
-        x1: avgX,
-        y1: 24,
-        x2: avgX,
-        y2: H - MB,
-        stroke: '#3E6E64',
-        'stroke-width': 1.5,
-      }),
-    );
-    const avgLabel = ns('text', {
-      x: avgX,
-      y: H - MB + 30,
-      'font-size': 10.5,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#3E6E64',
-      'text-anchor': 'middle',
-    });
-    avgLabel.textContent = 'среднее';
-    svg.appendChild(avgLabel);
+      const dots = svgSel
+        .selectAll(null)
+        .data(points)
+        .join('circle')
+        .attr('class', 'answer-dot')
+        .attr('cx', (d) => d.cx)
+        .attr('cy', (d) => d.cy)
+        .attr('r', 0)
+        .style('fill', accent)
+        .style('fill-opacity', 0.88)
+        .style('stroke', 'var(--white)')
+        .style('stroke-width', 1.3);
 
-    const rowH = 20;
-    filled.forEach((p, i) => {
-      const x = xOf(p.guess);
-      const y = H - MB - 14 - (i % 6) * rowH;
-      const c = ns('circle', {
-        cx: x,
-        cy: y,
-        r: 5.5,
-        fill: '#3E6E64',
-        'fill-opacity': 0.85,
-        stroke: '#F5F3EC',
-        'stroke-width': 1.3,
+      dots
+        .transition()
+        .delay((_, i) => i * 22)
+        .duration(400)
+        .ease(d3.easeBackOut.overshoot(1.7))
+        .attr('r', dotR);
+
+      // Hit circle inserted right after its own dot — keeps the DOM a
+      // plain [visible, hit, visible, hit, ...] sequence per lane.
+      const dotNodes = dots.nodes();
+      points.forEach((p, i) => {
+        const hit = ns('circle', {
+          cx: p.cx,
+          cy: p.cy,
+          r: dotR + 5,
+          fill: 'transparent',
+          'pointer-events': 'all',
+        });
+        dotNodes[i].after(hit);
+        ChartTip.attach(
+          hit,
+          () =>
+            `<b>${p.name}</b><span class="tip-row"><span>Вопрос ${qi + 1}</span><span>${formatValue(p.guess, pq.question.unit)}</span></span>`,
+        );
+        hit.addEventListener('mouseenter', () => {
+          d3.select(dotNodes[i])
+            .style('fill-opacity', 1)
+            .attr('r', dotR * 1.2);
+        });
+        hit.addEventListener('mouseleave', () => {
+          d3.select(dotNodes[i]).style('fill-opacity', 0.88).attr('r', dotR);
+        });
       });
-      svg.appendChild(c);
-      ChartTip.attachToPoint(
-        svg,
-        ns,
-        x,
-        y,
-        () =>
-          `<b>${p.name}</b><span class="tip-row"><span>Оценка</span><span>${this._fmt(p.guess)}</span></span>`,
-      );
     });
   }
 
   _entryRow(row, idx) {
     return html`
-      <div class="entry-row two-col">
+      <div class="entry-row three-col">
         <div class="name">${unsafeHTML(avatarName(row.name))}</div>
-        <input
-          type="number"
-          min="0"
-          inputmode="numeric"
-          placeholder="напр. 300"
-          .value=${row.guess ?? ''}
-          @input=${(e) => this._onEntryInput(e, idx)}
-        />
+        ${this.questions.map(
+          (_, qi) => html`
+            <input
+              type="number"
+              min="0"
+              inputmode="numeric"
+              placeholder="напр. 300"
+              .value=${row.guesses[qi] ?? ''}
+              @input=${(e) => this._onEntryInput(e, idx, qi)}
+            />
+          `,
+        )}
       </div>
     `;
   }
 
   render() {
-    const filled = this._filledCount();
+    const totalFilled = this._totalFilledCount();
+    const totalSlots = this.names.length * this.questions.length;
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Мудрость толпы</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('crowd-wisdom')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 5 минут</p>
           <h1>Проверим, кто точнее — один человек или вся команда</h1>
-          <p class="lede">Два коротких шага. Не гуглите — это оценка «на глаз», в этом весь смысл.</p>
+          <p class="lede">Три коротких вопроса. Не гуглите — это оценка «на глаз», в этом весь смысл.</p>
 
           <div class="draft-mount">
             ${
@@ -403,23 +502,31 @@ export class RetroGameCrowdWisdom extends LitElement {
             <li>
               <div class="step-num">1</div>
               <div class="step-body">
-                <b>Задайте вопрос вслух</b>
-                <span id="cw-question-text"
-                  >«${this.question}» Каждый молча думает над своей оценкой, не советуясь с
-                  соседями.</span
-                >
+                <b>Задайте три вопроса вслух — один за другим</b>
+                <span>После каждого вопроса пусть все молча думают над своей оценкой, не советуясь с соседями.</span>
               </div>
             </li>
             <li>
               <div class="step-num">2</div>
               <div class="step-body">
-                <b>Каждый называет число</b>
+                <b>Каждый называет число для каждого вопроса</b>
                 <span
                   >Любое число, даже если совсем не уверены — гадать можно и нужно. Дальше вносим
-                  все оценки сюда.</span
+                  все три оценки сюда.</span
                 >
               </div>
             </li>
+          </ol>
+
+          <ol class="question-list">
+            ${this.questions.map(
+              (q, i) => html`
+                <li class="question-list-item">
+                  <span class="question-list-num">${i + 1}</span>
+                  <span id="cw-question-text-${i}">«${q.q}»</span>
+                </li>
+              `,
+            )}
           </ol>
 
           <p class="note">
@@ -428,41 +535,28 @@ export class RetroGameCrowdWisdom extends LitElement {
           </p>
 
           <div class="custom-q-toggle-row">
-            <button type="button" class="ghost" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
-              ${unsafeHTML(ICON_EDIT)} Задать свой вопрос вместо стандартного
+            <button type="button" class="secondary" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
+              ${unsafeHTML(ICON_EDIT)} Задать свои вопросы вместо стандартных
             </button>
           </div>
           <div class="custom-q-panel" id="custom-q-panel" ?hidden=${!this.customPanelOpen}>
-            <div class="custom-q-field">
-              <label for="custom-q-text">Текст вопроса</label>
-              <input
-                type="text"
-                id="custom-q-text"
-                placeholder="Например: сколько строк кода в нашем репозитории?"
-              />
-            </div>
-            <div class="custom-q-row">
-              <div class="custom-q-field">
-                <label for="custom-q-answer">Правильный ответ</label>
-                <input type="number" id="custom-q-answer" placeholder="напр. 42000" />
-              </div>
-              <div class="custom-q-field">
-                <label for="custom-q-unit">Единица (необязательно)</label>
-                <input type="text" id="custom-q-unit" placeholder="напр. строк, лет, км" />
-              </div>
-            </div>
+            <p class="note" style="margin:0 0 14px;">
+              Можно заменить любой из трёх вопросов — оставьте поле пустым, чтобы оставить
+              стандартный.
+            </p>
+            ${DEFAULT_QUESTIONS.map((def, i) => this._customQuestionBlock(def, i))}
             <div class="custom-q-actions">
-              <button type="button" class="primary" id="custom-q-apply" @click=${() => this._applyCustomQuestion()}>
-                Применить свой вопрос
+              <button type="button" class="primary" id="custom-q-apply" @click=${() => this._applyCustomQuestions()}>
+                Применить
               </button>
               <button
                 type="button"
-                class="ghost"
+                class="secondary"
                 id="custom-q-reset"
-                ?hidden=${!this.isCustomQuestion}
-                @click=${() => this._resetCustomQuestion()}
+                ?hidden=${!this.isCustomQuestions}
+                @click=${() => this._resetCustomQuestions()}
               >
-                ↺ Вернуть стандартный
+                ↺ Вернуть все стандартные
               </button>
             </div>
             <p class="note" id="custom-q-status">${this.customQStatus}</p>
@@ -470,122 +564,122 @@ export class RetroGameCrowdWisdom extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите оценку каждого участника</h2>
-          <p class="lede">Целым числом — не страшно, если совсем «на глаз».</p>
+          <p class="lede">Целым числом на каждый из трёх вопросов — не страшно, если совсем «на глаз».</p>
 
-          <div class="entry-head two-col">
+          <div class="entry-head three-col">
             <div>Участник</div>
-            <div>Оценка</div>
+            ${this.questions.map((_, i) => html`<div>Вопрос ${i + 1}</div>`)}
           </div>
           <div id="entry-body">${this.data.map((row, i) => this._entryRow(row, i))}</div>
 
           <div class="fill-progress">
-            Заполнено: <span>${filled}</span> из <span>${this.names.length}</span>
+            Заполнено: <span>${totalFilled}</span> из <span>${totalSlots}</span>
             <div class="track">
-              <div style="width:${(filled / this.names.length) * 100}%"></div>
+              <div style="width:${(totalFilled / totalSlots) * 100}%"></div>
             </div>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button
+              class="primary"
+              ?disabled=${!hasEnough(this._minFilledCount())}
+              @click=${() => this.flow.advance(2, () => this._showResults())}
+            >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-crowd-wisdom"></div>
 
-          <div class="reveal">
-            <div class="n" id="true-value-display">${this._fmt(this.trueValue)}</div>
-            <p id="true-value-para">
-              ${
-                this.isCustomQuestion
-                  ? html`<b>Правильный ответ:</b> ${this._fmt(this.trueValue)}.`
-                  : html`<b>Правильный ответ:</b> ${DEFAULT_ANSWER_LINE} ${this.trueValue} тонн.`
-              }
-            </p>
-          </div>
+          ${renderReveal({ value: r && r.hitRate !== null ? `${r.hitRate}%` : '—', valueId: 'hit-rate-display', ...REVEAL_COPY.crowdWisdom(r ? { pct: r.hitRate, worse: r.totalWorseThanAvg, total: r.totalAnswered } : null) })}
+
+          <p class="note" id="answers-reveal">${r ? r.answersReveal : ''}</p>
 
           <div class="stat-row">
-            <div class="stat">
-              <div class="n">${r ? this._fmt(r.avg) : '—'}</div>
-              <div class="lab">среднее по команде · ошибка ±${r ? Math.round(r.avgErr) : '—'}</div>
-            </div>
-            <div class="stat">
-              <div class="n">${r ? this._fmt(r.med) : '—'}</div>
-              <div class="lab">
-                медиана по команде · ошибка ±${r ? Math.round(r.medErr) : '—'}
-              </div>
-            </div>
+            ${
+              r
+                ? r.perQuestion.map(
+                    (pq, qi) => html`
+                    <div class="stat">
+                      <div class="n">${pq.avg !== null ? formatValue(pq.avg, pq.question.unit) : '—'}</div>
+                      <div class="lab">
+                        среднее по вопросу ${qi + 1} · ошибка ±${pq.avgErr !== null ? Math.round(pq.avgErr) : '—'}
+                      </div>
+                    </div>
+                  `,
+                  )
+                : ''
+            }
           </div>
 
           <div class="chart-wrap">
-            <svg id="cw-chart" viewBox="0 0 640 220" width="100%" style="display:block;"></svg>
+            <svg id="cw-chart" class="d3-chart-svg" viewBox="0 0 640 260"></svg>
             <div class="cap">
-              Каждая точка — оценка одного человека. Пунктир — правильный ответ, сплошная линия —
-              среднее команды.
+              Каждая точка — оценка одного человека на один вопрос. Пунктир — правильный ответ,
+              сплошная линия — среднее команды. Три отдельные шкалы — у каждого вопроса свой
+              масштаб.
             </div>
           </div>
-
-          <p>
-            ${
-              r
-                ? `У ${r.worseThanAvg} из ${r.filled.length} человек личная ошибка больше, чем ошибка среднего по команде — среднее оказалось точнее, чем большинство участников поодиночке.`
-                : ''
-            }
-          </p>
 
           <table class="results-table" id="results-table">
             <thead>
               <tr>
                 <th>Участник</th>
-                <th>Оценка</th>
-                <th>Ошибка</th>
+                ${this.questions.map((_, i) => html`<th>Вопрос ${i + 1}</th>`)}
               </tr>
             </thead>
             <tbody id="results-tbody">
               ${
                 r
-                  ? r.filled.map((d) => {
-                      const err = Math.abs(d.guess - this.trueValue);
-                      return html`
+                  ? this.data.map(
+                      (d) => html`
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(d.name))}</td>
-                        <td>${this._fmt(d.guess)}</td>
-                        <td>±${Math.round(err)}</td>
+                        ${this.questions.map(
+                          (q, qi) =>
+                            html`<td>${d.guesses[qi] !== null ? formatValue(d.guesses[qi], q.unit) : '—'}</td>`,
+                        )}
                       </tr>
-                    `;
-                    })
+                    `,
+                    )
                   : ''
               }
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-crowd-wisdom"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Мудрость толпы</h1>
           <p class="lede">
@@ -624,11 +718,9 @@ export class RetroGameCrowdWisdom extends LitElement {
             кто-то оценивает с запасом, кто-то занижает, у кого-то просто нет опыта в этой
             конкретной вещи. Если ошибки разных людей действительно случайны и не связаны друг с
             другом, то при усреднении они частично гасят друг друга: завышенные и заниженные
-            оценки компенсируются, а остаётся общий, более устойчивый сигнал. Математически это
-            работает похоже на то, как усреднение множества шумных измерений в физике даёт более
-            точный результат, чем одно-единственное измерение. Ключевое условие —
-            «независимость»: если люди начинают ориентироваться друг на друга, их ошибки
-            становятся <i>похожими</i>, а не случайными, и усреднение перестаёт что-либо чистить.
+            оценки компенсируются, а остаётся общий, более устойчивый сигнал. Три независимых
+            вопроса вместо одного дают втрое больше таких независимых точек данных — и втрое
+            увереннее подтверждают эффект, а не один случайный удачный (или неудачный) результат.
           </p>
 
           <hr />
@@ -687,7 +779,21 @@ export class RetroGameCrowdWisdom extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Мудрость толпы</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'crowd-wisdom',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

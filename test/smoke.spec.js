@@ -6,7 +6,7 @@
 // any step doesn't behave as expected — this is the test to run after
 // any styles.css or app.js change to catch a broken selector fast.
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome, exitToHome } = require('./lib');
 const { GAMES } = require('./games');
 
 async function run() {
@@ -17,12 +17,14 @@ async function run() {
     for (const game of GAMES) {
       const page = await openPage(browser, report);
       try {
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(100);
 
-        const crumb = await page.textContent('.crumb-current').catch(() => null);
+        // .game-crumb/.crumb-current are gone (src/game-shell.js) — the
+        // game's name now sits in .game-rail-title next to the map.
+        const crumb = await page.textContent('.game-rail-title').catch(() => null);
         report.check(
-          `${game.name}: breadcrumb shows game name`,
+          `${game.name}: rail title shows game name`,
           crumb && crumb.trim() === game.name,
           crumb,
         );
@@ -51,15 +53,23 @@ async function run() {
 
         await page.click('button:has-text("Что это было")');
         await page.waitForTimeout(100);
-        const contextH1 = await page.textContent('.screen.active h1').catch(() => '');
+        // .screen.active is gone — every round (src/game-shell.js's
+        // <section class="round">) is always in the DOM now, not just
+        // one "active" one. Every game's rounds go <h1> (intro) ... <h2>
+        // (middle rounds) ... <h1> (context, last) — so the LAST <h1> in
+        // .game-main is reliably the context round's title regardless
+        // of how many rounds the game has.
+        const h1s = await page.$$eval('.game-main h1', (els) =>
+          els.map((e) => e.textContent.trim()),
+        );
+        const contextH1 = h1s[h1s.length - 1] || '';
         report.check(
           `${game.name}: context screen reveals a title`,
-          contextH1 && contextH1.trim().length > 0,
+          contextH1.length > 0,
           contextH1,
         );
 
-        await page.click('button:has-text("Все игры")');
-        await page.waitForTimeout(80);
+        await exitToHome(page);
         const home = await page.textContent('h1').catch(() => '');
         report.check(
           `${game.name}: back-link returns to home`,

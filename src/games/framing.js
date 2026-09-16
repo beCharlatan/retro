@@ -7,13 +7,72 @@
    with a hide/reveal spoiler toggle for two independent texts. Keeps
    all original plain ids (toggle-a/b, copy-a/b, text-a/b,
    placeholder-a/b, entry-body, results-table/tbody, ...).
+
+   One-continuous-scroll деталка (docs/modernization-plan.md —
+   "деталка продолжает карту") — originally prototyped here, now the
+   shared shape of all 13 games (see game-shell.js). What was, in the
+   old paged .screen/.screen.active model:
+     - Every round is a plain always-visible <section class="round">
+       (id="round-N") stacked in .game-main — no more .screen's
+       display:none swap. `screenIdx` keeps its old meaning (how far
+       the player has actually completed — gates each later round's
+       .round-pending dim via `i > this.flow.screenIdx`) but no longer
+       controls visibility.
+     - A NEW `activeRound` state tracks which round the player is
+       currently scrolled past (game-shell.js's observeRounds(), a
+       scroll+rAF "reading line" check — see that file for why not an
+       IntersectionObserver), driving the big vertical trail's
+       traveler position in .game-rail — a sticky sidebar, always in
+       view, per the "видеть прогресс игры всегда" ask, independent
+       of `screenIdx`.
+     - `goTo(idx)` is gone — see `_advance()`/`_scrollToRound()` below.
+       A round's primary CTA now runs its existing action (if any)
+       THEN plays a brief border flash on the round just finished
+       (`justCompletedIdx`, styles.css's round-complete-flash) and
+       smooth-scrolls to the next round; "Назад" buttons are now pure
+       navigation (scroll to a round already on screen, no state
+       change — nothing to "undo" when nothing was ever hidden).
+     - No more .game-crumb breadcrumb ("← Все игры / <name>") — the
+       game's name now sits next to the map (.game-rail-title, above
+       the trail), and leaving is a plain × in the corner
+       (.game-exit) that confirms first (window.confirm — no modal
+       component exists in this app yet, and a native one is the
+       cheapest correct answer for a single yes/no with real stakes:
+       an in-progress attempt's draft gets cleared on exit, see
+       _goHome()).
 ========================================================= */
+import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { ChartTip } from '../chart-tip.js';
+import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_COPY,
+  ICON_DOWNLOAD,
+  ICON_HIDE,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_SHOW,
+  ICON_SHUFFLE,
+  ICON_X,
+} from '../icons.js';
+import {
+  buildFramingEntries,
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  patchRow,
+} from '../logic/entries.js';
+import { framingResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { Roles } from '../roles.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
@@ -21,6 +80,23 @@ import { copyToClipboard } from '../toast.js';
 
 const TOTAL_SCREENS = 6;
 const GROUP_LABEL = { A: 'А', B: 'Б' };
+const ANSWER_TIMER_SECONDS = 120;
+
+// One title per round, in order — the ONLY thing a not-yet-reached
+// round shows (see .round-lock in render()): the rest of that
+// round's real content still renders underneath so its actual layout
+// height is correct, just blurred and inert (pointer-events:none),
+// per the "видно только куда идёшь, не что там" ask. Kept as one
+// array instead of re-deriving from each round's own <h1>/<h2> text
+// so there's exactly one place to update a title.
+const ROUND_TITLES = [
+  'Один выбор, две формулировки',
+  'Кто в какой группе',
+  'Текст для каждой группы — по отдельности',
+  'Впишите выбор каждого участника',
+  'Что получилось у вашей команды',
+  'Эффект фрейминга',
+];
 
 // Spoiler + copy-to-clipboard for each group's scenario text, so the
 // facilitator can send the right wording privately instead of
@@ -38,17 +114,10 @@ const SCENARIO_TEXT = {
     'Какую программу вы выбираете?',
 };
 
-function buildEntries(groups) {
-  const a = groups.groupA.map((n) => ({ name: n, group: 'A', choice: null }));
-  const b = groups.groupB.map((n) => ({ name: n, group: 'B', choice: null }));
-  return a.concat(b);
-}
-
 export class RetroGameFraming extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     groups: { state: true },
     entries: { state: true },
     draft: { state: true },
@@ -60,32 +129,33 @@ export class RetroGameFraming extends LitElement {
 
   constructor() {
     super();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.groups = Roles.makeGroups(state.participants);
-    this.entries = buildEntries(this.groups);
+    this.entries = buildFramingEntries(this.groups);
     this.results = null;
     this.selectedSwapName = null;
     this.shuffleSpin = false;
     this.textHidden = { a: true, b: true };
+    this.timer = new AnswerTimerController(this, ANSWER_TIMER_SECONDS);
 
-    const loaded = Persist.load('framing');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.entries) &&
-      loaded.payload.entries.length === state.participants.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('framing'), {
+      key: 'entries',
+      length: state.participants.length,
+    });
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
+  updated() {
+    if (this.results) {
+      this._drawAnswerChart(this.results.filled);
+    }
   }
 
   _restoreDraft() {
-    this.groups = this.draft.payload.groups;
-    this.entries = this.draft.payload.entries;
-    this.draft = null;
-    this.goTo(3);
+    this.flow.advance(3, () => {
+      this.groups = this.draft.payload.groups;
+      this.entries = this.draft.payload.entries;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -100,7 +170,7 @@ export class RetroGameFraming extends LitElement {
 
   _onShuffle() {
     this.groups = Roles.makeGroups(state.participants);
-    this.entries = buildEntries(this.groups);
+    this.entries = buildFramingEntries(this.groups);
     this.selectedSwapName = null;
     this.shuffleSpin = true;
     setTimeout(() => {
@@ -135,65 +205,216 @@ export class RetroGameFraming extends LitElement {
   // see docs/modernization-plan.md / this file's git history if that
   // ever needs revisiting; preserved as-is here, not a new choice.
   _enterData() {
-    this.entries = buildEntries(this.groups);
-    this.goTo(3);
+    this.entries = buildFramingEntries(this.groups);
   }
 
   _onToggleChoice(idx, val) {
-    this.entries = this.entries.map((e, i) => (i === idx ? { ...e, choice: val } : e));
+    this.entries = patchRow(this.entries, idx, { choice: val });
     Persist.save('framing', { groups: this.groups, entries: this.entries });
   }
 
   _filledCount() {
-    return this.entries.filter((e) => e.choice !== null).length;
+    return countFilled(this.entries, hasFields('choice'));
   }
 
   _showResults() {
-    const filled = this.entries.filter((e) => e.choice !== null);
-    const groupAEntries = filled.filter((e) => e.group === 'A');
-    const groupBEntries = filled.filter((e) => e.group === 'B');
-    const riskyPct = (arr) =>
-      arr.length
-        ? Math.round((arr.filter((e) => e.choice === '2').length / arr.length) * 100)
-        : null;
-    const aRisky = riskyPct(groupAEntries);
-    const bRisky = riskyPct(groupBEntries);
+    this.results = framingResults(this.entries);
+    const { filled } = this.results;
 
-    let flipText = '—';
-    let flipDetail =
-      '<b>Доля выбравших рискованную Программу 2</b> в каждой группе — при одинаковых числах внутри дилеммы.';
-    if (aRisky !== null && bRisky !== null) {
-      const flipped = bRisky > aRisky;
-      flipText = flipped ? 'Формулировка сработала' : 'В этот раз без переворота';
-      flipDetail = `<b>Группа Б выбрала риск на ${Math.abs(bRisky - aRisky)} п.п. ${flipped ? 'чаще' : 'реже'}</b>, чем Группа А — при абсолютно одинаковых числах внутри дилеммы, разница только в словах.`;
-    }
-
-    this.results = { filled, aRisky, bRisky, flipText, flipDetail };
-
-    Print.mount(
-      'print-header-framing',
+    ReportExport.register(
+      'framing',
       {
-        title: 'Эффект фрейминга',
         subtitle:
           'Один и тот же выбор выглядит разумным или рискованным — в зависимости от формулировки.',
-        meta: Print.meta(filled.length),
+        meta: ReportExport.meta(filled.length),
         explanation:
           'Одна и та же по сути информация, поданная как выигрыш или как потеря, приводит к разным решениям — хотя математически варианты идентичны. Классический эксперимент — Tversky, Kahneman (1981), легший в основу теории перспектив, за которую Канеман получил Нобелевскую премию по экономике в 2002 году.',
       },
       this.renderRoot,
     );
-
-    this.goTo(4);
   }
 
-  _reset() {
+  // Who picked what, per group, as an interactive d3 beeswarm instead
+  // of just two percentages — every dot is one person (hover for name
+  // + choice), colored by the same accent/red group pairing used
+  // everywhere else this game shows Group A/Б. Lane backgrounds keep
+  // it readable as "two rows, two columns" even before you register
+  // any single dot; the drop-in animation (d3.easeBackOut, staggered
+  // per dot) is the same "give it some game-like personality" move as
+  // the chunky buttons elsewhere, just applied to a chart instead of a
+  // button.
+  _drawAnswerChart(filled) {
+    const svg = this.renderRoot.getElementById('framing-chart');
+    if (!svg) return;
+    svg.innerHTML = '';
+    if (!filled.length) return;
+
+    const wrap = this.renderRoot.querySelector('.wrap-wide');
+    const cs = getComputedStyle(wrap);
+    const COLOR = {
+      A: cs.getPropertyValue('--game-accent').trim() || '#4E7FFF',
+      B: cs.getPropertyValue('--red').trim() || '#ef3061',
+    };
+
+    const W = 640,
+      H = 300;
+    const M = { top: 40, right: 16, bottom: 8, left: 16 };
+    const plotW = W - M.left - M.right;
+    const plotH = H - M.top - M.bottom;
+
+    const svgSel = d3
+      .select(svg)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+    const root = svgSel.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+    const x = d3
+      .scalePoint()
+      .domain(['1', '2'])
+      .range([plotW * 0.22, plotW * 0.78]);
+    const y = d3.scaleBand().domain(['A', 'B']).range([0, plotH]).padding(0.3);
+    const laneH = y.bandwidth();
+
+    ['1', '2'].forEach((choice) => {
+      root
+        .append('text')
+        .attr('x', x(choice))
+        .attr('y', -16)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '12.5px')
+        .style('font-weight', 700)
+        .style('fill', 'var(--ink-faint)')
+        .style('text-transform', 'uppercase')
+        .style('letter-spacing', '0.04em')
+        .text(`Программа ${choice}`);
+    });
+
+    root
+      .append('line')
+      .attr('x1', plotW / 2)
+      .attr('x2', plotW / 2)
+      .attr('y1', -8)
+      .attr('y2', plotH + 8)
+      .style('stroke', 'var(--line)')
+      .style('stroke-dasharray', '3,5');
+
+    ['A', 'B'].forEach((gKey) => {
+      const laneY = y(gKey);
+      root
+        .append('rect')
+        .attr('x', 0)
+        .attr('y', laneY)
+        .attr('width', plotW)
+        .attr('height', laneH)
+        .attr('rx', 16)
+        .style('fill', `color-mix(in srgb, ${COLOR[gKey]} 7%, white)`);
+      root
+        .append('text')
+        .attr('x', 14)
+        .attr('y', laneY + 22)
+        .style('font-size', '13px')
+        .style('font-weight', 700)
+        .style('fill', COLOR[gKey])
+        .text(`Группа ${GROUP_LABEL[gKey]}`);
+    });
+
+    const buckets = new Map();
+    filled.forEach((p) => {
+      const key = p.group + p.choice;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(p);
+    });
+
+    const dotR = 8;
+    const spacing = 20;
+    const allPoints = [];
+    buckets.forEach((people, key) => {
+      const gKey = key[0];
+      const choice = key[1];
+      const cols = Math.min(people.length, 6);
+      const rowCount = Math.ceil(people.length / cols);
+      people.forEach((p, i) => {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        allPoints.push({
+          ...p,
+          cx: x(choice) + (col - (cols - 1) / 2) * spacing,
+          cy: y(gKey) + laneH / 2 + (row - (rowCount - 1) / 2) * spacing,
+          color: COLOR[gKey],
+        });
+      });
+    });
+
+    const dots = root
+      .selectAll('circle.answer-dot')
+      .data(allPoints)
+      .join('circle')
+      .attr('class', 'answer-dot')
+      .attr('cx', (d) => d.cx)
+      .attr('cy', (d) => d.cy)
+      .attr('r', 0)
+      .style('fill', (d) => d.color)
+      .style('fill-opacity', 0.9)
+      .style('stroke', 'var(--white)')
+      .style('stroke-width', 1.5);
+
+    dots
+      .transition()
+      .delay((_d, i) => i * 28)
+      .duration(420)
+      .ease(d3.easeBackOut.overshoot(1.7))
+      .attr('r', dotR);
+
+    function ns(tag, attrs) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const k in attrs) el.setAttribute(k, attrs[k]);
+      return el;
+    }
+    // A bare 8px circle is a fiddly hover target, so each dot gets a
+    // larger invisible hit circle layered on top — inserted right
+    // after its own dot (not all batched on afterward) so the DOM
+    // stays a plain [visible, hit, visible, hit, ...] sequence, same
+    // as every other chart's hand-rolled forEach() produces. Wiring
+    // the hit circle's own enter/leave to brighten + grow the
+    // underlying dot is what makes hovering feel connected to the dot
+    // you're actually pointing at, not just the tooltip appearing.
+    const dotNodes = dots.nodes();
+    allPoints.forEach((p, i) => {
+      const hit = ns('circle', {
+        cx: p.cx,
+        cy: p.cy,
+        r: dotR + 5,
+        fill: 'transparent',
+        'pointer-events': 'all',
+      });
+      dotNodes[i].after(hit);
+      ChartTip.attach(
+        hit,
+        () =>
+          `<b>${p.name}</b><span class="tip-row"><span>Группа</span><span>${GROUP_LABEL[p.group]}</span></span><span class="tip-row"><span>Выбор</span><span>Программа ${p.choice}</span></span>`,
+      );
+      hit.addEventListener('mouseenter', () => {
+        d3.select(dotNodes[i])
+          .style('fill-opacity', 1)
+          .attr('r', dotR * 1.2);
+      });
+      hit.addEventListener('mouseleave', () => {
+        d3.select(dotNodes[i]).style('fill-opacity', 0.9).attr('r', dotR);
+      });
+    });
+  }
+
+  async _reset() {
     this.groups = Roles.makeGroups(state.participants);
     this.selectedSwapName = null;
-    this.entries = buildEntries(this.groups);
+    this.entries = buildFramingEntries(this.groups);
     this.results = null;
     this.textHidden = { a: true, b: true };
+    this.timer.reset();
     Persist.clear('framing');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _groupsHolder() {
@@ -226,7 +447,7 @@ export class RetroGameFraming extends LitElement {
     `;
   }
 
-  _spoilerCard(key, groupLabel, borderColor) {
+  _spoilerCard(key, groupLabel, borderColor, members) {
     const hidden = this.textHidden[key];
     return html`
       <div class="quote-card spoiler-card" style=${borderColor ? `border-left-color:${borderColor};` : ''}>
@@ -239,16 +460,16 @@ export class RetroGameFraming extends LitElement {
               id="toggle-${key}"
               @click=${() => this._toggleText(key)}
             >
-              ${hidden ? '👁 Показать' : '🙈 Скрыть'}
+              ${hidden ? html`${unsafeHTML(ICON_SHOW)} Показать` : html`${unsafeHTML(ICON_HIDE)} Скрыть`}
             </button>
-            <!-- Plain emoji here on purpose, not the kit's clipboard
-                 icon: copyToClipboard() (toast.js) overwrites this
-                 button's textContent imperatively for the "✓
-                 Скопировано" feedback, which would eject the icon's
-                 Lit-managed ChildPart marker nodes and throw on the
+            <!-- .btn-label wraps only the text, not the icon:
+                 copyToClipboard() (toast.js) swaps that span's text
+                 imperatively for the "✓ Скопировано" feedback — doing
+                 that to the whole button would delete the icon's
+                 Lit-managed ChildPart along with it and throw on the
                  next render ("ChildPart has no parentNode"). -->
             <button type="button" class="ghost" id="copy-${key}" @click=${(e) => this._copyText(key, e)}>
-              📋 Скопировать
+              ${unsafeHTML(ICON_COPY)} <span class="btn-label">Скопировать</span>
             </button>
           </div>
         </div>
@@ -265,6 +486,12 @@ export class RetroGameFraming extends LitElement {
               никто не умрёт, с вероятностью ⅔ умрут все 600».`
           }
         </p>
+        <div class="spoiler-members">
+          <span class="spoiler-members-label">Кому отправлять · ${members.length} чел.</span>
+          <div class="role-group-chips">
+            ${members.map((n) => html`<span class="role-chip readonly">${unsafeHTML(avatarName(n))}</span>`)}
+          </div>
+        </div>
       </div>
     `;
   }
@@ -312,24 +539,15 @@ export class RetroGameFraming extends LitElement {
     const listB = withIdx.filter((e) => e.group === 'B');
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Эффект фрейминга</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('framing')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 7 минут</p>
           <h1>Один выбор, две формулировки</h1>
           <p class="lede">
@@ -372,7 +590,7 @@ export class RetroGameFraming extends LitElement {
               <div class="step-num">2</div>
               <div class="step-body">
                 <b>Каждый выбирает одну из двух программ</b>
-                <span>Программу 1 (без риска) или Программу 2 (с риском) — только свою, из формулировки для своей группы.</span>
+                <span>Программу 1 или Программу 2 — только свою, из формулировки для своей группы.</span>
               </div>
             </li>
           </ol>
@@ -381,11 +599,14 @@ export class RetroGameFraming extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Распределить группы ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Распределить группы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Распределение ролей</p>
           <h2>Кто в какой группе</h2>
           <p class="lede">Не нравится расклад — перемешайте.</p>
@@ -399,12 +620,15 @@ export class RetroGameFraming extends LitElement {
           </button>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(2)}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(2)}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Сценарий</p>
           <h2>Текст для каждой группы — по отдельности</h2>
           <p class="lede">
@@ -413,19 +637,28 @@ export class RetroGameFraming extends LitElement {
             своей группе в чат.
           </p>
 
-          ${this._spoilerCard('a', 'А', null)}
-          ${this._spoilerCard('b', 'Б', 'var(--red)')}
+          ${this._spoilerCard('a', 'А', 'var(--game-accent, var(--blue))', this.groups.groupA)}
+          ${this._spoilerCard('b', 'Б', 'var(--red)', this.groups.groupB)}
+
+          ${renderAnswerTimer(this.timer, {
+            defaultDuration: ANSWER_TIMER_SECONDS,
+            onDurationChange: (seconds) => this.timer.setDuration(seconds),
+            runningLabel: 'Запустите, когда тексты уже отправлены группам — на обсуждение и ответ',
+          })}
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this._enterData()}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3, () => this._enterData())}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите выбор каждого участника</h2>
-          <p class="lede">Программа 1 (без риска) или Программа 2 (с риском) — по формулировке своей группы.</p>
+          <p class="lede">Программа 1 или Программа 2 — по формулировке своей группы.</p>
 
           <div id="entry-body">
             ${this._entrySection('Группа А', listA, 'team-a')}
@@ -440,39 +673,36 @@ export class RetroGameFraming extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(4, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-framing"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.flipText : '—'}</div>
-            <p>
-              ${
-                r
-                  ? unsafeHTML(r.flipDetail)
-                  : html`<b>Доля выбравших рискованную Программу 2</b> в каждой группе — при
-                  одинаковых числах внутри дилеммы.`
-              }
-            </p>
-          </div>
+          ${renderReveal({ value: r ? r.flipText : '—', ...REVEAL_COPY.framing(r ? { aRisky: r.aRisky, bRisky: r.bRisky } : null) })}
 
           <div class="group-compare">
-            <div class="g low">
+            <div class="g low team-a">
               <div class="t">Группа А (формулировка выигрыша) · риск</div>
-              <div class="v">${r && r.aRisky !== null ? r.aRisky + '%' : '—'}</div>
+              <div class="v">${r && r.aRisky !== null ? `${r.aRisky}%` : '—'}</div>
             </div>
-            <div class="g high">
+            <div class="g high team-b">
               <div class="t">Группа Б (формулировка потери) · риск</div>
-              <div class="v">${r && r.bRisky !== null ? r.bRisky + '%' : '—'}</div>
+              <div class="v">${r && r.bRisky !== null ? `${r.bRisky}%` : '—'}</div>
             </div>
+          </div>
+
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Кто что выбрал</div>
+            <svg id="framing-chart" class="d3-chart-svg" aria-label="Выбор каждого участника по группам"></svg>
           </div>
 
           <table class="results-table" id="results-table">
@@ -500,21 +730,22 @@ export class RetroGameFraming extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-framing"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
 
-        <section class="screen ${this.screenIdx === 5 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(5)}" id="round-5">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект фрейминга</h1>
           <p class="lede">
@@ -555,54 +786,84 @@ export class RetroGameFraming extends LitElement {
             посмотреть.
           </p>
 
-          <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Тот же приём — в маркетинге и медицине</b
-            ><span
-              >«95% успешных операций» звучит убедительнее, чем «5% смертность» — хотя это одно и
-              то же число, поданное через выигрыш вместо потери.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Эффект устойчив даже у экспертов</b
-            ><span
-              >Врачи в оригинальных репликах тоже меняли рекомендации в зависимости от
-              формулировки статистики выживаемости — специальные знания не отменяют эффект
-              фрейминга полностью.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Работает и на бытовых решениях</b
-            ><span
-              >Люди чаще соглашаются на небольшую скидку за оплату наличными, если её называют
-              «скидкой», и заметно реже — если ровно ту же разницу в цене называют «доплатой за
-              оплату картой», хотя итоговая сумма одинакова.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Формулировки влияют на согласие с политикой и налогами</b
-            ><span
-              >В опросах поддержка одной и той же меры заметно меняется в зависимости от того,
-              описана ли она как «сохранение существующих рабочих мест» или как «предотвращение
-              потери рабочих мест» — хотя по сути речь о совершенно одинаковом результате.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Рабочая параллель</b
-            ><span
-              >«Мы можем сохранить 80% бюджета» и «мы потеряем 20% бюджета» — одно и то же
-              решение, но вторая формулировка обычно подталкивает команду к более рискованным
-              шагам, чтобы избежать ощущаемой потери.</span
-            >
-          </div>
+          <ol class="step-list">
+            <li>
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <b>Тот же приём — в маркетинге и медицине</b>
+                <span
+                  >«95% успешных операций» звучит убедительнее, чем «5% смертность» — хотя это одно
+                  и то же число, поданное через выигрыш вместо потери.</span
+                >
+              </div>
+            </li>
+            <li>
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <b>Эффект устойчив даже у экспертов</b>
+                <span
+                  >Врачи в оригинальных репликах тоже меняли рекомендации в зависимости от
+                  формулировки статистики выживаемости — специальные знания не отменяют эффект
+                  фрейминга полностью.</span
+                >
+              </div>
+            </li>
+            <li>
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <b>Работает и на бытовых решениях</b>
+                <span
+                  >Люди чаще соглашаются на небольшую скидку за оплату наличными, если её называют
+                  «скидкой», и заметно реже — если ровно ту же разницу в цене называют «доплатой за
+                  оплату картой», хотя итоговая сумма одинакова.</span
+                >
+              </div>
+            </li>
+            <li>
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <b>Формулировки влияют на согласие с политикой и налогами</b>
+                <span
+                  >В опросах поддержка одной и той же меры заметно меняется в зависимости от того,
+                  описана ли она как «сохранение существующих рабочих мест» или как «предотвращение
+                  потери рабочих мест» — хотя по сути речь о совершенно одинаковом результате.</span
+                >
+              </div>
+            </li>
+            <li>
+              <div class="step-num">5</div>
+              <div class="step-body">
+                <b>Рабочая параллель</b>
+                <span
+                  >«Мы можем сохранить 80% бюджета» и «мы потеряем 20% бюджета» — одно и то же
+                  решение, но вторая формулировка обычно подталкивает команду к более рискованным
+                  шагам, чтобы избежать ощущаемой потери.</span
+                >
+              </div>
+            </li>
+          </ol>
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(5)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Эффект фрейминга</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'framing',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

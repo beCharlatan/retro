@@ -30,6 +30,16 @@
   --blue-soft: #cfdfff;
   --blue-on-light2: #102046;
 
+  /* --game-accent(-deep) — НЕ заданы здесь: game-trail.js's
+       gameAccentStyle() выставляет их инлайном на .wrap каждой игры
+       (её собственный сэмплированный цвет иконки с гейм-карты, см.
+       map-render.js's ICON_COLORS), а все места ниже, где раньше был
+       голый var(--blue)/var(--blue-deep) — кнопка Primary, фокус-кольца,
+       "Перемешать", спойлер, итоговое число, шкала — читают
+       var(--game-accent, var(--blue)) и авто-переключаются на цвет
+       игры, оставаясь синими везде, где .wrap этот токен не задаёт
+       (сама карта/roster — другой Shadow DOM, туда это не течёт). */
+
   /* Оранжевый (orangeBright/orangeDark1/orangeLight2) — предупреждающая
        плашка черновика; --orange-on-light2 — категория "Экономика" */
   --orange: #ff6f2c;
@@ -52,7 +62,12 @@
   --gold: #b87503;
   --gold-soft: #ffeab6;
 
-  --radius: 3px; /* единственный радиус кита — карточки, кнопки, инпуты, свитчи */
+  /* 12px, not the kit's original 3px — a small flat radius is exactly
+       what made every game read as enterprise-kit documentation
+       instead of something built for a team game; settled on framing.js
+       before promoting here for all 13 games (карточки, кнопки, инпуты,
+       свитчи). */
+  --radius: 12px;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -91,6 +106,20 @@ body {
   z-index: 1;
 }
 
+/* Пробовали продолжить фон гейм-карты (bg.jpg) внутрь деталки — даже
+     едва заметной подложкой это оказалось хуже плоского --panel на
+     13 форм-тяжёлых экранах (кит был на строгом белом ради
+     читаемости не просто так). Откатили. Каждый `retro-game-*` — свой
+     Shadow DOM без :host по умолчанию (в отличие от map-styles.css, у
+     которого он есть) — так что display/position/min-height здесь
+     всё ещё нужны, просто без фонового изображения. */
+:host {
+  display: block;
+  position: relative;
+  min-height: 100vh;
+  background: var(--panel);
+}
+
 .mono {
   font-family: ui-monospace, "SFMono-Regular", monospace;
 }
@@ -109,13 +138,102 @@ a {
   color: inherit;
 }
 
-.wrap {
-  max-width: 940px;
+/* ---------- Деталка как единый скролл (все 13 игр) ----------
+     Вместо постраничного визарда (один экран виден, остальные
+     display:none) — все раунды разом, друг под другом, .game-main
+     просто скроллится; .game-rail — большая липкая тропа сбоку, всегда
+     на виду, показывает где ты сейчас (не сколько пройдено — за это
+     отвечает screenIdx/.round-pending, см. game-shell.js). .wrap-wide
+     шире узкого .wrap.narrow ровно на столько, сколько нужно двум
+     колонкам. */
+.wrap-wide {
+  max-width: 1180px;
   margin: 0 auto;
   padding: 56px 28px 112px;
 }
-.wrap.narrow {
-  max-width: 772px;
+.game-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 56px;
+  align-items: start;
+  margin-top: 8px;
+}
+.game-main {
+  min-width: 0;
+}
+.game-rail {
+  position: sticky;
+  top: 32px;
+}
+.game-rail-title {
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+/* × в углу — вернуться на главную теперь только через это, с
+     подтверждением: черновик попытки очищается, как и раньше при явном
+     выходе. fixed, не absolute — доступен с любого места длинного
+     скролла по раундам, не только сверху. */
+.game-exit {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  border: none;
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink-faint);
+  box-shadow: 0 2px 10px -2px rgba(43, 37, 64, 0.18);
+  cursor: pointer;
+  transition:
+    color 0.15s var(--ease),
+    background 0.15s var(--ease);
+}
+.game-exit:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+@media (max-width: 980px) {
+  .game-shell {
+    grid-template-columns: 1fr;
+  }
+  .game-rail {
+    position: static;
+    order: -1;
+    margin: 0 auto 8px;
+    /* Un-capped, the vertical trail's svg (width:100%, height:auto —
+         see .game-trail.vertical above) stretches to this column's
+         FULL width once it's no longer confined to its own 300px
+         sidebar track, and since height follows width to keep the
+         viewBox's aspect ratio, that blows the trail up to a
+         page-dominating size instead of a small "map preview" above
+         the rounds. */
+    max-width: 220px;
+  }
+  /* Height-constrained here (not width, like the sidebar case above)
+       — a 220px-wide column is still tall enough at the trail's full
+       aspect ratio to push a round's actual content off the first
+       screen; capping height and letting preserveAspectRatio="...meet"
+       shrink width to match gives a small "map preview" instead. */
+  .game-trail.vertical svg {
+    width: auto;
+    height: 200px;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+  .game-trail.vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
 }
 
 /* ---------- Типографика ----------
@@ -156,12 +274,23 @@ p {
 /* Heading/xsmall-caps в ките: 11px Bold, tracking 5 (~0.45em на 11px) —
      используется для всех служебных uppercase-подписей ("COLLABORATOR
      TOKENS", "BUTTON / DEFAULT" и т.п.). */
+/* A small colored badge instead of a flat gray label — reads as a
+     quest tag, not a spec-sheet caption (settled on framing.js).
+     align-self: flex-start is load-bearing: .round-body is a flex
+     column, so every direct child stretches to its full cross-axis
+     width by default (invisible on plain text, but very visible once
+     this has its own background/radius) unless it opts out. */
 .eyebrow {
+  display: inline-flex;
+  align-self: flex-start;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--game-accent-deep, var(--blue-deep));
   letter-spacing: 0.05em;
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 14%, white);
+  padding: 5px 12px;
+  border-radius: 999px;
   margin: 0 0 12px;
 }
 .note {
@@ -188,7 +317,7 @@ p {
   border: 1.5px solid var(--gold);
   border-radius: var(--radius);
   padding: 12px 14px;
-  margin-top: 10px;
+  margin: 10px 0;
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--ink);
@@ -216,40 +345,106 @@ hr {
      (совсем без фона) и Danger, но у нас только два слота в разметке. */
 button.primary,
 button.ghost {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 11px 22px;
   border-radius: var(--radius);
   border: none;
   cursor: pointer;
   transition:
     background 0.16s var(--ease),
-    color 0.16s var(--ease);
+    color 0.16s var(--ease),
+    transform 0.1s var(--ease),
+    box-shadow 0.1s var(--ease);
 }
+/* Chunky "press-down" buttons (a solid-color shelf under the face that
+     the button sinks into on click) instead of a flat rectangle — the
+     single highest-leverage change for reading as a game rather than a
+     form: it's the first thing a player's hand touches every round
+     (settled on framing.js). */
 button.primary {
-  background: var(--blue);
+  background: var(--game-accent, var(--blue));
   color: #fff;
+  box-shadow: 0 4px 0 var(--game-accent-deep, var(--blue-deep));
 }
+/* The face would otherwise darken to --game-accent-deep on hover —
+     same color as the shelf, so hovering would wash the shelf out
+     flush with the face. The shadow is the feedback here; keep the
+     face color put. */
 button.primary:hover {
-  background: var(--blue-deep);
+  background: var(--game-accent, var(--blue));
+  transform: translateY(-1px);
+}
+button.primary:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--game-accent-deep, var(--blue-deep));
 }
 button.primary:disabled {
   background: var(--line);
   color: var(--ink-faint);
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 button.ghost {
   background: var(--surface);
   color: var(--ink);
+  box-shadow: 0 4px 0 var(--line);
 }
+/* Same shelf-color collision as .primary: the kit's hover darkening
+     (--line) is also the shelf's own color, so it would visually erase
+     the shelf. A small lift reads as "ready to press" instead. */
 button.ghost:hover {
-  background: var(--line);
+  transform: translateY(-1px);
+}
+button.ghost:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+/* .secondary = Button/Secondary (кит: совсем без фона, цветной текст) —
+     for a subordinate action that shouldn't compete with the round's
+     main .primary CTA (e.g. "Задать свой вопрос вместо стандартного").
+     Deliberately none of .primary/.ghost's chunky press-down shelf —
+     a plain text link already reads as secondary without it; adding
+     one anyway is what made this button look broken (a floating
+     shadow under invisible text) before this class existed. */
+button.secondary {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--game-accent, var(--blue));
+  cursor: pointer;
+  transition: color 0.15s var(--ease);
+}
+button.secondary:hover {
+  background: none;
+  color: var(--game-accent-deep, var(--blue-deep));
 }
 
 :where(button, input, [tabindex]):focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--game-accent, var(--blue));
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+/* Flat 2px-gray-border cards read as spreadsheet cells. A thinner
+     border plus a soft lift shadow reads as an actual object sitting
+     on the page instead of a table row (settled on framing.js). */
+.quote-card,
+.role-group-col,
+.stat,
+.group-compare .g,
+.team-entry-card,
+.draft-banner,
+.custom-q-panel,
+.chart-wrap {
+  border-width: 1px;
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
 }
 
 .nav-row {
@@ -258,40 +453,6 @@ button.ghost:hover {
   align-items: center;
   margin-top: 40px;
   gap: 12px;
-}
-
-/* ---------- Хлебные крошки ---------- */
-.game-crumb {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink-faint);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px 0;
-  transition: color 0.15s var(--ease);
-}
-.back-link:hover {
-  color: var(--ink);
-}
-.game-crumb .crumb-sep {
-  color: var(--line);
-  font-size: 12.5px;
-}
-.game-crumb .crumb-current {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink);
 }
 
 /* ---------- Шапка главной ---------- */
@@ -375,9 +536,6 @@ button.ghost:hover {
 .chip:hover {
   background: var(--line);
 }
-.chip .avatar {
-  border: 1px solid var(--avatar-ring);
-}
 .avatar {
   flex: none;
   width: 22px;
@@ -390,6 +548,9 @@ button.ghost:hover {
   font-weight: 600;
   color: #fff;
   line-height: 1;
+}
+.chip .avatar {
+  border: 1px solid var(--avatar-ring);
 }
 
 /* Compact avatar used everywhere outside the home screen's chips —
@@ -406,20 +567,6 @@ button.ghost:hover {
 }
 .name-with-avatar .avatar {
   margin: 0;
-}
-
-/* Keep avatars a reasonable, table-friendly size even in the
-     printed PDF — @media print already forces color-adjust:exact
-     globally, so the coloured circle survives printing intact. */
-@media print {
-  .avatar.avatar-sm {
-    width: 14px;
-    height: 14px;
-    font-size: 7px;
-  }
-  .name-with-avatar {
-    gap: 5px;
-  }
 }
 
 .chip button.chip-x {
@@ -465,7 +612,7 @@ button.ghost:hover {
 }
 .add-row input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
 }
 .add-row button {
   padding: 8px 16px;
@@ -641,7 +788,7 @@ button.ghost:hover {
   transition: color 0.15s var(--ease);
 }
 .teaser-toggle:hover {
-  color: var(--blue-deep);
+  color: var(--game-accent-deep, var(--blue-deep));
 }
 .teaser-toggle .chev {
   display: inline-block;
@@ -691,12 +838,12 @@ button.shuffle-btn {
   padding: 0;
   border: none;
   background: none;
-  color: var(--blue);
+  color: var(--game-accent, var(--blue));
   cursor: pointer;
   transition: color 0.16s var(--ease);
 }
 button.shuffle-btn:hover {
-  color: var(--blue-deep);
+  color: var(--game-accent-deep, var(--blue-deep));
 }
 button.shuffle-btn .dice {
   display: inline-block;
@@ -740,43 +887,300 @@ button.shuffle-btn.spin .dice {
 /* =====================================================
      Экраны игр
   ===================================================== */
-.screen {
-  display: none;
+/* ---------- Раунды в один скролл ----------
+     Все 13 игр: ВСЕ раунды в DOM и
+     видимы разом (никакого display:none), пользователь идёт по ним
+     скроллом сверху вниз; game-shell.js's observeRounds() следит,
+     какой раунд сейчас "читается", и двигает тропу в .game-rail —
+     но только НАЗАД к уже пройденным (framing.js clamps activeRound
+     к screenIdx): скролл вниз в ещё не пройденный раунд разрешён
+     физически (страница просто длиннее), но не считается переходом —
+     переход только кнопкой (_advance()), поэтому .round-body внутри
+     .round-pending размыт и неактивен (pointer-events:none), а
+     .round-lock поверх — единственное, что реально читается: имя
+     раунда по центру. .round-just-completed — секундная вспышка
+     рамкой в цвете игры сразу после того, как раунд пройден, перед
+     плавным скроллом к следующему.
+
+     min-height:100vh — короткий раунд (мало текста) раньше кончался
+     раньше конца экрана, и снизу уже подглядывался размытый кусок
+     следующего — сам факт "там что-то есть" уже частичный спойлер.
+     Раунд теперь всегда минимум с экран высотой, следующий начинается
+     ровно за его пределами. .round + .round-body — вложенный flex
+     (не один уровень): внутренний .round-body растягивается на всю
+     высоту (flex:1), и уже ЕГО последний ребёнок — единственный
+     .nav-row внутри раунда — прижимается к низу через margin-top:auto,
+     так что кнопки «Далее»/«Назад» не повисают посреди пустого
+     экрана у короткого раунда, а сидят внизу, как у длинного. */
+.round {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
+  /* Horizontal padding (not just top/bottom) — without it .round-body's
+       content sits flush against the round's own edges, so
+       .round-just-completed's inset box-shadow (below) touched the
+       content directly with no breathing room. */
+  padding: 40px 24px;
+  /* No divider line between rounds — the whitespace/round-lock overlay
+       already separates them; a gray border-top just added visual
+       "form" noise (settled on framing.js). */
+  /* clips .round-pending .round-body's filter:blur() to this box —
+       CSS filter effects paint past the element's own edges, and
+       without a clipping ancestor that halo bleeds sideways past the
+       round into the page's outer margin outside .wrap-wide. */
+  overflow: hidden;
 }
-.screen.active {
-  display: block;
-  animation: screen-in 0.32s var(--ease) both;
+.round:first-of-type {
+  padding-top: 0;
+  /* Not a plain 100vh like every other round — this one starts below
+       the breadcrumb/.wrap-wide padding instead of at the top of a
+       fresh scroll position (every OTHER round gets there via
+       scrollIntoView, which puts ITS OWN top at the viewport's top —
+       see framing.js's _scrollToRound()), so a full 100vh here would
+       run past the bottom of the very first screen. --round-0-offset
+       is measured once in firstUpdated() (framing.js). */
+  min-height: calc(100vh - var(--round-0-offset, 0px));
 }
-@keyframes screen-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+.round-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.round-body .nav-row {
+  margin-top: auto;
+  padding-top: 24px;
+}
+.round.round-pending .round-body {
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+}
+.round.round-just-completed {
+  animation: round-complete-flash 0.9s var(--ease) both;
+  border-radius: var(--radius);
+}
+@keyframes round-complete-flash {
+  0% {
+    box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
   }
-  to {
-    opacity: 1;
-    transform: none;
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
   }
+}
+.round-lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+.round-lock-title {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 10px 22px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px -4px rgba(43, 37, 64, 0.22);
 }
 
-/* Индикатор шагов */
-.progress {
-  display: flex;
-  gap: 7px;
+/* ---------- Тропа прогресса (game-trail.js) ----------
+     Заменяет плоские полоски-точки: волнистый путь с иконкой самой
+     игры (как на гейм-карте, ветка `gme`), едущей по узлам шагов —
+     деталка продолжает язык карты, а не выглядит отдельным
+     приложением. --trail-color приходит из ICON_COLORS каждой игры
+     (map-render.js), а не из общего --blue, чтобы у каждой игры был
+     свой акцент. */
+.game-trail {
+  position: relative;
   margin-bottom: 36px;
 }
-.progress .dot {
-  height: 3px;
-  flex: 1;
-  background: var(--line);
-  border-radius: 2px;
-  overflow: hidden;
-  transition: background 0.3s var(--ease);
+/* .trail-hotspots positions each hotspot as a % of the SVG's own
+     viewBox — so it needs to sit inset:0 over a box that's EXACTLY the
+     SVG's own rendered size. .game-trail itself is taller than that
+     (the .trail-step-label sits below the svg too), so this wrapper is
+     the actual positioning context: sizing it to the SVG only, not to
+     .game-trail as a whole, is what keeps a hotspot aligned with its
+     node all the way down a tall trail instead of drifting further off
+     (downward) the more steps come before it. */
+.trail-svg-wrap {
+  position: relative;
 }
-.progress .dot.done {
-  background: var(--blue-soft);
+.game-trail svg {
+  display: block;
+  width: 100%;
+  height: 72px;
+  overflow: visible;
 }
-.progress .dot.active {
-  background: var(--blue);
+/* Прозрачные HTML-хотспоты поверх SVG-узлов (не сама SVG — тултип со
+     стилями кита проще версткой поверх, чем внутри <svg>, а нативный
+     <title> — это небрендированная и с задержкой браузерная
+     подсказка). Позиция — в процентах от viewBox, тот же принцип, что
+     переводит координаты узла в координаты HTML-слоя без пересчёта на
+     пиксели. */
+.trail-hotspots {
+  position: absolute;
+  inset: 0;
+}
+.trail-hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  cursor: default;
+}
+.trail-hotspot-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 4px);
+  white-space: nowrap;
+  background: var(--ink);
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 11px;
+  border-radius: var(--radius);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.15s var(--ease);
+  z-index: 5;
+}
+.trail-hotspot:hover .trail-hotspot-tip,
+.trail-hotspot:focus-visible .trail-hotspot-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.trail-path {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 3 8;
+  /* "Дорога ещё впереди" — дальше не пройденный кусок пути тихо бежит
+       вперёд, а не просто лежит статичной пунктирной линией; период
+       смещения (22 = 2×11, где 11 — длина одного "штрих+пробел" из
+       stroke-dasharray) подобран так, чтобы цикл не дёргался на
+       стыке. */
+  animation: trail-path-march 1.1s linear infinite;
+}
+@keyframes trail-path-march {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+.trail-path-done {
+  fill: none;
+  stroke: var(--trail-color, var(--blue));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 5px var(--trail-color, transparent));
+}
+.trail-node {
+  transition:
+    r 0.25s var(--ease),
+    fill 0.25s var(--ease);
+}
+.trail-node.future {
+  fill: var(--white);
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.trail-node.done {
+  fill: var(--trail-color, var(--blue));
+}
+.trail-node.current {
+  fill: var(--trail-color, var(--blue));
+  filter: drop-shadow(0 0 7px var(--trail-color, transparent));
+}
+/* Галочка поверх пройденного узла (game-trail.js's checkMarkD()) —
+     пройденный шаг читается как взятый чекпоинт, а не просто точка
+     потусклее прежней. */
+.trail-node-check {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+/* "Вы здесь" — то же пульсирующее кольцо, что подсвечивает подходящие
+     под фильтр иконки на карте (map-styles.css's filter-pulse). */
+.trail-node-halo {
+  fill: none;
+  stroke: var(--trail-color, var(--blue));
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: trail-pulse 1.8s ease-out infinite;
+}
+@keyframes trail-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+.trail-traveler {
+  transition: transform 0.5s var(--ease);
+}
+.trail-traveler-bob {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: trail-bob 3.2s ease-in-out infinite;
+}
+@keyframes trail-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(4deg);
+  }
+}
+.trail-traveler-img {
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.25))
+    drop-shadow(0 0 16px var(--trail-color, transparent));
+}
+.trail-step-label {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+/* .vertical — большая липкая тропа в .game-rail (см. .game-shell
+     выше): ширина = ширине колонки, высота — по её собственному
+     viewBox (growируется по числу шагов в game-trail.js, не
+     сжимается под контейнер, поэтому НЕ preserveAspectRatio="none"
+     здесь — она и не нужна). Была отдельной карточкой (градиент +
+     рамка + тень) — убрали, голый SVG прямо на фоне страницы. */
+.game-trail.vertical {
+  padding: 6px 10px 0;
+}
+.game-trail.vertical svg {
+  height: auto;
+}
+.game-trail.vertical .trail-step-label {
+  width: fit-content;
+  margin: 14px auto 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--trail-color, var(--ink-soft));
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--trail-color, var(--blue)) 16%, white);
 }
 
 /* Числовые плашки */
@@ -797,7 +1201,7 @@ button.shuffle-btn.spin .dice {
 .stat .n {
   font-weight: 600;
   font-size: 29px;
-  color: var(--blue-deep);
+  color: var(--game-accent-deep, var(--blue-deep));
   line-height: 1;
   margin-bottom: 8px;
 }
@@ -822,19 +1226,22 @@ button.shuffle-btn.spin .dice {
 .step-list li:last-child {
   border-bottom: 1px solid var(--line);
 }
+/* Tied to the game's own color instead of a fixed gold outline — the
+     instructions read as this game's own moves (settled on
+     framing.js). */
 .step-num {
   flex: none;
   width: 31px;
   height: 31px;
-  border: 1px solid var(--gold);
+  border: 1px solid var(--game-accent, var(--blue));
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--gold);
-  background: var(--white);
+  color: var(--game-accent-deep, var(--blue-deep));
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 14%, white);
 }
 .step-body b {
   display: block;
@@ -846,6 +1253,32 @@ button.shuffle-btn.spin .dice {
   color: var(--ink-soft);
   font-size: 15px;
   line-height: 1.55;
+}
+
+/* Plain numbered list of questions to read aloud — for a game asking
+     several independent questions in one go instead of one per round
+     (first used on crowd-wisdom.js's three-question redesign). Spacing
+     only, no divider lines between items — a gray rule between every
+     text block read as unwanted "form" structure elsewhere in this
+     app (settled on framing.js). */
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 20px;
+  padding: 0;
+  list-style: none;
+}
+.question-list-item {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 15px;
+}
+.question-list-num {
+  flex: none;
+  font-weight: 700;
+  color: var(--game-accent-deep, var(--blue-deep));
 }
 
 /* Ввод данных */
@@ -888,6 +1321,10 @@ button.shuffle-btn.spin .dice {
 .entry-row.toggle-only {
   grid-template-columns: 1fr 220px;
 }
+.entry-head.three-col,
+.entry-row.three-col {
+  grid-template-columns: 1fr 100px 100px 100px;
+}
 
 .entry-row input {
   width: 100%;
@@ -904,7 +1341,7 @@ button.shuffle-btn.spin .dice {
 }
 .entry-row input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
 }
 
 /* Select buttons кита: серая заливка-контейнер, паддинг/gap 4px,
@@ -933,41 +1370,10 @@ button.shuffle-btn.spin .dice {
 .toggle-pair button:hover {
   background: var(--line);
 }
-.toggle-pair button.on {
-  background: var(--ink-faint);
-  color: #fff;
-  filter: blur(4px);
-  transition:
-    background 0.15s var(--ease),
-    color 0.15s var(--ease),
-    filter 0.2s var(--ease);
-}
+.toggle-pair button.on,
 .toggle-pair button.on:hover {
-  background: var(--ink-faint);
+  background: var(--game-accent, var(--blue));
   color: #fff;
-}
-/* Briefly un-blurred right after a click (see the delegated
-     listener in app.js) so the facilitator can confirm they hit the
-     right choice, then fades back to hidden a moment later. */
-.toggle-pair button.on.just-set {
-  filter: none;
-}
-
-/* =====================================================
-     Приватность на общем экране: если ведущий демонстрирует
-     проектор во время сбора данных, участники не должны читать
-     чужие ответы по мере ввода. Размываем введённое число, пока
-     поле не в фокусе — так виден только тот ответ, который
-     печатается прямо сейчас. Таблиц результатов это не касается
-     (там нет <input>), текстовые поля (имена, текст вопроса)
-     не размываются — они не являются «ответом».
-  ===================================================== */
-input[type="number"] {
-  filter: blur(0);
-  transition: filter 0.12s var(--ease);
-}
-input[type="number"]:not(:focus):not(:placeholder-shown) {
-  filter: blur(5px);
 }
 
 .fill-progress {
@@ -984,18 +1390,231 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
 }
 .track > div {
   height: 100%;
-  background: var(--blue);
+  background: var(--game-accent, var(--blue));
   transition: width 0.4s var(--ease);
+}
+
+/* Manual-start answer timer (game-shell.js's renderAnswerTimer()) — a
+     visual-only cue, nothing gets disabled or advanced when it hits
+     zero. Its own accent card rather than a plain row, since it's
+     meant to be glanced at from across the room while a team is
+     mid-discussion (settled on framing.js). */
+.round-timer {
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 6%, white);
+  border: 1px solid color-mix(in srgb, var(--game-accent, var(--blue)) 30%, var(--line));
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin: 22px 0 10px;
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
+}
+.round-timer-info {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.round-timer-clock {
+  font-size: 20px;
+  line-height: 1;
+}
+.round-timer-time {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--game-accent-deep, var(--blue-deep));
+  line-height: 1;
+}
+.round-timer-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.round-timer-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--white);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.round-timer-track > div {
+  height: 100%;
+  background: var(--game-accent, var(--blue));
+  transition: width 1s linear;
+}
+.round-timer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.round-timer-actions button {
+  padding: 7px 16px;
+  font-size: 13px;
+}
+/* Редактируемая длительность (пока таймер не запущен): − [0:20] + и,
+     когда значение не стандартное, ссылка «вернуть 0:20». Само время —
+     поле ввода, оформленное как обычное число таймера, рамка
+     появляется только на hover/focus. */
+.round-timer-adjust {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.round-timer-input {
+  width: 4.4ch;
+  padding: 2px 4px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  text-align: center;
+  box-shadow: none;
+  filter: none;
+  transition:
+    border-color 0.12s var(--ease),
+    background 0.12s var(--ease);
+}
+.round-timer-input:hover {
+  border-color: var(--line);
+}
+.round-timer-input:focus {
+  outline: none;
+  background: var(--white);
+  border-color: var(--game-accent, var(--blue));
+}
+.timer-step {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink-soft);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.12s var(--ease),
+    color 0.12s var(--ease),
+    transform 0.12s var(--ease);
+}
+.timer-step:hover:not(:disabled) {
+  border-color: var(--game-accent, var(--blue));
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.timer-step:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.timer-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.round-timer-actions {
+  gap: 10px;
+  align-items: center;
+}
+.round-timer-actions .timer-default,
+.round-timer-actions .secondary {
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+.round-timer.compact .timer-step {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+}
+.round-timer.compact .round-timer-input {
+  width: 4ch;
+  padding: 0 2px;
+}
+
+/* Compact variant (availability.js) — one slim row: clock · time ·
+     label on the left, button on the right, hairline progress bar
+     under them. Sits ABOVE the participant table so the whole
+     question (timer + ~14 rows) still fits on one screen. */
+.round-timer.compact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 8px 12px;
+  margin: 10px 0 12px;
+  border-radius: var(--radius-sm, 10px);
+  box-shadow: none;
+}
+.round-timer.compact .round-timer-info {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+.round-timer.compact .round-timer-clock {
+  font-size: 15px;
+}
+.round-timer.compact .round-timer-time {
+  font-size: 20px;
+}
+.round-timer.compact .round-timer-label {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.round-timer.compact .round-timer-actions {
+  grid-column: 2;
+  grid-row: 1;
+}
+.round-timer.compact .round-timer-actions button {
+  padding: 4px 12px;
+  font-size: 12px;
+  box-shadow: 0 2px 0 var(--line);
+}
+.round-timer.compact .round-timer-track {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  height: 4px;
+  margin: 0;
+}
+/* Time's up: the only feedback is visual — face and track flip to
+     --red, and a slow pulse on the whole card draws the eye without
+     being alarming (no sound, nothing disabled). */
+.round-timer.done {
+  border-color: var(--red);
+  background: var(--red-soft);
+  animation: round-timer-pulse 1.6s var(--ease) infinite;
+}
+.round-timer.done .round-timer-time,
+.round-timer.done .round-timer-label {
+  color: var(--red);
+}
+.round-timer.done .round-timer-track > div {
+  background: var(--red);
+}
+@keyframes round-timer-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
 }
 
 /* Главный результат — самый громкий момент интерфейса. Кит не даёт
      прямого образца для этого (нет подобного "hero"-блока среди
-     компонентов) — оставляем как собственное решение, но на точных
-     цветах кита (redLight2 фон / red текст). */
+     компонентов) — оставляем как собственное решение. Was hardcoded
+     --red for every game regardless of tone — recolored to the game's
+     own accent so the loudest moment in the game matches everything
+     leading up to it (settled on framing.js). */
 .reveal {
   position: relative;
-  background: var(--red-soft);
-  border: 2px solid var(--red);
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 8%, white);
+  border: 2px solid var(--game-accent, var(--blue));
   border-radius: var(--radius);
   padding: 28px 30px;
   margin: 10px 0 34px;
@@ -1003,7 +1622,7 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
 .reveal .n {
   font-weight: 700;
   font-size: clamp(38px, 6.6vw, 54px);
-  color: var(--red);
+  color: var(--game-accent-deep, var(--blue-deep));
   line-height: 1;
   margin-bottom: 12px;
 }
@@ -1011,6 +1630,51 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
   margin: 10px 0 0;
   max-width: none;
   font-size: 15.5px;
+}
+/* Три строки под главной цифрой (renderReveal в game-shell.js):
+     что это · как читать · вердикт по вашей команде. Подпись — узкая
+     колонка слева, текст справа; последняя строка (вердикт) выделена,
+     это то, ради чего экран открывают. */
+.reveal-lines {
+  margin: 20px 0 0;
+  display: grid;
+  gap: 14px;
+}
+.reveal-line {
+  display: grid;
+  grid-template-columns: 138px minmax(0, 1fr);
+  gap: 18px;
+  align-items: baseline;
+}
+.reveal-line dt {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.reveal-line dd {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.reveal-verdict {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--white);
+  border: 1px solid color-mix(in srgb, var(--game-accent, var(--blue)) 30%, var(--line));
+}
+.reveal-verdict dd {
+  color: var(--ink);
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .reveal-line {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 
 .chart-wrap {
@@ -1067,6 +1731,49 @@ input[type="number"]:not(:focus):not(:placeholder-shown) {
   margin-top: 1px;
 }
 
+/* Shared wrapper for a game's own d3 chart (first used on framing.js's
+     answer beeswarm) — same card language as .quote-card/.stat (soft
+     lift shadow, thin border, var(--radius)) so a chart reads as part
+     of the same object language as everything else, not a bolted-on
+     graphing-library default. Meant to be reused as other games'
+     charts get the same upgrade. */
+.d3-chart-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 20px 14px;
+  margin: 4px 0 32px;
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
+}
+.d3-chart-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.d3-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.d3-chart-svg text {
+  /* The charts used to name IBM Plex, which isn't loaded anywhere — the
+       browser fell back to a generic monospace that lacks Cyrillic, so
+       bold labels like «поровну» came out in a serif. Use the page's own
+       font; tabular digits keep tick labels aligned. */
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.d3-chart-svg .answer-dot {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.16));
+  transition:
+    fill-opacity 0.15s var(--ease),
+    r 0.15s var(--ease);
+}
+
 table.results-table {
   width: 100%;
   border-collapse: collapse;
@@ -1121,6 +1828,25 @@ table.results-table td.name {
 .group-compare .g .v {
   font-weight: 600;
   font-size: 25px;
+}
+/* Same accent/red group pairing as .role-group-a/b — deliberately its
+     own `.team-a`/`.team-b` modifier rather than reusing `.low`/`.high`
+     (which most games also put on this card, but for an unrelated
+     comparison — e.g. round 1 vs round 2 — where this coloring
+     wouldn't mean anything); only a "two named groups" game like
+     framing.js/endowment.js renders `.team-a`/`.team-b` here (settled
+     on framing.js). */
+.group-compare .g.team-a {
+  border-left: 4px solid var(--game-accent, var(--blue));
+}
+.group-compare .g.team-a .v {
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.group-compare .g.team-b {
+  border-left: 4px solid var(--red);
+}
+.group-compare .g.team-b .v {
+  color: var(--red);
 }
 
 .fact {
@@ -1200,29 +1926,30 @@ table.results-table td.name {
   margin: 0;
 }
 
+/* Who a hidden text actually belongs to, folded straight into its own
+     spoiler card (framing.js) instead of a separate "who's in which
+     group" block elsewhere, disconnected from which task is which —
+     the task and its audience read as the same object (settled on
+     framing.js). Available to any other game using the same
+     .spoiler-card/.quote-card pattern (e.g. barnum.js). */
+.spoiler-members {
+  margin-top: 16px;
+}
+.spoiler-members-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
 /* Custom-question panel: let a facilitator swap in their own
      fact-with-a-known-answer instead of the built-in quiz question
      (crowd-wisdom, calibration, false-consensus). */
 .custom-q-toggle-row {
   margin: 20px 0 0;
-}
-/* "Свой вопрос" / "Вернуть стандартный" — Text button кита (711:14397),
-     не обычная кнопка: второстепенная настройка, не основное CTA. */
-.custom-q-toggle-row button,
-#custom-q-reset {
-  font-size: 13px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--blue);
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s var(--ease);
-}
-.custom-q-toggle-row button:hover,
-#custom-q-reset:hover {
-  background: none;
-  color: var(--blue-deep);
 }
 .custom-q-panel {
   margin-top: 12px;
@@ -1261,7 +1988,7 @@ table.results-table td.name {
 }
 .custom-q-field input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
 }
 .custom-q-row {
   display: grid;
@@ -1426,6 +2153,17 @@ table.results-table td.name {
   border-radius: var(--radius);
   padding: 18px 20px;
 }
+/* Two named groups (framing.js, endowment.js) get a consistent color
+     pairing (accent / red) that carries across every round they
+     reappear in — assignment, private text, entry, results — instead
+     of a generic gray card each time (settled on framing.js). Inert
+     for games that don't render these classes. */
+.role-group-a {
+  border-left: 4px solid var(--game-accent, var(--blue));
+}
+.role-group-b {
+  border-left: 4px solid var(--red);
+}
 .role-group-title {
   font-weight: 600;
   font-size: 15px;
@@ -1469,6 +2207,15 @@ table.results-table td.name {
 }
 .role-group-chips .role-chip:active {
   transform: scale(0.96);
+}
+/* Read-only recap chips reuse .role-chip for the exact same look as
+     the interactive swap picker, minus anything implying they're
+     clickable (settled on framing.js). */
+.role-group-chips .role-chip.readonly {
+  cursor: default;
+}
+.role-group-chips .role-chip.readonly:hover {
+  background: var(--surface);
 }
 
 .swap-hint {
@@ -1538,7 +2285,7 @@ table.results-table td.name {
 }
 .pair-entry-card input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
 }
 .pair-entry-connector {
   text-align: center;
@@ -1555,6 +2302,18 @@ table.results-table td.name {
 }
 .team-entry-group:last-child {
   margin-bottom: 10px;
+}
+/* Same accent/red group pairing as .role-group-a/b, carried into the
+     entry round (settled on framing.js). */
+.team-entry-group.team-a,
+.team-entry-group.team-b {
+  padding-left: 14px;
+}
+.team-entry-group.team-a {
+  border-left: 4px solid var(--game-accent, var(--blue));
+}
+.team-entry-group.team-b {
+  border-left: 4px solid var(--red);
 }
 .team-entry-group-title {
   display: flex;
@@ -1609,7 +2368,7 @@ table.results-table td.name {
 }
 .team-entry-card input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--blue);
+  box-shadow: inset 0 0 0 2px var(--game-accent, var(--blue));
 }
 
 @media (max-width: 560px) {
@@ -1670,6 +2429,11 @@ table.results-table td.name {
   .entry-row.toggle-only {
     grid-template-columns: 1fr 164px;
   }
+  .entry-head.three-col,
+  .entry-row.three-col {
+    grid-template-columns: 1fr 62px 62px 62px;
+    gap: 6px;
+  }
   .entry-row input {
     padding: 9px 8px;
     font-size: 14px;
@@ -1700,13 +2464,10 @@ table.results-table td.name {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  .screen.active {
-    animation: none;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
   }
   .game-card:hover {
     transform: none;
@@ -1780,220 +2541,91 @@ table.results-table td.name {
 }
 
 /* =====================================================
-     Экспорт результатов в PDF (окно печати браузера)
+     Экспорт результатов в PNG — кнопка под таблицей (сам отчёт
+     рисуется в src/report-export.js, у него собственные стили).
   ===================================================== */
-.print-header {
-  display: none;
-}
-.print-footer {
-  display: none;
-}
-.pdf-row {
+.export-row {
   margin: 6px 0 6px;
 }
-.pdf-row button.ghost {
+.export-row button.ghost {
   font-size: 13px;
   padding: 7px 14px;
 }
 
-@media print {
-  @page {
-    size: A4;
-    margin: 13mm 15mm;
-  }
+/* =====================================================
+     Lite-режим (perf.js) — слабые машины / Chromium с малой памятью.
+     Всё ниже — чисто декоративное и дорогое: размытие больших
+     областей, drop-shadow-фильтры, бесконечные анимации.      :host-context — потому что стили живут в shadow root каждой игры,
+     а атрибут стоит на <html>.
+  ===================================================== */
+:host-context(html[data-perf="lite"]) .round.round-pending .round-body {
+  /* blur(7px) на всём раунде — самый дорогой фильтр в игре; в lite
+       просто гасим содержимое, «ещё рано» читается так же. */
+  filter: none;
+  opacity: 0.12;
+}
+:host-context(html[data-perf="lite"]) .trail-path,
+:host-context(html[data-perf="lite"]) .trail-node-halo,
+:host-context(html[data-perf="lite"]) .trail-traveler-bob,
+:host-context(html[data-perf="lite"]) .round-timer.done {
+  animation: none;
+}
+:host-context(html[data-perf="lite"]) .trail-path-done,
+:host-context(html[data-perf="lite"]) .trail-node.current,
+:host-context(html[data-perf="lite"]) .trail-traveler-img,
+:host-context(html[data-perf="lite"]) .d3-chart-svg .answer-dot {
+  filter: none;
+}
 
-  /* Soft pastel gradient background for exported/printed result
-       sheets only (bg.jpg, provided by design) - pre-downscaled to
-       src/print-assets/print-bg.jpg (1000px wide, ~19KB) and inlined
-       here as a data URI, the same workaround used by
-       src/icon-assets.js: Bun.build()'s dataurl loader does not
-       resolve CSS url() references (see docs/modernization-plan.md),
-       so the bytes are embedded directly in source instead of relying
-       on the bundler. Screen/app background is unaffected - this rule
-       only exists inside @media print. */
-  html,
-  body {
-    background:
-      #fff
-      url("data:image/jpeg;base64,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AcwUnNLRQHMJzS0UUC5gxmilwaXbUyFcbRT9opelSBHTsetOooAKKKKlohsKKKKliCilwacAKAGYzTgvrTqKhsdxAMUE4o+lLUtiGYJ5pwGKWioAKKKKhsAooopAFFFFZgFFFFJgFFFFQAUUUVDYBRRRUtgFNJ7UpOKaTmoASiiiobAKKKKlstIKKKKgYUUUUmwCiiipbAKKKKQBRRRUtgFFFFSAUUUZFABRkU3cab70uYCTIppJzTaKnmAXcaTrRRRcAooopAFFFFABRRRQAUUUUAFKDikooAXcaUMc02incCTIoqOlBxT5gH0U3cadkU7gFFFFMD//1v34ooooNAooooAKKKKACiiigAooooAKaV9KdRQBHRTyM03GKAEooooAbtptSUhGalxKUhlFKRikqShMUtFFA7hRRRQVzCYFIR6UtLQMjwaKkpCKAGUYzTiKbQAm0Um006igdxmDSVJRigfMR0U/ApNtA+YZgUbRT9tG00BcZgUYFP2mkwaB3GbaNtPwaMGswuM20bafg0YNAXG7RRtFOwaNposFxuBRgU7BpdtArjMClp22jbQHMNop+MUtTYXMR0U9ulMpNC5gopcGl20hDaXBpwAFLSYDdvrTsYooqACiiik2AUUUVABRRSgE1DASlAzTgBS0iXIYRikpT1pKhlIKKKKlgFFFFQAUUUVDAKKKKlsAoooqACiikPSobAaetJRRUtgFFFFQVEKKKKhsoKKKKQBRRRUNgFFFFIAoooqGwCiiikAUUhOKaTmk2Au402iiobAKKKKACiiigAooooAKKKKACiiigdgoooouFgooooEFFFFABRRRQAUUUUAFHvRRQA7caNxptFO4H//X/fiiiig0CiiigAooooAKKKKACiiigAooooAKKKKAGkU2pKCM0AR0UuPSkoAKQgGlooAaVptSUVPKVzEdFO20mDSsO4lFFFIYUUUUFcwUUYFFA7geabtp1JQMTbTakooAjoqSigCOinkZox60AMop22m0AFFFFABRRRQAUUUVLAKKKKkAooooAKKKKACiilwazASinbaXAoFcZSgZp9FTJi5huKbTye1MqRoKKXBpQvrUsLjaXaafjFFSLmEwKWiipkSFHSjvSHmpAYaKU8UlZs0CiiipkAUUUVDYBRRRUAFFFFTJgFFFFQ2AUw9acelMqACiiioY0goooqWWFFFFQAUUUVLYBRRRUgFFFFQ2AUUUHikAU3dSHmkqWwCiiipAKKKKACiiigdgoooqeYfKFFFFLmHYKKKKVxhRRRQAUUUUAFFFFABRRRTuFgooop8wuUKKKKaZNgooopiCiiigD//Q/foj0ptSUhFBSYyiiigoKKKKACiiigAooooAKKKKACiiigAooooAKQjNLRQA3bTakooAjop22kIIoASiiigAppX0p1FFh3GYNJUlFTyj5iOin4FJtpco7jaKXBpKVhhRiiigLjdtOoooHzBRRRQPmCmYOafRQHMR0VJRQHMR0uKfRQHMMwaMGn0VMg5hmDRg0+ipDmGbTS7adRQLmE2ijApaKTC4UUUVAgooooATNLRRUtAJilooqQCiiilIAoooqACiiipaAKKKQ9KkBp60lFFZmgUUAZpwX1qGJsQDNOxS0dKzbJbGE80lFFIsKKKKzAKKKQ9KhgNPWkooqGwCiiipKiFFFFQ2UFFFFS2AUUUVABRRRUyYBRRRUgFMPWlJ7U2pbAKKKKkAooooAKKKKlspRCiiipKCiijpQAUUm4UhagB1FMyaMmgBxOKNwplFAD9wo3CmUUAPBzS1HS5NAD6KZk0u4UAOopNwpetABRRRQAUUUU0xNBRRRVXJ5T//0f38ooooAQjNNIxT6KBpkdFOI9KbQUmFFFFAwooooAKKKKACiiigAooooAKKKSgBaKKKACiiigAxSbRS0UAN2mm1JRQBHRT8Ck20ANopcGkoAKKKKADApNopaKB3G7aNtOopWDmG7TSYNPoosPmGYNGDT6KloaGYNGDT6KQxmDRg0+igBmDRg0+ilYBmDRtNPopNAN2mjaadRUgN2+tAFOoFACYFMPWnnpTKmQBRS4NG01IXEop22lwKmTC4yl2mn0VIDdtBxTqYetT1ASiiipAKKKKmQBTWp1JiobGhuM0oHrTqKzYXCiiis2IKa1ONMPWoHESiiipkWFFFFQwCmGn1GetQAUUUVDAKKKKlstBRRRUDCiiioYBRRRSAKKKKzAKQ9KWmHNJsBKKKKgAooooAKKKKlstIKKKM4qRhSbhSE+lNoAXJpMmiigAooooAKKKKACiiigAoooouAUUUUAFFFFABRk0UUAKDTtwplFAElFNB9adnNABRRRQB/9L9/KKKKACiiigAprU6mtQNDaKKKCwooooAKKKKACiiigAooooAKKKKAYUUUUAFFFFABRRRQAUUUUAFFFFABSHpS0h6UAA6U09acOlNPWgBKKKKACiiigAooooAKKKKmRaCiiipGFFFFABRRRQAUUUUMAooorMAooooARulAobpSjpUyEwoooqSAoooqZFxCiiipGFR1JUdSAUUUVIBRRRUyAKKKKzkAUUUVEgCiiis2AUw9afTD1qCoiUUUVMigoooqGAUw9afTD1qAEoooqGAUUUVMjRBRRRUAFFFFQwCiiipkAUUUVABTD1p9MPWpkAlFFFSAUUUUDQUUUVmWFNanU1qAG0UUUAFFFFABRRRQAUUUUpAFFFFQAUUUUAFFFFNAFFFFWAUUUUAFFFFABT16Uynr0oAWiiigD//2Q==")
-      center top / cover no-repeat !important;
-    font-size: 12px;
+/* =====================================================
+     Диалог подтверждения (confirm-dialog.js) — настоящий <dialog>,
+     поэтому лежит в top layer поверх всего; стили глобальные, потому
+     что элемент создаётся в document.body, а не внутри shadow root.
+  ===================================================== */
+.confirm-dialog {
+  width: min(400px, calc(100vw - 32px));
+  padding: 26px 26px 22px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 24px 60px -18px rgba(43, 37, 64, 0.45);
+  font-family: inherit;
+}
+.confirm-dialog::backdrop {
+  /* Plain dim, no backdrop-filter blur — that one is expensive on the
+       weak machines this app is also run on. */
+  background: rgba(43, 37, 64, 0.42);
+}
+.confirm-dialog[open] {
+  animation: confirm-pop 0.16s var(--ease);
+}
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
   }
-
-  .back-link,
-  .game-crumb,
-  .progress,
-  .nav-row,
-  #toast,
-  .teaser-toggle,
-  .pdf-row,
-  .draft-banner,
-  .chart-tooltip {
-    display: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog[open] {
+    animation: none;
   }
-
-  .wrap,
-  .wrap.narrow {
-    max-width: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  .screen {
-    display: none !important;
-  }
-  .screen.active {
-    display: block !important;
-    animation: none !important;
-  }
-  .screen.active > p.eyebrow,
-  .screen.active > h2 {
-    display: none !important;
-  }
-
-  .print-header {
-    display: block !important;
-    margin-bottom: 12px;
-    padding-bottom: 9px;
-    border-bottom: 1.5px solid #b87503;
-  }
-  .print-kicker {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    color: #757575;
-    text-transform: uppercase;
-  }
-  .print-title {
-    font-weight: 700;
-    font-size: 20px;
-    margin: 2px 0;
-    color: #333333;
-  }
-  .print-subtitle {
-    font-size: 10.5px;
-    color: #424242;
-    margin-bottom: 5px;
-  }
-  .print-meta {
-    font-size: 9px;
-    color: #757575;
-  }
-
-  h2 {
-    font-size: 14px !important;
-    margin: 0 0 8px !important;
-  }
-
-  .reveal {
-    padding: 12px 14px !important;
-    margin: 0 0 10px !important;
-    border-width: 1px !important;
-    break-inside: avoid;
-  }
-  .reveal .n {
-    font-size: 26px !important;
-    margin-bottom: 4px !important;
-  }
-  .reveal p {
-    font-size: 10px !important;
-    margin: 3px 0 0 !important;
-    line-height: 1.4 !important;
-  }
-
-  .chart-wrap {
-    padding: 8px 10px !important;
-    margin: 0 0 10px !important;
-    border-width: 1px !important;
-    break-inside: avoid;
-  }
-  .chart-wrap .cap {
-    font-size: 8.5px !important;
-    margin-top: 4px !important;
-    padding-top: 4px !important;
-    line-height: 1.35 !important;
-  }
-  .chart-wrap svg {
-    max-height: 150px;
-  }
-
-  .stat-row,
-  .group-compare {
-    margin: 0 0 10px !important;
-    gap: 8px !important;
-    break-inside: avoid;
-  }
-  .stat,
-  .group-compare .g {
-    padding: 7px 9px !important;
-    border-width: 1px !important;
-    min-width: 0 !important;
-  }
-  .stat .n,
-  .group-compare .g .v {
-    font-size: 16px !important;
-    margin-bottom: 2px !important;
-  }
-  .stat .lab,
-  .group-compare .g .t {
-    font-size: 8.5px !important;
-    line-height: 1.3 !important;
-  }
-
-  p,
-  .note {
-    font-size: 10px !important;
-    line-height: 1.4 !important;
-    margin: 0 0 8px !important;
-  }
-
-  table.results-table {
-    font-size: 9px !important;
-    margin-bottom: 6px !important;
-  }
-  table.results-table th {
-    padding: 3px 5px !important;
-    font-size: 8px !important;
-  }
-  table.results-table td {
-    padding: 2.5px 5px !important;
-  }
-
-  .print-footer {
-    display: block !important;
-    margin-top: 14px;
-    padding-top: 11px;
-    border-top: 1px solid #e0e0e0;
-    break-inside: avoid;
-  }
-  .print-footer-title {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: #b87503;
-    margin-bottom: 5px;
-  }
-  .print-footer-text {
-    font-size: 10.5px;
-    line-height: 1.55;
-    color: #333333;
-    max-width: none;
-  }
-
-  .quote-card {
-    padding: 9px 11px !important;
-    margin: 0 0 10px !important;
-    border-width: 1px !important;
-    break-inside: avoid;
-  }
-  .quote-card p {
-    font-size: 9.5px !important;
-    line-height: 1.4 !important;
-  }
-
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
+}
+.confirm-dialog form {
+  margin: 0;
+}
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.confirm-dialog p {
+  margin: 0 0 22px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
