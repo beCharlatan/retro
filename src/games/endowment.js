@@ -15,41 +15,51 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_SHUFFLE,
+  ICON_X,
+} from '../icons.js';
+import {
+  buildEndowmentEntries,
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { endowmentResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { Roles } from '../roles.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const TOTAL_SCREENS = 6;
+const ROUND_TITLES = [
+  'Одна кружка, две цены — и роли поменяются',
+  'Кто продаёт, кто покупает — в раунде 1',
+  'Впишите цену каждого участника',
+  'Та же кружка, противоположная роль',
+  'Что получилось у вашей команды',
+  'Эффект владения',
+];
 
 // r1Role is where they start (from the groups screen); r2Role is
 // always the opposite — that's the whole point of round 2.
-function buildEntries(groups) {
-  const owners = groups.groupA.map((n) => ({
-    name: n,
-    r1Role: 'owner',
-    r2Role: 'buyer',
-    r1Price: null,
-    r2Price: null,
-  }));
-  const buyers = groups.groupB.map((n) => ({
-    name: n,
-    r1Role: 'buyer',
-    r2Role: 'owner',
-    r1Price: null,
-    r2Price: null,
-  }));
-  return owners.concat(buyers);
-}
-
 export class RetroGameEndowment extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     groups: { state: true },
     entries: { state: true },
     draft: { state: true },
@@ -60,31 +70,25 @@ export class RetroGameEndowment extends LitElement {
 
   constructor() {
     super();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.groups = Roles.makeGroups(state.participants);
-    this.entries = buildEntries(this.groups);
+    this.entries = buildEndowmentEntries(this.groups);
     this.results = null;
     this.selectedSwapName = null;
     this.shuffleSpin = false;
 
-    const loaded = Persist.load('endowment');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.entries) &&
-      loaded.payload.entries.length === state.participants.length
-        ? loaded
-        : null;
-  }
-
-  goTo(idx) {
-    this.screenIdx = idx;
+    this.draft = loadableDraft(Persist.load('endowment'), {
+      key: 'entries',
+      length: state.participants.length,
+    });
   }
 
   _restoreDraft() {
-    this.groups = this.draft.payload.groups;
-    this.entries = this.draft.payload.entries;
-    this.draft = null;
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.groups = this.draft.payload.groups;
+      this.entries = this.draft.payload.entries;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -121,62 +125,49 @@ export class RetroGameEndowment extends LitElement {
   }
 
   _lockGroups() {
-    this.entries = buildEntries(this.groups);
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.entries = buildEndowmentEntries(this.groups);
+    });
   }
 
   _onEntryInput(e, idx, round) {
     const priceField = round === 1 ? 'r1Price' : 'r2Price';
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null && v < 0) v = 0;
-    this.entries = this.entries.map((entry, i) =>
-      i === idx ? { ...entry, [priceField]: v } : entry,
-    );
+    this.entries = patchRow(this.entries, idx, {
+      [priceField]: parseNumberInput(e.target.value, { min: 0 }),
+    });
     Persist.save('endowment', { groups: this.groups, entries: this.entries });
   }
 
   _filledCount(round) {
     const priceField = round === 1 ? 'r1Price' : 'r2Price';
-    return this.entries.filter((e) => e[priceField] !== null).length;
+    return countFilled(this.entries, hasFields(priceField));
   }
 
   _showResults() {
-    const filled = this.entries.filter((e) => e.r1Price !== null && e.r2Price !== null);
+    this.results = endowmentResults(this.entries);
+    const { filled } = this.results;
 
-    // Everyone gave one WTA (as owner) and one WTP (as buyer) — pick the
-    // right value from whichever round they held each role in.
-    const wtaOf = (e) => (e.r1Role === 'owner' ? e.r1Price : e.r2Price);
-    const wtpOf = (e) => (e.r1Role === 'buyer' ? e.r1Price : e.r2Price);
-    const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
-    const avgWTA = avg(filled.map(wtaOf));
-    const avgWTP = avg(filled.map(wtpOf));
-    const ratio =
-      avgWTA !== null && avgWTP !== null && avgWTP > 0 ? (avgWTA / avgWTP).toFixed(1) : null;
-
-    this.results = { filled, avgWTA, avgWTP, ratio, wtaOf, wtpOf };
-
-    Print.mount(
-      'print-header-endowment',
+    ReportExport.register(
+      'endowment',
       {
-        title: 'Эффект владения',
         subtitle: 'Та же вещь внезапно дороже для того, кто ей уже владеет.',
-        meta: Print.meta(filled.length, '2 раунда, роли поменялись'),
+        meta: ReportExport.meta(filled.length, '2 раунда, роли поменялись'),
         explanation:
           'Одна и та же вещь субъективно ценнее для того, кто ею уже владеет, чем для того, кто хочет её купить, хотя рационально цена должна быть одной и той же. Знаменитый «эксперимент с кружками» описан в статье Kahneman, Knetsch, Thaler (1990) — эффект считается частным случаем неприятия потерь (loss aversion).',
       },
       this.renderRoot,
     );
-
-    this.goTo(4);
   }
 
-  _reset() {
+  async _reset() {
     this.groups = Roles.makeGroups(state.participants);
     this.selectedSwapName = null;
-    this.entries = buildEntries(this.groups);
+    this.entries = buildEndowmentEntries(this.groups);
     this.results = null;
     Persist.clear('endowment');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _groupsHolder() {
@@ -252,24 +243,15 @@ export class RetroGameEndowment extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Эффект владения</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('endowment')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 9 минут</p>
           <h1>Одна кружка, две цены — и роли поменяются</h1>
           <p class="lede">
@@ -328,11 +310,14 @@ export class RetroGameEndowment extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Распределить группы ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Распределить группы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Распределение ролей</p>
           <h2>Кто продаёт, кто покупает — в раунде 1</h2>
           <p class="lede">Во втором раунде роли поменяются местами автоматически. Не нравится расклад — перемешайте.</p>
@@ -346,12 +331,15 @@ export class RetroGameEndowment extends LitElement {
           </button>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button class="primary" @click=${() => this._lockGroups()}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Раунд 1 из 2</p>
           <h2>Впишите цену каждого участника</h2>
           <p class="lede">Владельцы называют минимальную цену продажи, покупатели — максимальную цену покупки.</p>
@@ -366,19 +354,22 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-1"
-              ?disabled=${filled1 < 2}
-              @click=${() => this.goTo(3)}
+              ?disabled=${!hasEnough(filled1)}
+              @click=${() => this.flow.advance(3)}
             >
               Раунд 2 — роли наоборот ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Раунд 2 из 2 · Роли поменялись</p>
           <h2>Та же кружка, противоположная роль</h2>
           <p class="lede">Кто в раунде 1 продавал — теперь покупает, и наоборот.</p>
@@ -393,39 +384,35 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-2"
-              ?disabled=${filled2 < 2}
-              @click=${() => this._showResults()}
+              ?disabled=${!hasEnough(filled2)}
+              @click=${() => this.flow.advance(4, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-endowment"></div>
 
-          <div class="reveal">
-            <div class="n">${r && r.ratio !== null ? r.ratio + '×' : '—'}</div>
-            <p>
-              <b>Во столько раз</b> средняя цена продажи оказалась выше средней цены покупки — по
-              всем ${this.entries.length} людям сразу, ведь каждый побывал в обеих ролях.
-            </p>
-          </div>
+          ${renderReveal({ value: r && r.ratio !== null ? `${r.ratio}×` : '—', ...REVEAL_COPY.endowment(r ? { avgWTA: r.avgWTA, avgWTP: r.avgWTP, ratio: r.ratio === null ? null : Number(r.ratio) } : null) })}
 
           <div class="group-compare">
-            <div class="g low">
+            <div class="g low team-a">
               <div class="t">Средняя цена продажи (в роли владельца)</div>
-              <div class="v">${r && r.avgWTA !== null ? Math.round(r.avgWTA) + ' ₽' : '—'}</div>
+              <div class="v">${r && r.avgWTA !== null ? `${Math.round(r.avgWTA)} ₽` : '—'}</div>
             </div>
-            <div class="g high">
+            <div class="g high team-b">
               <div class="t">Средняя цена покупки (в роли покупателя)</div>
-              <div class="v">${r && r.avgWTP !== null ? Math.round(r.avgWTP) + ' ₽' : '—'}</div>
+              <div class="v">${r && r.avgWTP !== null ? `${Math.round(r.avgWTP)} ₽` : '—'}</div>
             </div>
           </div>
 
@@ -454,21 +441,22 @@ export class RetroGameEndowment extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-endowment"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
 
-        <section class="screen ${this.screenIdx === 5 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(5)}" id="round-5">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект владения</h1>
           <p class="lede">
@@ -563,7 +551,21 @@ export class RetroGameEndowment extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(5)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Эффект владения</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'endowment',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

@@ -22,34 +22,52 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_SHUFFLE,
+  ICON_TRIO,
+  ICON_X,
+} from '../icons.js';
+import {
+  buildUltimatumEntries,
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  MIN_FILLED_PAIRS,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { isDeal, ultimatumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { Roles } from '../roles.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const STAKE = 1000;
 const TOTAL_SCREENS = 6;
-
-function buildEntries(assignment) {
-  return assignment.pairs.map((p) => ({
-    a: p.a,
-    b: p.b,
-    trio: !!p.trio,
-    r1_offer: null,
-    r1_min: null, // Round 1: a proposes, b responds
-    r2_offer: null,
-    r2_min: null, // Round 2: b proposes, a responds
-  }));
-}
+const ROUND_TITLES = [
+  'Разделите деньги на двоих — дважды',
+  'Кто с кем в паре',
+  'Впишите решения каждой пары',
+  'Те же пары, наоборот',
+  'Что получилось у вашей команды',
+  'Ультиматум',
+];
 
 export class RetroGameUltimatum extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     assignment: { state: true },
     entries: { state: true },
     draft: { state: true },
@@ -60,27 +78,25 @@ export class RetroGameUltimatum extends LitElement {
 
   constructor() {
     super();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.assignment = Roles.makePairs(state.participants);
-    this.entries = buildEntries(this.assignment);
+    this.entries = buildUltimatumEntries(this.assignment);
     this.results = null;
     this.selectedSwap = null;
     this.shuffleSpin = false;
 
-    const loaded = Persist.load('ultimatum');
-    this.draft =
-      loaded && Array.isArray(loaded.payload.entries) && loaded.payload.assignment ? loaded : null;
-  }
-
-  goTo(idx) {
-    this.screenIdx = idx;
+    this.draft = loadableDraft(Persist.load('ultimatum'), {
+      key: 'entries',
+      requires: 'assignment',
+    });
   }
 
   _restoreDraft() {
-    this.assignment = this.draft.payload.assignment;
-    this.entries = this.draft.payload.entries;
-    this.draft = null;
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.assignment = this.draft.payload.assignment;
+      this.entries = this.draft.payload.entries;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -121,78 +137,48 @@ export class RetroGameUltimatum extends LitElement {
   }
 
   _lockPairs() {
-    this.entries = buildEntries(this.assignment);
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.entries = buildUltimatumEntries(this.assignment);
+    });
   }
 
   _onEntryInput(e, idx, field) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      if (v < 0) v = 0;
-      if (v > STAKE) v = STAKE;
-    }
-    this.entries = this.entries.map((entry, i) => (i === idx ? { ...entry, [field]: v } : entry));
+    this.entries = patchRow(this.entries, idx, {
+      [field]: parseNumberInput(e.target.value, { min: 0, max: STAKE }),
+    });
     Persist.save('ultimatum', { assignment: this.assignment, entries: this.entries });
   }
 
   _filledCount(round) {
     const offerField = round === 1 ? 'r1_offer' : 'r2_offer';
     const minField = round === 1 ? 'r1_min' : 'r2_min';
-    return this.entries.filter((e) => e[offerField] !== null && e[minField] !== null).length;
+    return countFilled(this.entries, hasFields(offerField, minField));
   }
 
   _showResults() {
-    const instances = [];
-    this.entries.forEach((e) => {
-      if (e.r1_offer !== null && e.r1_min !== null) {
-        instances.push({
-          round: 1,
-          proposer: e.a,
-          responder: e.b,
-          offer: e.r1_offer,
-          min: e.r1_min,
-        });
-      }
-      if (e.r2_offer !== null && e.r2_min !== null) {
-        instances.push({
-          round: 2,
-          proposer: e.b,
-          responder: e.a,
-          offer: e.r2_offer,
-          min: e.r2_min,
-        });
-      }
-    });
+    this.results = ultimatumResults(this.entries);
 
-    const deals = instances.filter((x) => x.offer >= x.min).length;
-    const dealRate = instances.length ? Math.round((deals / instances.length) * 100) + '%' : '—';
-    const avgOffer = instances.reduce((a, b) => a + b.offer, 0) / instances.length;
-    const avgMin = instances.reduce((a, b) => a + b.min, 0) / instances.length;
-
-    this.results = { instances, dealRate, avgOffer, avgMin };
-
-    Print.mount(
-      'print-header-ultimatum',
+    ReportExport.register(
+      'ultimatum',
       {
-        title: 'Ультиматум',
         subtitle: 'Люди отвергают выгодные предложения, если те кажутся нечестными.',
-        meta: Print.meta(this.entries.length * 2, `${this.entries.length} пар · 2 раунда`),
+        meta: ReportExport.meta(this.entries.length * 2, `${this.entries.length} пар · 2 раунда`),
         explanation:
           'Классическая теория предсказывает: рациональный Отвечающий согласится на любую ненулевую сумму — в реальности люди массово отвергают «несправедливые» предложения, даже теряя деньги. Игру формализовали Güth, Schmittberger и Schwarze в статье 1982 года.',
       },
       this.renderRoot,
     );
-
-    this.goTo(4);
   }
 
-  _reset() {
+  async _reset() {
     this.assignment = Roles.makePairs(state.participants);
     this.selectedSwap = null;
-    this.entries = buildEntries(this.assignment);
+    this.entries = buildUltimatumEntries(this.assignment);
     this.results = null;
     Persist.clear('ultimatum');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _pairCard(p, i) {
@@ -200,7 +186,7 @@ export class RetroGameUltimatum extends LitElement {
     const selectedB = this.selectedSwap?.i === i && this.selectedSwap?.side === 'b';
     return html`
       <div class="role-pair-card ${p.trio ? 'role-pair-trio' : ''}">
-        ${p.trio ? html`<span class="role-pair-trio-badge">🔺 трио</span>` : ''}
+        ${p.trio ? html`<span class="role-pair-trio-badge">${unsafeHTML(ICON_TRIO)} трио</span>` : ''}
         <div class="role-pair-side left">
           <button
             type="button"
@@ -234,7 +220,6 @@ export class RetroGameUltimatum extends LitElement {
       ${
         trio
           ? html`<div class="info-tip">
-            <span class="tip-icon">🔺</span>
             <span
               >Нечётное число участников — ${trio.join(', ')} играют трио по кругу вместо пары:
               каждый сыграет дважды, с двумя разными партнёрами, но зато без исключений.</span
@@ -242,7 +227,6 @@ export class RetroGameUltimatum extends LitElement {
           </div>`
           : observer
             ? html`<div class="info-tip">
-              <span class="tip-icon">🔺</span>
               <span
                 >${observer} — нечётное число участников, в этом раунде наблюдатель: ведёт
                 протокол или подыгрывает за отсутствующего.</span
@@ -260,7 +244,7 @@ export class RetroGameUltimatum extends LitElement {
     const minField = round === 1 ? 'r1_min' : 'r2_min';
     return html`
       <div class="pair-entry-card wide ${entry.trio ? 'role-pair-trio' : ''}">
-        ${entry.trio ? html`<span class="role-pair-trio-badge">🔺 трио</span>` : ''}
+        ${entry.trio ? html`<span class="role-pair-trio-badge">${unsafeHTML(ICON_TRIO)} трио</span>` : ''}
         <div class="pair-entry-name"><b>${unsafeHTML(avatarName(proposer))}</b><span>Предлагающий</span></div>
         <input
           type="number"
@@ -292,24 +276,15 @@ export class RetroGameUltimatum extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Ультиматум</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('ultimatum')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 10 минут</p>
           <h1>Разделите деньги на двоих — дважды</h1>
           <p class="lede">
@@ -367,11 +342,14 @@ export class RetroGameUltimatum extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Распределить пары ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Распределить пары ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Распределение ролей</p>
           <h2>Кто с кем в паре</h2>
           <p class="lede">
@@ -388,12 +366,15 @@ export class RetroGameUltimatum extends LitElement {
           </button>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button class="primary" @click=${() => this._lockPairs()}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Раунд 1 из 2 · Сбор данных</p>
           <h2>Впишите решения каждой пары</h2>
           <p class="lede">
@@ -412,19 +393,22 @@ export class RetroGameUltimatum extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-1"
-              ?disabled=${filled1 < 1}
-              @click=${() => this.goTo(3)}
+              ?disabled=${!hasEnough(filled1, MIN_FILLED_PAIRS)}
+              @click=${() => this.flow.advance(3)}
             >
               Раунд 2 — роли наоборот ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Раунд 2 из 2 · Роли поменялись</p>
           <h2>Те же пары, наоборот</h2>
           <p class="lede">Кто в раунде 1 отвечал — теперь предлагает, и наоборот.</p>
@@ -441,39 +425,35 @@ export class RetroGameUltimatum extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-2"
-              ?disabled=${filled2 < 1}
-              @click=${() => this._showResults()}
+              ?disabled=${!hasEnough(filled2, MIN_FILLED_PAIRS)}
+              @click=${() => this.flow.advance(4, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-ultimatum"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.dealRate : '—'}</div>
-            <p>
-              <b>Доля сделок, которые состоялись</b> — по обоим раундам сразу, то есть по всем
-              случаям, когда кто-то был Предлагающим.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? r.dealRate : '—', ...REVEAL_COPY.ultimatum(r ? { deals: r.deals, total: r.instances.length, avgOffer: r.avgOffer, avgMin: r.avgMin } : null) })}
 
           <div class="group-compare">
             <div class="g low">
               <div class="t">Среднее предложение</div>
-              <div class="v">${r ? Math.round(r.avgOffer) + ' ₽' : '—'}</div>
+              <div class="v">${r ? `${Math.round(r.avgOffer)} ₽` : '—'}</div>
             </div>
             <div class="g high">
               <div class="t">Средний минимум для согласия</div>
-              <div class="v">${r ? Math.round(r.avgMin) + ' ₽' : '—'}</div>
+              <div class="v">${r ? `${Math.round(r.avgMin)} ₽` : '—'}</div>
             </div>
           </div>
 
@@ -499,7 +479,7 @@ export class RetroGameUltimatum extends LitElement {
                         <td class="name">${unsafeHTML(avatarName(x.responder))}</td>
                         <td>${x.offer} ₽</td>
                         <td>${x.min} ₽</td>
-                        <td>${x.offer >= x.min ? 'Сделка' : 'Отказ'}</td>
+                        <td>${isDeal(x) ? 'Сделка' : 'Отказ'}</td>
                       </tr>
                     `,
                     )
@@ -508,21 +488,22 @@ export class RetroGameUltimatum extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-ultimatum"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
 
-        <section class="screen ${this.screenIdx === 5 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(5)}" id="round-5">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Ультиматум</h1>
           <p class="lede">
@@ -614,7 +595,21 @@ export class RetroGameUltimatum extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(5)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Ультиматум</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'ultimatum',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

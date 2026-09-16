@@ -2,7 +2,7 @@
 // One entry per game, encoding exactly how to drive it through
 // Playwright: reach the data-entry screen, fill some/all fields, move
 // to results, and sanity-check what rendered. Reused by smoke.spec.js,
-// persistence.spec.js and pdf.spec.js so none of them have to know the
+// persistence.spec.js and export.spec.js so none of them have to know the
 // per-game DOM quirks themselves.
 //
 // `fill(page, opts)` — opts.count lets a test fill only the first N
@@ -54,14 +54,17 @@ const GAMES = [
       await page.click('button:has-text("Показать результаты")');
     },
     async verifyResults(page) {
-      const n = await page.textContent('.reveal .n');
-      return n.includes('420');
+      // .reveal .n is the pooled "% of guesses beaten by the team
+      // average" stat now (three questions, no single "true value" to
+      // show there) — the ISS's 420 t lives in #answers-reveal instead
+      // (crowd-wisdom.js's "Правильные ответы: (1) 420 т · ...").
+      const answers = await page.textContent('#answers-reveal');
+      return answers.includes('420');
     },
   },
   {
     id: 'dictator',
     name: 'Игра диктатора',
-    multiScreen: true,
     // First game migrated to a Lit/Shadow DOM custom element (see
     // docs/modernization-plan.md Phase 2) — selectors here use
     // data-testid instead of id, per that migration's decision (CSS
@@ -93,7 +96,6 @@ const GAMES = [
   {
     id: 'public-goods',
     name: 'Общественное благо',
-    multiScreen: true,
     // Shadow DOM Lit component (docs/modernization-plan.md Phase 3) —
     // data-testid instead of id, same as dictator's pilot.
     async toEntryScreen(page) {
@@ -164,7 +166,6 @@ const GAMES = [
   {
     id: 'availability',
     name: 'Эвристика доступности',
-    multiScreen: true,
     async toEntryScreen(page) {
       await page.click('button:has-text("Начать вопросы")');
     },
@@ -175,15 +176,19 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
+      // #entry-body-N directly (N = question index) instead of
+      // ".screen.active .toggle-pair" — every round is always in the
+      // DOM now (src/game-shell.js), not just one "active" one, so the
+      // old selector matched nothing here.
       await page.click('#next-btn-0');
       await page.waitForTimeout(80);
-      await clickAll(page, '.screen.active .toggle-pair button[data-val="a"]');
+      await clickAll(page, '#entry-body-1 .toggle-pair button[data-val="a"]');
       await page.click('#next-btn-1');
       await page.waitForTimeout(80);
-      await clickAll(page, '.screen.active .toggle-pair button[data-val="a"]');
+      await clickAll(page, '#entry-body-2 .toggle-pair button[data-val="a"]');
       await page.click('#next-btn-2');
       await page.waitForTimeout(80);
-      await clickAll(page, '.screen.active .toggle-pair button[data-val="a"]');
+      await clickAll(page, '#entry-body-3 .toggle-pair button[data-val="a"]');
       await page.click('#next-btn-3');
     },
     async verifyResults(page) {
@@ -218,7 +223,6 @@ const GAMES = [
   {
     id: 'calibration',
     name: 'Калибровка уверенности',
-    multiScreen: true,
     async toEntryScreen(page) {
       await page.click('button:has-text("Начать вопросы")');
     },
@@ -233,16 +237,19 @@ const GAMES = [
       return n;
     },
     async toResults(page) {
+      // #entry-body-N directly (N = question index), same reasoning as
+      // availability's toResults() above — ".screen.active" matches
+      // nothing now that every round is always in the DOM.
       await page.click('#next-btn-0');
       await page.waitForTimeout(80);
-      let inputs = await page.$$('.screen.active input');
+      let inputs = await page.$$('#entry-body-1 input');
       for (let i = 0; i < inputs.length; i += 2) {
         await inputs[i].fill('5000');
         await inputs[i + 1].fill('6000');
       }
       await page.click('#next-btn-1');
       await page.waitForTimeout(80);
-      inputs = await page.$$('.screen.active input');
+      inputs = await page.$$('#entry-body-2 input');
       for (let i = 0; i < inputs.length; i += 2) {
         await inputs[i].fill('3000');
         await inputs[i + 1].fill('4000');
@@ -258,7 +265,6 @@ const GAMES = [
     id: 'endowment',
     name: 'Эффект владения',
     hasRoles: true,
-    multiScreen: true,
     async toEntryScreen(page) {
       await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(80);
@@ -311,7 +317,6 @@ const GAMES = [
     id: 'prisoners-dilemma',
     name: 'Дилемма заключённого',
     hasRoles: true,
-    multiScreen: true,
     async toEntryScreen(page) {
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(80);
@@ -349,7 +354,6 @@ const GAMES = [
     id: 'ultimatum',
     name: 'Ультиматум',
     hasRoles: true,
-    multiScreen: true,
     async toEntryScreen(page) {
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(80);

@@ -7,57 +7,54 @@
    chart (imperative, scoped to this.renderRoot) instead of a
    two-round line chart, plus a correlation readout and a low/high
    group-compare split.
+
+   One-continuous-scroll деталка (docs/modernization-plan.md — "деталка
+   продолжает карту") — see framing.js for the full write-up of this
+   layout and game-shell.js for the shared navigation helpers every
+   game now uses: every round always in the DOM as <section
+   class="round">, forward movement gated to a round's own button
+   (_advance()), a big sticky vertical game-trail.js rail in
+   .game-rail, and a × in the corner (.game-exit) that confirms before
+   leaving instead of the old .game-crumb back-link.
 ========================================================= */
+import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import {
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { anchoringResults } from '../logic/results.js';
+import { linearRegression } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const TRUE_VALUE = 28;
 const TOTAL_SCREENS = 4;
-
-function pearson(xs, ys) {
-  const n = xs.length;
-  if (n < 2) return null;
-  const mx = xs.reduce((a, b) => a + b, 0) / n;
-  const my = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0,
-    dx2 = 0,
-    dy2 = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = xs[i] - mx,
-      dy = ys[i] - my;
-    num += dx * dy;
-    dx2 += dx * dx;
-    dy2 += dy * dy;
-  }
-  if (dx2 === 0 || dy2 === 0) return null;
-  return num / Math.sqrt(dx2 * dy2);
-}
-
-function corrLabel(r) {
-  if (r === null) return 'Недостаточно данных для оценки связи — впишите хотя бы пары значений.';
-  const abs = Math.abs(r);
-  let strength;
-  if (abs < 0.1) strength = 'почти нет связи';
-  else if (abs < 0.3) strength = 'слабая связь';
-  else if (abs < 0.5) strength = 'умеренная связь';
-  else if (abs < 0.7) strength = 'заметная связь';
-  else strength = 'сильная связь';
-  const dir = r >= 0 ? 'положительная' : 'отрицательная';
-  return `Коэффициент корреляции между числом из шага 1 и оценкой: r = ${r.toFixed(2)} — ${dir}, ${strength}. Это число никак не связано с ООН — но, скорее всего, связь всё равно есть.`;
-}
+const ROUND_TITLES = [
+  'Быстрый эксперимент для команды',
+  'Впишите числа каждого участника',
+  'Что получилось у вашей команды',
+  'Эффект якоря',
+];
 
 export class RetroGameAnchoring extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -66,31 +63,25 @@ export class RetroGameAnchoring extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
 
-    const loaded = Persist.load('anchoring');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('anchoring'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, anchor: null, guess: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -104,57 +95,47 @@ export class RetroGameAnchoring extends LitElement {
   }
 
   _onEntryInput(e, idx, field) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      const max = field === 'anchor' ? 99 : 100;
-      if (v > max) v = max;
-      if (v < 0) v = 0;
-    }
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, [field]: v } : row));
+    const max = field === 'anchor' ? 99 : 100;
+    this.data = patchRow(this.data, idx, {
+      [field]: parseNumberInput(e.target.value, { min: 0, max }),
+    });
     Persist.save('anchoring', { data: this.data });
   }
 
   _filledCount() {
-    return this.data.filter((d) => d.anchor !== null && d.guess !== null).length;
+    return countFilled(this.data, hasFields('anchor', 'guess'));
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.anchor !== null && d.guess !== null);
-    const xs = filled.map((d) => d.anchor);
-    const ys = filled.map((d) => d.guess);
-    const r = pearson(xs, ys);
+    this.results = anchoringResults(this.data);
+    const { filled } = this.results;
 
-    const low = filled.filter((d) => d.anchor < 50);
-    const high = filled.filter((d) => d.anchor >= 50);
-    const avg = (arr) =>
-      arr.length ? `${(arr.reduce((a, b) => a + b.guess, 0) / arr.length).toFixed(0)}%` : '—';
-
-    this.results = { filled, corrText: corrLabel(r), lowAvg: avg(low), highAvg: avg(high) };
-
-    Print.mount(
-      'print-header-anchoring',
+    ReportExport.register(
+      'anchoring',
       {
-        title: 'Эффект якоря',
         subtitle: 'Случайное число незаметно сдвигает вашу же числовую оценку.',
-        meta: Print.meta(filled.length),
+        meta: ReportExport.meta(filled.length),
         explanation:
           'Случайное число, увиденное прямо перед оценкой, задаёт «якорь» — и итоговый ответ смещается в его сторону, даже когда число совершенно нерелевантно вопросу. Эффект открыли Амос Тверски и Дэниел Канеман в 1974 году; за работы по поведенческой экономике Канеман получил Нобелевскую премию в 2002 году.',
       },
       this.renderRoot,
     );
-
-    this.goTo(2);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('anchoring');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   updated() {
-    if (this.screenIdx === 2 && this.results) {
+    // No longer gated on screenIdx===2 — every round (including this
+    // one) is always in the DOM now, so "do we have results yet" is
+    // the only thing that matters for whether the scatter should draw.
+    if (this.results) {
       this._drawScatter(this.results.filled);
     }
   }
@@ -163,6 +144,13 @@ export class RetroGameAnchoring extends LitElement {
     const svg = this.renderRoot.getElementById('scatter');
     if (!svg) return;
     svg.innerHTML = '';
+    if (!points.length) return;
+
+    const cs = getComputedStyle(this.renderRoot.querySelector('.wrap-wide'));
+    const accent = cs.getPropertyValue('--game-accent').trim() || '#4E7FFF';
+    const accentDeep = cs.getPropertyValue('--game-accent-deep').trim() || accent;
+    const gold = cs.getPropertyValue('--gold').trim() || '#b87503';
+
     const W = 640,
       H = 380,
       ML = 46,
@@ -171,150 +159,209 @@ export class RetroGameAnchoring extends LitElement {
       MR = 16;
     const plotW = W - ML - MR,
       plotH = H - MT - MB;
-    const xMax = 100,
-      yMax = 100;
+
+    const x = d3
+      .scaleLinear()
+      .domain([0, 100])
+      .range([ML, ML + plotW]);
+    const y = d3
+      .scaleLinear()
+      .domain([0, 100])
+      .range([MT + plotH, MT]);
+
+    const svgSel = d3
+      .select(svg)
+      .attr('viewBox', `0 0 ${W} ${H}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+
+    svgSel
+      .append('line')
+      .attr('x1', ML)
+      .attr('y1', MT)
+      .attr('x2', ML)
+      .attr('y2', MT + plotH)
+      .style('stroke', 'var(--ink)')
+      .style('stroke-width', 1.2);
+    svgSel
+      .append('line')
+      .attr('x1', ML)
+      .attr('y1', MT + plotH)
+      .attr('x2', ML + plotW)
+      .attr('y2', MT + plotH)
+      .style('stroke', 'var(--ink)')
+      .style('stroke-width', 1.2);
+
+    [0, 25, 50, 75, 100].forEach((t) => {
+      const tx = x(t);
+      const ty2 = y(t);
+      svgSel
+        .append('line')
+        .attr('x1', tx)
+        .attr('y1', MT + plotH)
+        .attr('x2', tx)
+        .attr('y2', MT + plotH + 5)
+        .style('stroke', 'var(--ink-faint)');
+      svgSel
+        .append('text')
+        .attr('x', tx)
+        .attr('y', MT + plotH + 18)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '11px')
+        .style('font-family', 'IBM Plex Mono, monospace')
+        .style('fill', 'var(--ink-faint)')
+        .text(t);
+      svgSel
+        .append('line')
+        .attr('x1', ML - 5)
+        .attr('y1', ty2)
+        .attr('x2', ML)
+        .attr('y2', ty2)
+        .style('stroke', 'var(--ink-faint)');
+      svgSel
+        .append('text')
+        .attr('x', ML - 10)
+        .attr('y', ty2 + 4)
+        .attr('text-anchor', 'end')
+        .style('font-size', '11px')
+        .style('font-family', 'IBM Plex Mono, monospace')
+        .style('fill', 'var(--ink-faint)')
+        .text(t);
+    });
+
+    svgSel
+      .append('text')
+      .attr('x', ML + plotW / 2)
+      .attr('y', H - 4)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '12px')
+      .style('font-family', 'IBM Plex Mono, monospace')
+      .style('fill', 'var(--ink)')
+      .text('ЧИСЛО ИЗ ШАГА 1');
+    svgSel
+      .append('text')
+      .attr('x', 14)
+      .attr('y', MT + plotH / 2)
+      .attr('text-anchor', 'middle')
+      .attr('transform', `rotate(-90 14 ${MT + plotH / 2})`)
+      .style('font-size', '12px')
+      .style('font-family', 'IBM Plex Mono, monospace')
+      .style('fill', 'var(--ink)')
+      .text('ОЦЕНКА');
+
+    // Least-squares trend line — the same "the number pulls the guess
+    // toward it" story the correlation readout tells in words, drawn
+    // through the cloud of dots instead of asking the reader to
+    // eyeball the trend themselves.
+    const reg = linearRegression(
+      points.map((p) => p.anchor),
+      points.map((p) => p.guess),
+    );
+    if (reg) {
+      const y0 = Math.max(0, Math.min(100, reg.intercept));
+      const y100 = Math.max(0, Math.min(100, reg.slope * 100 + reg.intercept));
+      svgSel
+        .append('line')
+        .attr('x1', x(0))
+        .attr('y1', y(y0))
+        .attr('x2', x(100))
+        .attr('y2', y(y100))
+        .style('stroke', accentDeep)
+        .style('stroke-width', 2)
+        .style('stroke-linecap', 'round')
+        .style('opacity', 0.55);
+    }
+
+    const ty = y(TRUE_VALUE);
+    svgSel
+      .append('line')
+      .attr('x1', ML)
+      .attr('y1', ty)
+      .attr('x2', ML + plotW)
+      .attr('y2', ty)
+      .style('stroke', gold)
+      .style('stroke-width', 1.5)
+      .style('stroke-dasharray', '5,4');
+    svgSel
+      .append('text')
+      .attr('x', ML + plotW - 4)
+      .attr('y', ty - 6)
+      .attr('text-anchor', 'end')
+      .style('font-size', '11px')
+      .style('font-weight', 700)
+      .style('font-family', 'IBM Plex Mono, monospace')
+      .style('fill', gold)
+      .text('28% — правильный ответ');
+
+    const dotR = 6;
+    const dots = svgSel
+      .selectAll('circle.answer-dot')
+      .data(points)
+      .join('circle')
+      .attr('class', 'answer-dot')
+      .attr('cx', (p) => x(p.anchor))
+      .attr('cy', (p) => y(p.guess))
+      .attr('r', 0)
+      .style('fill', accent)
+      .style('fill-opacity', 0.88)
+      .style('stroke', 'var(--white)')
+      .style('stroke-width', 1.5);
+
+    dots
+      .transition()
+      .delay((_, i) => i * 24)
+      .duration(400)
+      .ease(d3.easeBackOut.overshoot(1.7))
+      .attr('r', dotR);
+
+    svgSel
+      .selectAll('text.answer-label')
+      .data(points)
+      .join('text')
+      .attr('class', 'answer-label')
+      .attr('x', (p) => x(p.anchor))
+      .attr('y', (p) => y(p.guess) - 10)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '10.5px')
+      .style('font-family', 'IBM Plex Sans, sans-serif')
+      .style('fill', 'var(--ink)')
+      .style('opacity', 0)
+      .text((p) => p.name)
+      .transition()
+      .delay((_, i) => i * 24 + 200)
+      .duration(300)
+      .style('opacity', 1);
 
     function ns(tag, attrs) {
       const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
       for (const k in attrs) el.setAttribute(k, attrs[k]);
       return el;
     }
-
-    svg.appendChild(
-      ns('line', {
-        x1: ML,
-        y1: MT,
-        x2: ML,
-        y2: MT + plotH,
-        stroke: '#1E2A32',
-        'stroke-width': 1.2,
-      }),
-    );
-    svg.appendChild(
-      ns('line', {
-        x1: ML,
-        y1: MT + plotH,
-        x2: ML + plotW,
-        y2: MT + plotH,
-        stroke: '#1E2A32',
-        'stroke-width': 1.2,
-      }),
-    );
-
-    [0, 25, 50, 75, 100].forEach((t) => {
-      const x = ML + (t / xMax) * plotW;
-      const y = MT + plotH - (t / yMax) * plotH;
-      svg.appendChild(
-        ns('line', {
-          x1: x,
-          y1: MT + plotH,
-          x2: x,
-          y2: MT + plotH + 5,
-          stroke: '#4B5B63',
-          'stroke-width': 1,
-        }),
-      );
-      const lx = ns('text', {
-        x: x,
-        y: MT + plotH + 18,
-        'font-size': 11,
-        'font-family': 'IBM Plex Mono, monospace',
-        fill: '#4B5B63',
-        'text-anchor': 'middle',
+    // Hit circle inserted right after its own dot — keeps the DOM a
+    // plain [visible, hit, visible, hit, ...] sequence (see
+    // crowd-wisdom.js's _drawChart() for why that ordering matters).
+    const dotNodes = dots.nodes();
+    points.forEach((p, i) => {
+      const hit = ns('circle', {
+        cx: x(p.anchor),
+        cy: y(p.guess),
+        r: dotR + 6,
+        fill: 'transparent',
+        'pointer-events': 'all',
       });
-      lx.textContent = t;
-      svg.appendChild(lx);
-      svg.appendChild(
-        ns('line', { x1: ML - 5, y1: y, x2: ML, y2: y, stroke: '#4B5B63', 'stroke-width': 1 }),
-      );
-      const ly = ns('text', {
-        x: ML - 10,
-        y: y + 4,
-        'font-size': 11,
-        'font-family': 'IBM Plex Mono, monospace',
-        fill: '#4B5B63',
-        'text-anchor': 'end',
-      });
-      ly.textContent = t;
-      svg.appendChild(ly);
-    });
-
-    const axx = ns('text', {
-      x: ML + plotW / 2,
-      y: H - 4,
-      'font-size': 12,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#1E2A32',
-      'text-anchor': 'middle',
-    });
-    axx.textContent = 'ЧИСЛО ИЗ ШАГА 1';
-    svg.appendChild(axx);
-    const axy = ns('text', {
-      x: 14,
-      y: MT + plotH / 2,
-      'font-size': 12,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#1E2A32',
-      'text-anchor': 'middle',
-      transform: `rotate(-90 14 ${MT + plotH / 2})`,
-    });
-    axy.textContent = 'ОЦЕНКА';
-    svg.appendChild(axy);
-
-    const ty = MT + plotH - (TRUE_VALUE / yMax) * plotH;
-    svg.appendChild(
-      ns('line', {
-        x1: ML,
-        y1: ty,
-        x2: ML + plotW,
-        y2: ty,
-        stroke: '#B5502E',
-        'stroke-width': 1.5,
-        'stroke-dasharray': '5,4',
-      }),
-    );
-    const tl = ns('text', {
-      x: ML + plotW - 4,
-      y: ty - 6,
-      'font-size': 11,
-      'font-family': 'IBM Plex Mono, monospace',
-      fill: '#B5502E',
-      'text-anchor': 'end',
-    });
-    tl.textContent = '28% — правильный ответ';
-    svg.appendChild(tl);
-
-    points.forEach((p) => {
-      const x = ML + (p.anchor / xMax) * plotW;
-      const y = MT + plotH - (p.guess / yMax) * plotH;
-      const c = ns('circle', {
-        cx: x,
-        cy: y,
-        r: 6,
-        fill: '#3E6E64',
-        'fill-opacity': 0.85,
-        stroke: '#F5F3EC',
-        'stroke-width': 1.5,
-      });
-      svg.appendChild(c);
-      const t = ns('text', {
-        x: x,
-        y: y - 10,
-        'font-size': 10.5,
-        'font-family': 'IBM Plex Sans, sans-serif',
-        fill: '#1E2A32',
-        'text-anchor': 'middle',
-      });
-      t.textContent = p.name;
-      svg.appendChild(t);
-      ChartTip.attachToPoint(
-        svg,
-        ns,
-        x,
-        y,
+      dotNodes[i].after(hit);
+      ChartTip.attach(
+        hit,
         () =>
           `<b>${p.name}</b><span class="tip-row"><span>Число из шага 1</span><span>${p.anchor}</span></span><span class="tip-row"><span>Оценка</span><span>${p.guess}%</span></span>`,
       );
+      hit.addEventListener('mouseenter', () => {
+        d3.select(dotNodes[i])
+          .style('fill-opacity', 1)
+          .attr('r', dotR * 1.25);
+      });
+      hit.addEventListener('mouseleave', () => {
+        d3.select(dotNodes[i]).style('fill-opacity', 0.88).attr('r', dotR);
+      });
     });
   }
 
@@ -349,24 +396,15 @@ export class RetroGameAnchoring extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Эффект якоря</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('anchoring')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 5 минут</p>
           <h1>Быстрый эксперимент для команды</h1>
           <p class="lede">
@@ -436,11 +474,14 @@ export class RetroGameAnchoring extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите числа каждого участника</h2>
           <p class="lede">Спросите по очереди: число из шага 1 и оценку из шага 3.</p>
@@ -460,31 +501,28 @@ export class RetroGameAnchoring extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(2, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-anchoring"></div>
 
-          <div class="reveal">
-            <div class="n">28%</div>
-            <p>
-              <b>Правильный ответ:</b> сейчас в ООН 193 страны-члена, 54 из них — африканские. 54 /
-              193 = 28%. Почти никто не угадывает точно — дело не в этом.
-            </p>
-          </div>
+          ${renderReveal({ value: '28%', ...REVEAL_COPY.anchoring(r ? { lowAvg: r.lowAvgN, highAvg: r.highAvgN } : null) })}
 
           <div class="chart-wrap">
-            <svg id="scatter" viewBox="0 0 640 380" width="100%" style="display:block;"></svg>
+            <svg id="scatter" class="d3-chart-svg" viewBox="0 0 640 380"></svg>
             <div class="cap">
               По горизонтали — число из шага 1 у каждого человека (00–99), по вертикали — его
-              оценка (%). Пунктир — правильный ответ, 28%.
+              оценка (%). Пунктир — правильный ответ, 28%. Сплошная линия — тренд по всем точкам:
+              её наклон и есть эффект якоря.
             </div>
           </div>
 
@@ -526,21 +564,22 @@ export class RetroGameAnchoring extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-anchoring"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект якоря</h1>
           <p class="lede">
@@ -645,7 +684,21 @@ export class RetroGameAnchoring extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Эффект якоря</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'anchoring',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

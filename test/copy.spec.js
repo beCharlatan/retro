@@ -6,7 +6,7 @@
 // right plain text on the clipboard — including copying WITHOUT first
 // revealing, which is the whole point of sending it privately.
 
-const { Report, withBrowser, DIST_URL } = require('./lib');
+const { Report, withBrowser, DIST_URL, openGameFromHome } = require('./lib');
 
 async function run() {
   const report = new Report();
@@ -15,6 +15,12 @@ async function run() {
   await withBrowser(async (browser) => {
     const context = await browser.newContext({
       permissions: ['clipboard-read', 'clipboard-write'],
+      // See test/lib.js's openPage() for why — this file makes its own
+      // context (for clipboard permissions) instead of going through
+      // openPage, so it needs the same reducedMotion setting repeated
+      // here to avoid failing actionability checks on the map's
+      // continuously-drifting location buttons.
+      reducedMotion: 'reduce',
     });
 
     // --- framing ---
@@ -23,7 +29,7 @@ async function run() {
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       await page.goto(DIST_URL);
-      await page.click('text=Эффект фрейминга');
+      await openGameFromHome(page, 'framing');
       await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(100);
       await page.click('button:has-text("Дальше")');
@@ -79,7 +85,7 @@ async function run() {
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       await page.goto(DIST_URL);
-      await page.click('text=Эффект Барнума');
+      await openGameFromHome(page, 'barnum');
       await page.waitForTimeout(120);
 
       const btnVisible = await page.isVisible('#copy-profile').catch(() => false);

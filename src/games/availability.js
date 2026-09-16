@@ -10,91 +10,118 @@
    (QUESTIONS), same .toggle-pair pattern as false-consensus.js/
    prisoners-dilemma.js. Keeps all original plain ids
    (entry-body-N, next-btn-N, ...).
+
+   One-continuous-scroll деталка — see framing.js for the full
+   write-up of this layout and game-shell.js for the shared navigation
+   helpers every game now uses.
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import { countFilled, hasEnough, loadableDraft, patchItem } from '../logic/entries.js';
+import { formatPercent, outcomeMark } from '../logic/format.js';
+import { availabilityResults, availabilityRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
+// Every question pairs a heavily covered news story of the last few
+// years with a statistic that points the OTHER way — the "obvious"
+// answer (the one the headlines trained you on) is wrong in all four.
+// `correct` deliberately isn't always 'a' so the right answer can't be
+// guessed from its position.
 const QUESTIONS = [
   {
-    text: 'Что, по-вашему, ежегодно убивает больше людей в мире: удары молнии или авиакатастрофы?',
-    optA: 'Молния',
-    optB: 'Авиакатастрофы',
-    correct: 'a',
+    text: 'В мае 2023 года ВОЗ объявила, что COVID-19 больше не чрезвычайная ситуация мирового масштаба. Что унесло больше жизней в мире за 2023 год: COVID-19 или туберкулёз?',
+    short: 'COVID-19 или туберкулёз?',
+    optA: 'COVID-19',
+    optB: 'Туберкулёз',
+    correct: 'b',
     reveal:
-      'Молния: по оценкам метеослужб — около 24 000 смертей в мире в год, тогда как жертвы авиакатастроф исчисляются несколькими сотнями.',
+      'Туберкулёз: около 1,25 млн смертей в 2023 году (Global TB Report ВОЗ, 2024) — он снова стал главной инфекционной причиной смерти, обогнав COVID-19, зарегистрированная смертность от которого упала в разы.',
   },
   {
-    text: 'Что чаще становится причиной смерти: диабет или убийство?',
-    optA: 'Диабет',
-    optB: 'Убийство',
+    text: '2023 и 2024 годы подряд бьют рекорды по жаре, новости полны «смертельной жарой». Что, по оценкам учёных, уносит больше жизней в мире за год: холод или жара?',
+    short: 'Холод или жара?',
+    optA: 'Холод',
+    optB: 'Жара',
     correct: 'a',
     reveal:
-      'Диабет: по данным ВОЗ, от него ежегодно умирает около 1,5–2 млн человек в мире — в разы больше, чем от убийств (~400 тыс.).',
+      'Холод: по оценке исследования в The Lancet Planetary Health (2021) — около 4,6 млн смертей в год от холода против ~0,5 млн от жары, примерно 9 к 1. Жара при этом растёт, но пока не догнала.',
   },
   {
-    text: 'Кто чаще становится причиной смерти человека: москиты (через малярию и другие болезни) или акулы?',
-    optA: 'Москиты',
-    optB: 'Акулы',
-    correct: 'a',
+    text: 'Каждое лето новости полны историями об утонувших туристах — на курортах Турции, Египта, Таиланда. Что уносит больше жизней в мире за год: утопления или падения (с высоты, с лестниц, в быту)?',
+    short: 'Утопления или падения?',
+    optA: 'Утопления',
+    optB: 'Падения',
+    correct: 'b',
     reveal:
-      'Москиты: переносимые ими болезни убивают порядка 700 000+ человек в год — против 5–10 смертей от акул. Разрыв на пять порядков.',
+      'Падения: около 680 тыс. смертей в год (ВОЗ) — почти вдвое больше, чем утоплений (~300 тыс., ВОЗ, 2021). Падения — вторая по величине причина смерти от несчастных случаев после ДТП, но в заголовки попадают редко: они «бытовые», а не курортные.',
   },
   {
-    text: 'Что чаще убивает: автомобильные аварии или теракты?',
-    optA: 'Автоаварии',
-    optB: 'Теракты',
+    text: 'США, 2022 год. Массовые стрельбы и ДТП — постоянные новости. Что унесло больше жизней в стране: огнестрельное оружие (включая самоубийства) или автомобильные аварии?',
+    short: 'Оружие или автоаварии?',
+    optA: 'Огнестрельное оружие',
+    optB: 'Автоаварии',
     correct: 'a',
     reveal:
-      'Автоаварии: около 1,2 млн смертей в мире в год (ВОЗ) — на порядки больше, чем от терактов в любой отдельно взятый год.',
+      'Огнестрельное оружие: ~48 тыс. смертей (CDC) против ~42,5 тыс. в ДТП (NHTSA). Чуть больше половины из них — самоубийства (~27 тыс.), которые почти не попадают в заголовки, в отличие от массовых стрельб.',
   },
 ];
 
+const QUESTION_TIMER_SECONDS = 20;
+
 const TOTAL_SCREENS = 3 + QUESTIONS.length; // instructions + Qn + results + context
+const ROUND_TITLES = [
+  'Что чаще убивает?',
+  ...QUESTIONS.map((q) => q.short),
+  'Что получилось у вашей команды',
+  'Эвристика доступности',
+];
 
 export class RetroGameAvailability extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     entries: { state: true },
     draft: { state: true },
     results: { state: true },
+    timerQ: { state: true },
   };
 
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.entries = this._blankEntries();
     this.results = null;
+    // One 20s timer shared by all question rounds; `timerQ` is the
+    // question whose card is currently live (the rest show idle).
+    this.timer = new AnswerTimerController(this, QUESTION_TIMER_SECONDS);
+    this.timerQ = null;
 
-    const loaded = Persist.load('availability');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.entries) &&
-      loaded.payload.entries.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('availability'), {
+      key: 'entries',
+      length: this.names.length,
+    });
   }
 
   _blankEntries() {
     return this.names.map((n) => ({ name: n, answers: QUESTIONS.map(() => null) }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.entries = this.draft.payload.entries;
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.entries = this.draft.payload.entries;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -108,73 +135,56 @@ export class RetroGameAvailability extends LitElement {
   }
 
   _onToggle(idx, qIdx, val) {
-    this.entries = this.entries.map((e, i) =>
-      i === idx ? { ...e, answers: e.answers.map((a, ai) => (ai === qIdx ? val : a)) } : e,
-    );
+    this.entries = patchItem(this.entries, idx, 'answers', qIdx, val);
     Persist.save('availability', { entries: this.entries });
   }
 
   _filledCount(qIdx) {
-    return this.entries.filter((e) => e.answers[qIdx] !== null).length;
+    return countFilled(this.entries, (e) => e.answers[qIdx] !== null);
+  }
+
+  _startTimer(qIdx) {
+    this.timerQ = qIdx;
+    this.timer.start();
+  }
+
+  _resetTimer() {
+    this.timer.reset();
+    this.timerQ = null;
   }
 
   _next(qIdx) {
+    this._resetTimer();
     if (qIdx === QUESTIONS.length - 1) {
-      this._showResults();
+      this.flow.advance(1 + QUESTIONS.length, () => this._showResults());
     } else {
-      this.goTo(2 + qIdx);
+      this.flow.advance(2 + qIdx);
     }
   }
 
   _showResults() {
-    const correctPerQuestion = QUESTIONS.map(() => 0);
-    let totalCorrect = 0,
-      totalAnswered = 0;
+    this.results = availabilityResults(this.entries, QUESTIONS);
 
-    this.entries.forEach((e) => {
-      QUESTIONS.forEach((q, qi) => {
-        const ans = e.answers[qi];
-        if (ans === null) return;
-        totalAnswered++;
-        if (ans === q.correct) {
-          correctPerQuestion[qi]++;
-          totalCorrect++;
-        }
-      });
-    });
-
-    const correctRate = totalAnswered
-      ? Math.round((totalCorrect / totalAnswered) * 100) + '%'
-      : '—';
-
-    const perQuestionStats = QUESTIONS.map((q, qi) => {
-      const answered = this.entries.filter((e) => e.answers[qi] !== null).length;
-      const pct = answered ? Math.round((correctPerQuestion[qi] / answered) * 100) : 0;
-      return { pct };
-    });
-
-    this.results = { correctRate, perQuestionStats };
-
-    Print.mount(
-      'print-header-availability',
+    ReportExport.register(
+      'availability',
       {
-        title: 'Эвристика доступности',
         subtitle: 'Мы оцениваем риск по тому, что легче вспоминается, а не по статистике.',
-        meta: Print.meta(this.entries.length),
+        meta: ReportExport.meta(this.entries.length),
         explanation:
           'Мы оцениваем вероятность события по тому, насколько легко вспоминаются примеры, а не по реальной статистике — яркие, эмоциональные и часто освещаемые в новостях события кажутся значительно более частыми, чем есть на самом деле. Эффект описали Амос Тверски и Дэниел Канеман в статье 1973 года.',
       },
       this.renderRoot,
     );
-
-    this.goTo(1 + QUESTIONS.length);
   }
 
-  _reset() {
+  async _reset() {
     this.entries = this._blankEntries();
     this.results = null;
     Persist.clear('availability');
-    this.goTo(0);
+    this.flow.reset();
+    this._resetTimer();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _questionScreen(qIdx) {
@@ -183,10 +193,19 @@ export class RetroGameAvailability extends LitElement {
     const nextLabel = isLast ? 'Показать результаты' : 'Следующий вопрос';
     const filled = this._filledCount(qIdx);
     return html`
-      <section class="screen ${this.screenIdx === 1 + qIdx ? 'active' : ''}">
+      <section class="${this.flow.roundClass(1 + qIdx)}" id="round-${1 + qIdx}">
+        <div class="round-body">
         <p class="eyebrow">Вопрос ${qIdx + 1} из ${QUESTIONS.length}</p>
         <h2>${q.text}</h2>
         <p class="lede">Интуитивный выбор — без подсчётов.</p>
+
+        ${renderAnswerTimer(this.timer, {
+          runningLabel: '20 секунд на ответ',
+          compact: true,
+          active: this.timerQ === qIdx,
+          onStart: () => this._startTimer(qIdx),
+          onReset: () => this._resetTimer(),
+        })}
 
         <div class="entry-head toggle-only">
           <div>Участник</div>
@@ -229,16 +248,18 @@ export class RetroGameAvailability extends LitElement {
         </div>
 
         <div class="nav-row">
-          <button class="ghost" @click=${() => this.goTo(qIdx)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+          <button class="ghost" @click=${() => this.flow.scrollTo(qIdx)}>${unsafeHTML(ICON_LEFT)} Назад</button>
           <button
             class="primary"
             id="next-btn-${qIdx}"
-            ?disabled=${filled < 2}
+            ?disabled=${!hasEnough(filled)}
             @click=${() => this._next(qIdx)}
           >
             ${nextLabel} ${unsafeHTML(ICON_RIGHT)}
           </button>
         </div>
+        </div>
+        ${this.flow.lock(1 + qIdx)}
       </section>
     `;
   }
@@ -247,27 +268,18 @@ export class RetroGameAvailability extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Эвристика доступности</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('availability')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 6 минут</p>
           <h1>Что чаще убивает?</h1>
-          <p class="lede">${QUESTIONS.length} коротких вопроса. Не гуглите — это про первое ощущение, а не про факты.</p>
+          <p class="lede">${QUESTIONS.length} коротких вопроса. Не гуглите — это про первое ощущение, а не про факты. Все вопросы — про громкие новости последних лет.</p>
 
           <div class="draft-mount">
             ${
@@ -297,7 +309,7 @@ export class RetroGameAvailability extends LitElement {
               <div class="step-num">1</div>
               <div class="step-body">
                 <b>Задайте вопрос вслух</b>
-                <span>На каждом экране — новая пара причин смерти. Спрашивайте по одной.</span>
+                <span>На каждом экране — новая пара причин смерти. Зачитывайте вопрос целиком: новостной контекст — часть эксперимента.</span>
               </div>
             </li>
             <li>
@@ -313,24 +325,20 @@ export class RetroGameAvailability extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Начать вопросы ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Начать вопросы ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
         ${QUESTIONS.map((_, i) => this._questionScreen(i))}
 
-        <section class="screen ${this.screenIdx === 1 + QUESTIONS.length ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1 + QUESTIONS.length)}" id="round-${1 + QUESTIONS.length}">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-availability"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? r.correctRate : '—'}</div>
-            <p>
-              <b>Доля интуитивно верных ответов</b> по всей команде — по всем ${QUESTIONS.length}
-              вопросам сразу.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? r.correctRate : '—', ...REVEAL_COPY.availability(r ? { totalCorrect: r.totalCorrect, totalAnswered: r.totalAnswered, worst: r.worst, questionCount: QUESTIONS.length } : null) })}
 
           <div class="stat-row">
             ${
@@ -372,48 +380,38 @@ export class RetroGameAvailability extends LitElement {
             <tbody id="results-tbody">
               ${
                 r
-                  ? this.entries.map((e) => {
-                      let hits = 0,
-                        answered = 0;
-                      const cells = QUESTIONS.map((q, qi) => {
-                        const ans = e.answers[qi];
-                        if (ans === null) return html`<td>—</td>`;
-                        answered++;
-                        const hit = ans === q.correct;
-                        if (hit) hits++;
-                        return html`<td>${hit ? '✓' : '✕'}</td>`;
-                      });
-                      const pctText = answered ? Math.round((hits / answered) * 100) + '%' : '—';
-                      return html`
+                  ? availabilityRows(this.entries, QUESTIONS).map(
+                      (row) => html`
                       <tr>
-                        <td class="name">${unsafeHTML(avatarName(e.name))}</td>
-                        ${cells}
-                        <td>${pctText}</td>
+                        <td class="name">${unsafeHTML(avatarName(row.name))}</td>
+                        ${row.outcomes.map((o) => html`<td>${outcomeMark(o)}</td>`)}
+                        <td>${formatPercent(row.pct)}</td>
                       </tr>
-                    `;
-                    })
+                    `,
+                    )
                   : ''
               }
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-availability"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(QUESTIONS.length)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(2 + QUESTIONS.length)}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(QUESTIONS.length)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(2 + QUESTIONS.length)}>
               Что это было? ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1 + QUESTIONS.length)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 + QUESTIONS.length ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2 + QUESTIONS.length)}" id="round-${2 + QUESTIONS.length}">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эвристика доступности</h1>
           <p class="lede">
@@ -424,8 +422,8 @@ export class RetroGameAvailability extends LitElement {
           <p>
             Яркие, эмоциональные и часто освещаемые в новостях события кажутся более частыми, чем
             есть на самом деле. Авиакатастрофы, убийства и теракты — редкие, но заметные и
-            подробно освещаемые трагедии, поэтому нам легко их «вспомнить» и представить. Молнии,
-            диабет, малярия и автоаварии почти никогда не становятся сенсацией — хотя уносят
+            подробно освещаемые трагедии, поэтому нам легко их «вспомнить» и представить. Туберкулёз,
+            холод, падения и автоаварии почти никогда не становятся сенсацией — хотя уносят
             значительно больше жизней.
           </p>
 
@@ -506,7 +504,21 @@ export class RetroGameAvailability extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(2 + QUESTIONS.length)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Эвристика доступности</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'availability',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

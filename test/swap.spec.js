@@ -6,7 +6,7 @@
 // isn't testing per-game code, it's testing roles.js itself through two
 // real screens.
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome } = require('./lib');
 
 async function run() {
   const report = new Report();
@@ -16,7 +16,7 @@ async function run() {
     // --- pairs: Ультиматум ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Ультиматум');
+      await openGameFromHome(page, 'ultimatum');
       await page.click('button:has-text("Распределить пары")');
       await page.waitForTimeout(120);
 
@@ -27,7 +27,7 @@ async function run() {
       const selectedClass = await page.getAttribute('.role-pair-name >> nth=0', 'class');
       report.check(
         'pairs: first click marks the person as selected',
-        selectedClass && selectedClass.includes('swap-selected'),
+        selectedClass?.includes('swap-selected'),
         selectedClass,
       );
 
@@ -71,7 +71,7 @@ async function run() {
     // --- groups: Эффект владения ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Эффект владения');
+      await openGameFromHome(page, 'endowment');
       await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(120);
 

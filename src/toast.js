@@ -13,22 +13,31 @@ export function showToast(msg) {
 // the button itself (label flips to "Скопировано") and via the shared
 // toast. Falls back gracefully if the Clipboard API is unavailable
 // (e.g. non-secure context) instead of throwing.
+//
+// If the button has a `.btn-label` child, only THAT child's text gets
+// swapped — needed for a button that also renders a Lit-managed icon
+// (unsafeHTML(ICON_COPY)) as a sibling: overwriting the whole button's
+// textContent would delete that icon's DOM node along with it, and Lit
+// throws on the next re-render trying to update a ChildPart whose
+// anchor no longer exists. Buttons with no icon (plain text only, no
+// `.btn-label` wrapper) keep swapping the whole button as before.
 export function copyToClipboard(text, btn) {
   const done = () => {
     showToast('Скопировано в буфер обмена');
     if (btn) {
-      const original = btn.dataset.label || btn.textContent;
-      btn.dataset.label = original;
-      btn.textContent = '✓ Скопировано';
+      const target = btn.querySelector('.btn-label') || btn;
+      const original = target.dataset.label || target.textContent;
+      target.dataset.label = original;
+      target.textContent = '✓ Скопировано';
       clearTimeout(btn._copyTm);
       btn._copyTm = setTimeout(() => {
-        btn.textContent = original;
+        target.textContent = original;
       }, 1600);
     }
   };
   const fail = () => showToast('Не удалось скопировать — выделите текст вручную');
 
-  if (navigator.clipboard && navigator.clipboard.writeText) {
+  if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(fail);
   } else {
     try {
