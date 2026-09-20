@@ -61,7 +61,7 @@ Bun.serve({
       }
     }
 
-    const file = Bun.file(new URL('.' + pathname, ROOT));
+    const file = Bun.file(new URL(`.${pathname}`, ROOT));
     if (await file.exists()) return new Response(file);
     return new Response('Not found', { status: 404 });
   },

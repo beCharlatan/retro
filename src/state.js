@@ -4,8 +4,10 @@
    Shared, app-wide data + the avatar/name rendering helpers built on
    top of it (every game and the home screen use these — one place to
    keep a person's color consistent everywhere: home screen, every
-   game's forms and results tables, and the printed PDF).
+   game's forms and results tables, and the exported PNG report).
 ========================================================= */
+import { avatarInitial, pickAvatarColor } from './logic/format.js';
+
 export const state = {
   participants: [
     'Михаил',
@@ -79,17 +81,7 @@ export const AVATAR_COLORS = [
 ];
 
 export function avatarColor(name) {
-  const idx = state.participants.indexOf(name);
-  return AVATAR_COLORS[(idx < 0 ? 0 : idx) % AVATAR_COLORS.length];
-}
-
-// First letter of the name, uppercased — the kit's "Collaborator
-// tokens" component uses a real photo per person; we have no photos,
-// so an initials letter is the standard fallback treatment (also how
-// Airtable itself renders a collaborator with no avatar image).
-function avatarInitial(name) {
-  const trimmed = (name || '').trim();
-  return trimmed ? trimmed[0].toUpperCase() : '?';
+  return pickAvatarColor(name, state.participants, AVATAR_COLORS);
 }
 
 // Renders a small colored avatar for `name`. Pass size:'sm' for the

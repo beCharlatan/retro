@@ -10,16 +10,16 @@
     "test:smoke": "bun test/run-all.js --only=smoke",
     "test:home": "bun test/run-all.js --only=home",
     "test:persistence": "bun test/run-all.js --only=persistence",
-    "test:pdf": "bun test/run-all.js --only=pdf",
+    "test:export": "bun test/run-all.js --only=export",
     "test:swap": "bun test/run-all.js --only=swap",
     "test:copy": "bun test/run-all.js --only=copy",
     "test:trio": "bun test/run-all.js --only=trio",
     "test:custom-question": "bun test/run-all.js --only=custom-question",
-    "test:privacy": "bun test/run-all.js --only=privacy",
     "test:chart-tip": "bun test/run-all.js --only=chart-tip",
     "test:unit": "bun test",
-    "verify": "bun run build && bun run test && bun run test:unit",
+    "verify": "bun run lint:undeclared && bun run build && bun run test && bun run test:unit",
     "lint": "biome check .",
+    "lint:undeclared": "biome lint --only=correctness/noUndeclaredVariables src",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "install-hooks": "bun scripts/install-hooks.js",
@@ -30,6 +30,8 @@
     "playwright": "^1.56.0"
   },
   "dependencies": {
+    "d3": "^7.9.0",
+    "html-to-image": "^1.11.13",
     "lit": "^3.3.3"
   }
 }

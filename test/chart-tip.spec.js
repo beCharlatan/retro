@@ -10,12 +10,13 @@
 // dictator chart's two rounds (different colours) resolve to two
 // distinct hoverable points with the right per-round label.
 //
-// Note: results screens use Screen.goTo(), which triggers a smooth
-// scroll — tests wait for that to settle before measuring element
-// positions, otherwise a hover computed against a pre-scroll
-// coordinate lands on the wrong pixel once the page finishes moving.
+// Note: reaching the results round scrolls the page there
+// (src/game-shell.js's advanceRound()/scrollToRound()) — under
+// reducedMotion (set for every test context, see test/lib.js) that
+// scroll is instant, not animated, but the wait below is kept anyway
+// as a small settle margin before measuring element positions.
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome } = require('./lib');
 
 async function hoverHitCircle(page, chartSelector) {
   await page.waitForTimeout(700); // let the results screen's smooth-scroll settle
@@ -34,7 +35,7 @@ async function run() {
     // --- anchoring ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Эффект якоря');
+      await openGameFromHome(page, 'anchoring');
       await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('[data-testid="entry-body"] input');
       const vals = [
@@ -68,7 +69,7 @@ async function run() {
     // --- crowd-wisdom: no permanent labels on this chart, so the tooltip is the only way to know whose dot is whose ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Мудрость толпы');
+      await openGameFromHome(page, 'crowd-wisdom');
       await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('#entry-body input');
       for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(300 + i * 30));
@@ -88,7 +89,7 @@ async function run() {
     // --- dictator: two dots per person (round 1 / round 2) must resolve to two distinct, correctly-labelled tooltips ---
     {
       const page = await openPage(browser, report);
-      await page.click('text=Игра диктатора');
+      await openGameFromHome(page, 'dictator');
       await page.click('button:has-text("Раунд 1")');
       // data-testid, not id — dictator is a Shadow DOM Lit component
       // (docs/modernization-plan.md Phase 2); Playwright's CSS engine
@@ -109,13 +110,15 @@ async function run() {
         html1.replace(/\s+/g, ' '),
       );
 
-      // The 3rd/4th circles in DOM order are person 2's round-1 pair
-      // (visible+hit); circles 2/3 (0-indexed) belong to the SAME
-      // person's round-2 dot — hover that one and confirm it's
-      // correctly labelled round 2 instead.
+      // The chart draws round 1's N (dot, hit) pairs as one beeswarm
+      // batch, then round 2's N pairs as a second batch — so round 2's
+      // circles start at index 2*N, and (since both rounds' values are
+      // strictly increasing per person here, and the beeswarm sorts
+      // ascending) its first pair is still person 0's — hover that
+      // pair's hit circle and confirm it's labelled round 2 instead.
       await page.waitForTimeout(300);
       const allCircles = await page.$$('#dict-chart circle');
-      const round2Hit = allCircles[3];
+      const round2Hit = allCircles[2 * r1.length + 1];
       const box2 = await round2Hit.boundingBox();
       await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 3 });
       await page.waitForTimeout(150);

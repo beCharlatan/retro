@@ -5,32 +5,52 @@
    same pattern as crowd-wisdom (custom question) plus the first game
    using .toggle-pair (Да/Нет) buttons instead of number inputs. Keeps
    its original plain ids, same reasoning as crowd-wisdom's header
-   comment. The privacy blur-on-click-then-hide mechanism for
-   .toggle-pair is a document-level delegated listener
-   (src/privacy-mask.js) — it had to be fixed to use
-   e.composedPath()[0] instead of e.target to keep working for a
-   Shadow DOM game's buttons (event retargeting across the shadow
-   boundary means a document-level listener sees e.target as the
-   custom element host, not the actual button clicked inside it).
+   comment.
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_EDIT, ICON_LEFT, ICON_PRINT, ICON_RIGHT } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_EDIT,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_X,
+} from '../icons.js';
+import { buildCustomQuestionText, MESSAGES } from '../logic/custom-questions.js';
+import {
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  parseNumberInput,
+  patchRow,
+} from '../logic/entries.js';
+import { falseConsensusResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const DEFAULT_QUESTION =
   'Готовы ли вы прямо сейчас, без подготовки, провести 5-минутную презентацию перед всей командой?';
 const TOTAL_SCREENS = 4;
+const ROUND_TITLES = [
+  'Один вопрос про вас — и про всех остальных',
+  'Впишите ответы каждого участника',
+  'Что получилось у вашей команды',
+  'Эффект ложного консенсуса',
+];
 
 export class RetroGameFalseConsensus extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     data: { state: true },
     draft: { state: true },
     results: { state: true },
@@ -43,7 +63,7 @@ export class RetroGameFalseConsensus extends LitElement {
   constructor() {
     super();
     this.names = state.participants.slice();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
     this.question = DEFAULT_QUESTION;
@@ -51,31 +71,25 @@ export class RetroGameFalseConsensus extends LitElement {
     this.customPanelOpen = false;
     this.customQStatus = '';
 
-    const loaded = Persist.load('false-consensus');
-    this.draft =
-      loaded &&
-      Array.isArray(loaded.payload.data) &&
-      loaded.payload.data.length === this.names.length
-        ? loaded
-        : null;
+    this.draft = loadableDraft(Persist.load('false-consensus'), {
+      key: 'data',
+      length: this.names.length,
+    });
   }
 
   _blankData() {
     return this.names.map((n) => ({ name: n, own: null, estimate: null }));
   }
 
-  goTo(idx) {
-    this.screenIdx = idx;
-  }
-
   _restoreDraft() {
-    this.data = this.draft.payload.data;
-    if (this.draft.payload.question) {
-      this.question = this.draft.payload.question;
-      this.isCustomQuestion = true;
-    }
-    this.draft = null;
-    this.goTo(1);
+    this.flow.advance(1, () => {
+      this.data = this.draft.payload.data;
+      if (this.draft.payload.question) {
+        this.question = this.draft.payload.question;
+        this.isCustomQuestion = true;
+      }
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -93,20 +107,20 @@ export class RetroGameFalseConsensus extends LitElement {
   }
 
   _applyCustomQuestion() {
-    const text = this.renderRoot.getElementById('custom-q-text').value.trim();
-    if (!text) {
-      this.customQStatus = 'Впишите текст вопроса.';
+    const result = buildCustomQuestionText(this.renderRoot.getElementById('custom-q-text').value);
+    if (!result.ok) {
+      this.customQStatus = result.error;
       return;
     }
-    this.question = text;
+    this.question = result.question;
     this.isCustomQuestion = true;
-    this.customQStatus = '✓ Вопрос обновлён.';
+    this.customQStatus = result.message;
   }
 
   _resetCustomQuestion() {
     this.question = DEFAULT_QUESTION;
     this.isCustomQuestion = false;
-    this.customQStatus = '✓ Вернули стандартный вопрос.';
+    this.customQStatus = MESSAGES.resetOne;
     this.renderRoot.getElementById('custom-q-text').value = '';
   }
 
@@ -118,65 +132,46 @@ export class RetroGameFalseConsensus extends LitElement {
   }
 
   _onToggle(idx, val) {
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, own: val } : row));
+    this.data = patchRow(this.data, idx, { own: val });
     this._persist();
   }
 
   _onEstimateInput(e, idx) {
-    let v = e.target.value === '' ? null : Number(e.target.value);
-    if (v !== null) {
-      if (v < 0) v = 0;
-      if (v > 100) v = 100;
-    }
-    this.data = this.data.map((row, i) => (i === idx ? { ...row, estimate: v } : row));
+    this.data = patchRow(this.data, idx, {
+      estimate: parseNumberInput(e.target.value, { min: 0, max: 100 }),
+    });
     this._persist();
   }
 
   _filledCount() {
-    return this.data.filter((d) => d.own !== null && d.estimate !== null).length;
+    return countFilled(this.data, hasFields('own', 'estimate'));
   }
 
   _showResults() {
-    const filled = this.data.filter((d) => d.own !== null && d.estimate !== null);
-    const yesCount = filled.filter((d) => d.own === 'yes').length;
-    const realYesPct = Math.round((yesCount / filled.length) * 100);
+    this.results = falseConsensusResults(this.data);
+    const { filled } = this.results;
 
-    const yesSide = filled.filter((d) => d.own === 'yes');
-    const noSide = filled.filter((d) => d.own === 'no');
-    const avg = (arr) =>
-      arr.length ? Math.round(arr.reduce((a, b) => a + b.estimate, 0) / arr.length) : null;
-    const yesAvg = avg(yesSide);
-    const noAvg = avg(noSide);
-
-    let compareText = `Реально ответили «да» ${realYesPct}% команды.`;
-    if (yesAvg !== null && noAvg !== null) {
-      compareText += ` Те, кто сам сказал «да», в среднем ожидали ${yesAvg}% согласных — те, кто сказал «нет», ожидали только ${noAvg}%. Каждая группа тянет прогноз в свою сторону.`;
-    }
-
-    this.results = { filled, realYesPct, yesAvg, noAvg, compareText };
-
-    Print.mount(
-      'print-header-false-consensus',
+    ReportExport.register(
+      'false-consensus',
       {
-        title: 'Ложный консенсус',
         subtitle: this.isCustomQuestion
           ? this.question
           : 'Мы уверены, что наше мнение разделяют куда больше людей, чем на самом деле.',
-        meta: Print.meta(filled.length),
+        meta: ReportExport.meta(filled.length),
         explanation:
           'Мы систематически переоцениваем, насколько остальные разделяют наше собственное мнение или поведение — потому что единственная реальная точка отсчёта, которая у нас есть, это мы сами. Эффект описали психологи Ли Росс, Дэвид Грин и Памела Хаус в серии экспериментов в Стэнфорде в 1977 году.',
       },
       this.renderRoot,
     );
-
-    this.goTo(2);
   }
 
-  _reset() {
+  async _reset() {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('false-consensus');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _entryRow(row, idx) {
@@ -219,24 +214,15 @@ export class RetroGameFalseConsensus extends LitElement {
     const r = this.results;
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Ложный консенсус</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('false-consensus')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 6 минут</p>
           <h1>Один вопрос про вас — и про всех остальных</h1>
           <p class="lede">
@@ -291,7 +277,7 @@ export class RetroGameFalseConsensus extends LitElement {
           </p>
 
           <div class="custom-q-toggle-row">
-            <button type="button" class="ghost" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
+            <button type="button" class="secondary" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
               ${unsafeHTML(ICON_EDIT)} Задать свой вопрос вместо стандартного
             </button>
           </div>
@@ -310,7 +296,7 @@ export class RetroGameFalseConsensus extends LitElement {
               </button>
               <button
                 type="button"
-                class="ghost"
+                class="secondary"
                 id="custom-q-reset"
                 ?hidden=${!this.isCustomQuestion}
                 @click=${() => this._resetCustomQuestion()}
@@ -323,11 +309,14 @@ export class RetroGameFalseConsensus extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите ответы каждого участника</h2>
           <p class="lede">Свой ответ (да/нет) и оценку, какой % команды тоже скажет «да».</p>
@@ -347,34 +336,30 @@ export class RetroGameFalseConsensus extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${filled < 2} @click=${() => this._showResults()}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(2, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-false-consensus"></div>
 
-          <div class="reveal">
-            <div class="n" id="real-yes">${r ? r.realYesPct + '%' : '—'}</div>
-            <p>
-              <b>Реальная доля ответивших «да»</b> в вашей команде — именно с этим числом сейчас
-              сравним чужие прогнозы.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? `${r.realYesPct}%` : '—', valueId: 'real-yes', ...REVEAL_COPY.falseConsensus(r ? { realYesPct: r.realYesPct, yesAvg: r.yesAvg, noAvg: r.noAvg } : null) })}
 
           <div class="group-compare">
             <div class="g low">
               <div class="t">Средний прогноз у тех, кто сам сказал «да»</div>
-              <div class="v" id="yes-side-avg">${r && r.yesAvg !== null ? r.yesAvg + '%' : '—'}</div>
+              <div class="v" id="yes-side-avg">${r && r.yesAvg !== null ? `${r.yesAvg}%` : '—'}</div>
             </div>
             <div class="g high">
               <div class="t">Средний прогноз у тех, кто сам сказал «нет»</div>
-              <div class="v" id="no-side-avg">${r && r.noAvg !== null ? r.noAvg + '%' : '—'}</div>
+              <div class="v" id="no-side-avg">${r && r.noAvg !== null ? `${r.noAvg}%` : '—'}</div>
             </div>
           </div>
 
@@ -405,21 +390,22 @@ export class RetroGameFalseConsensus extends LitElement {
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-false-consensus"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(3)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект ложного консенсуса</h1>
           <p class="lede">
@@ -512,7 +498,21 @@ export class RetroGameFalseConsensus extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Ложный консенсус</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'false-consensus',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

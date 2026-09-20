@@ -8,11 +8,11 @@
 // screen's reset clears the draft. Also checks the fresh-game control
 // case (no banner when nothing was ever filled).
 
-const { Report, openPage, withBrowser } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome, exitToHome } = require('./lib');
 const { GAMES } = require('./games');
 
 async function draftKey(page, gameId) {
-  return page.evaluate((id) => sessionStorage.getItem('retro-draft-' + id), gameId);
+  return page.evaluate((id) => sessionStorage.getItem(`retro-draft-${id}`), gameId);
 }
 
 async function run() {
@@ -24,7 +24,7 @@ async function run() {
       const page = await openPage(browser, report);
       try {
         // --- control: never played -> no banner ---
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(100);
         const noBannerYet = await page.isVisible('.draft-banner').catch(() => false);
         report.check(`${game.name}: no banner on a never-played game`, !noBannerYet);
@@ -39,10 +39,10 @@ async function run() {
         report.check(`${game.name}: draft saved to sessionStorage`, !!savedBefore);
 
         await page.reload();
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(120);
         await page.reload(); // second reload — this is what used to corrupt the draft
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(150);
 
         const savedAfterDoubleReload = await draftKey(page, game.id);
@@ -65,31 +65,39 @@ async function run() {
         // plain in-page document.querySelectorAll, so this keeps working
         // once a game is a Shadow DOM Lit component (see
         // docs/modernization-plan.md Phase 2+).
+        //
+        // .screen.active is gone — every round is always in the DOM now
+        // (src/game-shell.js), not just one "active" one, and restoring a
+        // draft can land on any round depending on the game. Scoping to
+        // .round-body (every round, not just one) instead of trying to
+        // guess which round is "current" still answers the same
+        // question — did restoring actually repopulate something,
+        // anywhere — since every OTHER round's inputs stay empty either
+        // way.
         const hasFilledInput = await page
-          .$$eval('.screen.active input', (inputs) => inputs.some((i) => i.value !== ''))
+          .$$eval('.round-body input', (inputs) => inputs.some((i) => i.value !== ''))
           .catch(() => false);
         const onButtonCount = await page
-          .$$eval('.screen.active .toggle-pair button.on', (btns) => btns.length)
+          .$$eval('.round-body .toggle-pair button.on', (btns) => btns.length)
           .catch(() => 0);
         const restoredSomething = hasFilledInput || onButtonCount > 0;
         report.check(`${game.name}: restore repopulates the form`, restoredSomething);
 
         // --- discard path: fill again, reload, discard, confirm gone for good ---
-        await page.click('button:has-text("Все игры")');
-        await page.waitForTimeout(80);
-        await page.click(`text=${game.name}`);
+        await exitToHome(page);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(80);
         await game.toEntryScreen(page);
         await page.waitForTimeout(80);
         await game.fill(page, { count: 2 });
         await page.waitForTimeout(120);
         await page.reload();
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(120);
         await page.click('.draft-discard');
         await page.waitForTimeout(100);
         await page.reload();
-        await page.click(`text=${game.name}`);
+        await openGameFromHome(page, game.id);
         await page.waitForTimeout(120);
         const bannerAfterDiscard = await page.isVisible('.draft-banner').catch(() => false);
         report.check(`${game.name}: banner gone for good after discard`, !bannerAfterDiscard);

@@ -40,8 +40,8 @@ export const ChartTip = (() => {
 
   function position(clientX, clientY) {
     const tip = ensure();
-    tip.style.left = clientX + 'px';
-    tip.style.top = clientY + 'px';
+    tip.style.left = `${clientX}px`;
+    tip.style.top = `${clientY}px`;
   }
 
   function hide() {

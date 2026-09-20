@@ -1,87 +1,130 @@
 /* =========================================================
-   HOME VIEW
+   HOME VIEW — gamified map (branch `gme`)
 
-   Lit/Shadow DOM component (docs/modernization-plan.md Phase 4) —
-   `<retro-home>`, same pattern as every game (declarative html``
-   template + reactive state instead of the old imperative
-   innerHTML-string rebuilding). `renderHome()` stays exported as a
-   thin mount wrapper — every game's back-link handler and app.js's
-   boot call use it exactly like before, they don't need to know it's
-   a custom element underneath.
+   Replaces the old card-grid home screen with a D3-powered map where
+   every game is a free-drifting, spinning icon (see docs/
+   modernization-plan.md's "Гейм-карта" entry for the full rationale).
+   Same split as any pairs/groups game and roles.js: this file is the
+   Lit/Shadow DOM component (HUD chrome — masthead, floating
+   participants panel, floating filter toolbar, shuffle button, and the
+   agenda panel for whichever game is currently selected) declared with
+   reactive `html``` templates; all the D3/physics/camera work (motion,
+   the location buttons themselves, focus/unfocus/dive) lives in
+   map-render.js's createMap(), owned imperatively and only ever
+   touched from firstUpdated()/updated() below — Lit's own render()
+   must never re-render into #map-canvas, or it would fight the physics
+   loop for control of that DOM.
 
-   `state.filter`/`state.structureFilter` (state.js) are read/written
-   directly here, same as `state.participants` — NOT mirrored into
-   Lit reactive properties, and deliberately so: a `<retro-home>`
-   instance is destroyed and recreated every time a game's back-link
-   returns here (`renderHome()` always mounts a fresh element), so any
-   *component-local* reactive property would silently reset to its
-   default on every return trip. A facilitator who filtered to one
-   category, opened a game, and came back should still see that same
-   filter applied — this bit me once already (a first draft moved
-   filter/structureFilter into component-local state and
-   test/home.spec.js's "random game respects the active category
-   filter" check caught the regression: the filter appeared to work
-   per-click, but silently reset on every "← Все игры"). Every mutating
-   handler below calls `this.requestUpdate()` manually instead of
-   relying on Lit's property-change detection, exactly like the
-   participants add/remove handlers already did.
+   `renderHome()` stays the same exported thin mount wrapper every
+   game's back-link already calls — nothing about that contract
+   changed, so no other file needed to change its import.
+
+   `state.filter`/`state.structureFilter` are still read/written
+   directly on the shared `state` module (not mirrored into Lit
+   reactive properties) for the exact same reason as before: a
+   <retro-home> instance is destroyed and recreated every time a game's
+   back-link returns here, so component-local state would silently
+   reset. `selectedGame` (below) is the opposite case on purpose — it's
+   what's currently open in the agenda panel, which should NOT survive
+   a return trip from a game, so it's a plain Lit reactive property.
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { ICONS } from './icon-assets.js';
 import { ICON_CHEVRON_DOWN, ICON_SURPRISE, ICON_X } from './icons.js';
+import {
+  countForCategory as countCategory,
+  countForStructure as countStructure,
+  filterOptions,
+  filtersActive as filtersAreActive,
+  matchesFilters as matchesGame,
+} from './logic/filters.js';
+import { createMap, PALETTE } from './map-render.js';
 import { openGame } from './router.js';
 import { app, avatarHTML, CATEGORY, GAMES, STRUCTURE, state } from './state.js';
-import { sharedStyles } from './styles/shared-styles.js';
+import { mapStyles } from './styles/map-styles.js';
 import { showToast } from './toast.js';
 
-const CAT_FILTERS = [
-  { id: 'all', label: 'Все' },
-  ...Object.keys(CATEGORY).map((k) => ({ id: k, label: CATEGORY[k].label })),
-];
-const STRUCT_FILTERS = [
-  { id: 'all', label: 'Все' },
-  ...Object.keys(STRUCTURE).map((k) => ({ id: k, label: STRUCTURE[k].label })),
-];
+const CAT_FILTERS = filterOptions(CATEGORY);
+const STRUCT_FILTERS = filterOptions(STRUCTURE);
+
+// The current filter values, as the pure functions in logic/filters.js want them.
+const currentFilters = () => ({ category: state.filter, structure: state.structureFilter });
+const matchesFilters = (g) => matchesGame(g, currentFilters());
+const filtersActive = () => filtersAreActive(currentFilters());
+const countForCategory = (catId) => countCategory(GAMES, catId, currentFilters());
+const countForStructure = (structId) => countStructure(GAMES, structId, currentFilters());
 
 export class RetroHome extends LitElement {
-  static styles = sharedStyles;
+  static styles = mapStyles;
 
   static properties = {
-    openTeaserIds: { state: true },
+    rosterOpen: { state: true },
+    selectedGame: { state: true },
   };
 
   constructor() {
     super();
-    this.openTeaserIds = new Set();
+    // Collapsed by default — the roster already has everyone from last
+    // time (state.participants persists), so there's no first-load
+    // reason to spend a big chunk of the map's corner on it; also
+    // leaves more of the canvas clear of HUD chrome for the location
+    // layout to fit into without overlapping a card (see map-render.js's
+    // SAFE_INSET).
+    this.rosterOpen = false;
+    this.selectedGame = null;
+    this._mapController = null;
+  }
+
+  // D3 owns #map-canvas from here on — created once, never touched by
+  // Lit's own render() again. See this file's header comment.
+  firstUpdated() {
+    const canvas = this.renderRoot.getElementById('map-canvas');
+    this._mapController = createMap(canvas, {
+      onOpenGame: (id) => openGame(id),
+      onSelect: (g) => {
+        this.selectedGame = g;
+      },
+    });
+    this._mapController.updateHighlight(matchesFilters, filtersActive());
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._mapController?.destroy();
   }
 
   _setFilter(id) {
     state.filter = id;
+    this._mapController?.updateHighlight(matchesFilters, filtersActive());
     this.requestUpdate();
   }
 
   _setStructureFilter(id) {
     state.structureFilter = id;
+    this._mapController?.updateHighlight(matchesFilters, filtersActive());
     this.requestUpdate();
   }
 
-  _filteredGames() {
-    return GAMES.filter(
-      (g) =>
-        (state.filter === 'all' || g.category === state.filter) &&
-        (state.structureFilter === 'all' || g.structure === state.structureFilter),
-    );
-  }
-
+  // "Случайная игра": fly to a random (filtered, ready) game exactly
+  // like clicking it would — agenda panel and all — hold briefly, then
+  // dive in and start it via the exact same path the panel's own
+  // "Начать игру" button uses. See map-render.js's focusAndAutoStart().
   _pickRandomGame() {
-    const pool = this._filteredGames().filter((g) => g.ready);
+    const pool = GAMES.filter((g) => matchesFilters(g) && g.ready);
     if (!pool.length) {
       showToast('Нет доступных игр с такими фильтрами');
       return;
     }
     const g = pool[Math.floor(Math.random() * pool.length)];
-    openGame(g.id);
+    this._mapController?.focusAndAutoStart(g.id, 3000);
+  }
+
+  _closeAgenda() {
+    this._mapController?.unfocus();
+  }
+
+  _startSelectedGame() {
+    if (this.selectedGame) this._mapController?.startGame(this.selectedGame.id);
   }
 
   _addParticipant() {
@@ -105,154 +148,169 @@ export class RetroHome extends LitElement {
     this.requestUpdate();
   }
 
-  _toggleTeaser(id) {
-    const next = new Set(this.openTeaserIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    this.openTeaserIds = next;
+  _toggleRoster() {
+    this.rosterOpen = !this.rosterOpen;
   }
 
-  _openGame(g) {
-    if (g.ready) openGame(g.id);
-    else showToast(`«${g.name}» скоро добавим`);
-  }
-
-  _filterPills(options, active, onSelect) {
+  _filterPills(options, active, onSelect, countFn) {
     return options.map(
       (f) => html`
         <button
           class="filter-pill ${active === f.id ? 'active' : ''}"
           @click=${() => onSelect(f.id)}
         >
-          ${f.label}
+          ${f.label}<span class="filter-count">(${countFn(f.id)})</span>
         </button>
       `,
     );
   }
 
-  _gameCard(g, index) {
-    const cat = CATEGORY[g.category];
-    const teaserOpen = this.openTeaserIds.has(g.id);
+  // One persistent structure for both states (not two templates Lit
+  // swaps between) — a `.roster-body` that's always in the DOM but
+  // collapses via a `grid-template-rows: 0fr -> 1fr` transition (the
+  // standard CSS-only way to animate to/from an intrinsic height
+  // without JS measuring anything) is what makes the reveal an actual
+  // animation instead of an instant swap. The toggle header (count
+  // badge + chevron) stays visible in both states and is the only
+  // "collapse" control now — the old second "Свернуть" button inside
+  // the expanded body was redundant with it.
+  _rosterPanel() {
     return html`
-      <div
-        class="game-card ${g.ready ? '' : 'disabled'}"
-        style="--cat-color:${cat.color};--cat-bg:${cat.pillBg}"
-        @click=${() => this._openGame(g)}
-      >
-        <div class="top-row">
-          <img class="icon" src="${ICONS[g.icon]}" alt="" />
-          <div class="top-row-right">
-            <span class="year">№ ${String(index + 1).padStart(2, '0')}</span>
-            ${g.ready ? '' : html`<span class="status soon">Скоро</span>`}
-          </div>
-        </div>
-        <p class="name">${g.name}</p>
-        <button
-          type="button"
-          class="teaser-toggle"
-          @click=${(e) => {
-            e.stopPropagation();
-            this._toggleTeaser(g.id);
-          }}
-        >
-          <span class="toggle-label">${teaserOpen ? 'Скрыть' : 'Что это?'}</span>
-          <span class="chev">${unsafeHTML(ICON_CHEVRON_DOWN)}</span>
+      <div class="hud-card roster-panel ${this.rosterOpen ? 'open' : ''}">
+        <button type="button" class="roster-toggle" @click=${() => this._toggleRoster()}>
+          <span class="badge">${state.participants.length}</span>
+          <span class="roster-toggle-label">Участники</span>
+          <span class="roster-chevron">${unsafeHTML(ICON_CHEVRON_DOWN)}</span>
         </button>
-        <p class="teaser" ?hidden=${!teaserOpen}>${g.teaser}</p>
-        <div class="meta">
-          <span class="cat-tag">${cat.label}</span>
-          <span>·</span>
-          <span>${g.players}</span>
-          <span>·</span>
-          <span>${g.time}</span>
+        <div class="roster-body">
+          <div class="roster-body-inner">
+            <div class="panel-head">
+              <h2>Участники</h2>
+              <span class="count">${state.participants.length} человек</span>
+            </div>
+            <div class="chips">
+              ${state.participants.map(
+                (name, i) => html`
+                  <span class="chip">
+                    ${unsafeHTML(avatarHTML(name))}${name}
+                    <button
+                      class="chip-x"
+                      aria-label="Удалить ${name}"
+                      @click=${() => this._removeParticipant(i)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                `,
+              )}
+            </div>
+            <div class="add-row">
+              <input
+                type="text"
+                id="new-participant"
+                placeholder="Имя участника"
+                @keydown=${(e) => this._onNewParticipantKeydown(e)}
+              />
+              <button
+                class="primary"
+                id="add-participant-btn"
+                @click=${() => this._addParticipant()}
+              >
+                Добавить
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     `;
   }
 
-  render() {
-    const list = this._filteredGames();
-
+  // The full-detail card the camera's fly-to always lands next to —
+  // name, description, category/players/format/time, and the one
+  // button that actually starts the game (a plain click on the icon
+  // only selects/focuses it, see map-render.js).
+  _agendaPanel() {
+    const g = this.selectedGame;
+    if (!g) return '';
+    const cat = CATEGORY[g.category];
+    const palette = PALETTE[g.category];
     return html`
-      <div class="wrap">
-        <div class="masthead">
-          <h1>5 минут общего развития</h1>
-          <p class="lede">
-            Экономика и психология решений — в формате коротких командных игр. Инструкция, форма,
-            живой результат вашей команды, а потом — история и разбор эффекта.
-          </p>
-          <div class="masthead-rule">
-            <span class="colophon"><b>${GAMES.length}</b> экспериментов</span>
-            <span class="colophon">когнитивная психология · теория игр</span>
-            <span class="colophon">составлено для командных встреч</span>
+      <div class="hud-card agenda-panel" style="--loc-color:${palette.color}">
+        <button
+          type="button"
+          class="agenda-close"
+          aria-label="Закрыть"
+          @click=${() => this._closeAgenda()}
+        >
+          ${unsafeHTML(ICON_X)}
+        </button>
+        <span class="agenda-cat">${cat.label}</span>
+        <h3>${g.name}</h3>
+        <p>${g.teaser}</p>
+        <div class="agenda-meta">
+          <div>
+            <span class="agenda-meta-label">Участники</span>
+            <span class="agenda-meta-value">${g.players}</span>
+          </div>
+          <div>
+            <span class="agenda-meta-label">Формат</span>
+            <span class="agenda-meta-value">${STRUCTURE[g.structure].label}</span>
+          </div>
+          <div>
+            <span class="agenda-meta-label">Время</span>
+            <span class="agenda-meta-value">${g.time}</span>
           </div>
         </div>
+        <button type="button" class="agenda-start" @click=${() => this._startSelectedGame()}>
+          Начать игру
+        </button>
+      </div>
+    `;
+  }
 
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Участники</h2>
-            <span class="count">${state.participants.length} человек</span>
-          </div>
-          <div class="chips">
-            ${state.participants.map(
-              (name, i) => html`
-                <span class="chip">
-                  ${unsafeHTML(avatarHTML(name))}${name}
-                  <button
-                    class="chip-x"
-                    aria-label="Удалить ${name}"
-                    @click=${() => this._removeParticipant(i)}
-                  >
-                    ${unsafeHTML(ICON_X)}
-                  </button>
-                </span>
-              `,
-            )}
-          </div>
-          <div class="add-row">
-            <input
-              type="text"
-              id="new-participant"
-              placeholder="Имя участника"
-              @keydown=${(e) => this._onNewParticipantKeydown(e)}
-            />
-            <button class="primary" id="add-participant-btn" @click=${() => this._addParticipant()}>
-              Добавить
-            </button>
-          </div>
-        </div>
+  render() {
+    return html`
+      <div class="masthead">
+        <h1>5 минут общего развития</h1>
+        <p class="lede">Выберите локацию на карте — коротких командных экспериментов ${GAMES.length}.</p>
+      </div>
 
-        <div class="filter-group">
+      ${this._rosterPanel()}
+
+      <div class="hud-card filter-toolbar">
+        <div>
           <span class="filter-label">Категория</span>
           <div class="filters">
-            ${this._filterPills(CAT_FILTERS, state.filter, (id) => this._setFilter(id))}
+            ${this._filterPills(
+              CAT_FILTERS,
+              state.filter,
+              (id) => this._setFilter(id),
+              countForCategory,
+            )}
           </div>
         </div>
-
-        <div class="toolbar-row">
-          <div class="filter-group">
-            <span class="filter-label">Участники</span>
-            <div class="filters">
-              ${this._filterPills(STRUCT_FILTERS, state.structureFilter, (id) =>
-                this._setStructureFilter(id),
-              )}
-            </div>
+        <div>
+          <span class="filter-label">Участники</span>
+          <div class="filters">
+            ${this._filterPills(
+              STRUCT_FILTERS,
+              state.structureFilter,
+              (id) => this._setStructureFilter(id),
+              countForStructure,
+            )}
           </div>
-          <button class="shuffle-btn" id="random-game-btn" @click=${() => this._pickRandomGame()}>
-            ${unsafeHTML(ICON_SURPRISE)} Случайная игра
-          </button>
-        </div>
-
-        <div class="game-grid">
-          ${
-            list.length
-              ? list.map((g) => this._gameCard(g, GAMES.indexOf(g)))
-              : html`<p class="note" style="grid-column:1/-1;">
-                Нет игр с такими фильтрами — попробуйте сбросить один из них.
-              </p>`
-          }
         </div>
       </div>
+
+      <button class="shuffle-btn" id="random-game-btn" @click=${() => this._pickRandomGame()}>
+        ${unsafeHTML(ICON_SURPRISE)} Случайная игра
+      </button>
+
+      <div class="zoom-hint">Нажмите на иконку, чтобы узнать об игре и начать</div>
+
+      ${this._agendaPanel()}
+
+      <div id="map-canvas"></div>
     `;
   }
 }

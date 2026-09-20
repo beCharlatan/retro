@@ -18,41 +18,56 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
+import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
-import { ICON_CLIPBOARD, ICON_LEFT, ICON_PRINT, ICON_RIGHT, ICON_SHUFFLE } from '../icons.js';
+import {
+  ICON_CLIPBOARD,
+  ICON_DOWNLOAD,
+  ICON_LEFT,
+  ICON_RIGHT,
+  ICON_SHUFFLE,
+  ICON_TRIO,
+  ICON_X,
+} from '../icons.js';
+import {
+  buildDilemmaEntries,
+  countFilled,
+  hasEnough,
+  hasFields,
+  loadableDraft,
+  MIN_FILLED_PAIRS,
+  patchRow,
+} from '../logic/entries.js';
+import {
+  choiceLabel,
+  prisonersDilemmaPayoff,
+  prisonersDilemmaResults,
+  prisonersDilemmaRoundRows,
+} from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
-import { Print } from '../print.js';
+import { ReportExport } from '../report-export.js';
+import { REVEAL_COPY } from '../reveal-copy.js';
 import { Roles } from '../roles.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const TOTAL_SCREENS = 7;
-
-function payoff(choiceA, choiceB) {
-  if (choiceA === 'C' && choiceB === 'C') return [3, 3];
-  if (choiceA === 'D' && choiceB === 'D') return [1, 1];
-  if (choiceA === 'D' && choiceB === 'C') return [5, 0];
-  return [0, 5];
-}
-const label = (c) => (c === 'C' ? 'Сотрудничал' : 'Предал');
-
-function buildEntries(assignment) {
-  return assignment.pairs.map((p) => ({
-    a: p.a,
-    b: p.b,
-    trio: !!p.trio,
-    r1a: null,
-    r1b: null,
-    r2a: null,
-    r2b: null,
-  }));
-}
+const ROUND_TITLES = [
+  'Один партнёр, два хода',
+  'Кто с кем в паре',
+  'Впишите ход каждого в паре',
+  'Вот что выбрала каждая пара',
+  'Тот же партнёр — решайте заново',
+  'Что получилось у вашей команды',
+  'Дилемма заключённого',
+];
 
 export class RetroGamePrisonersDilemma extends LitElement {
   static styles = sharedStyles;
 
   static properties = {
-    screenIdx: { state: true },
     assignment: { state: true },
     entries: { state: true },
     draft: { state: true },
@@ -63,27 +78,25 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
   constructor() {
     super();
-    this.screenIdx = 0;
+    this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.assignment = Roles.makePairs(state.participants);
-    this.entries = buildEntries(this.assignment);
+    this.entries = buildDilemmaEntries(this.assignment);
     this.results = null;
     this.selectedSwap = null;
     this.shuffleSpin = false;
 
-    const loaded = Persist.load('prisoners-dilemma');
-    this.draft =
-      loaded && Array.isArray(loaded.payload.entries) && loaded.payload.assignment ? loaded : null;
-  }
-
-  goTo(idx) {
-    this.screenIdx = idx;
+    this.draft = loadableDraft(Persist.load('prisoners-dilemma'), {
+      key: 'entries',
+      requires: 'assignment',
+    });
   }
 
   _restoreDraft() {
-    this.assignment = this.draft.payload.assignment;
-    this.entries = this.draft.payload.entries;
-    this.draft = null;
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.assignment = this.draft.payload.assignment;
+      this.entries = this.draft.payload.entries;
+      this.draft = null;
+    });
   }
 
   _discardDraft() {
@@ -124,75 +137,52 @@ export class RetroGamePrisonersDilemma extends LitElement {
   }
 
   _lockPairs() {
-    this.entries = buildEntries(this.assignment);
-    this.goTo(2);
+    this.flow.advance(2, () => {
+      this.entries = buildDilemmaEntries(this.assignment);
+    });
   }
 
   _onToggle(idx, side, round, val) {
     const field = (round === 1 ? 'r1' : 'r2') + side;
-    this.entries = this.entries.map((e, i) => (i === idx ? { ...e, [field]: val } : e));
+    this.entries = patchRow(this.entries, idx, { [field]: val });
     Persist.save('prisoners-dilemma', { assignment: this.assignment, entries: this.entries });
   }
 
   _filledCount(round) {
     const fieldA = round === 1 ? 'r1a' : 'r2a';
     const fieldB = round === 1 ? 'r1b' : 'r2b';
-    return this.entries.filter((e) => e[fieldA] !== null && e[fieldB] !== null).length;
+    return countFilled(this.entries, hasFields(fieldA, fieldB));
   }
 
   _showRecap() {
-    this.goTo(3);
+    this.flow.advance(3);
   }
 
   _showResults() {
-    const filled = this.entries.filter(
-      (e) => e.r1a !== null && e.r1b !== null && e.r2a !== null && e.r2b !== null,
-    );
+    this.results = prisonersDilemmaResults(this.entries);
+    const { filled } = this.results;
 
-    const coopPct = (choices) =>
-      Math.round((choices.filter((c) => c === 'C').length / choices.length) * 100);
-    const coopR1 = coopPct(filled.flatMap((e) => [e.r1a, e.r1b]));
-    const coopR2 = coopPct(filled.flatMap((e) => [e.r2a, e.r2b]));
-    const delta = coopR2 - coopR1;
-
-    let echoes = 0,
-      totalResponses = 0;
-    filled.forEach((e) => {
-      if (e.r2a === e.r1b) echoes++;
-      totalResponses++;
-      if (e.r2b === e.r1a) echoes++;
-      totalResponses++;
-    });
-    const echoRate = Math.round((echoes / totalResponses) * 100);
-
-    const ccCount = filled.filter(
-      (e) => (e.r1a === 'C' && e.r1b === 'C') || (e.r2a === 'C' && e.r2b === 'C'),
-    ).length;
-
-    this.results = { filled, coopR1, coopR2, delta, echoRate, ccCount };
-
-    Print.mount(
-      'print-header-prisoners-dilemma',
+    ReportExport.register(
+      'prisoners-dilemma',
       {
-        title: 'Дилемма заключённого',
         subtitle: 'Рационально предать — но если встреча не последняя, правила меняются.',
-        meta: Print.meta(filled.length * 2, `${filled.length} пар · 2 раунда`),
+        meta: ReportExport.meta(filled.length * 2, `${filled.length} пар · 2 раунда`),
         explanation:
           'Рационально для каждого — предать, но если предадут оба, обоим будет хуже, чем при обоюдном сотрудничестве. Игру сформулировали Меррилл Флуд и Мелвин Дрешер в 1950 году в RAND Corporation; в компьютерных турнирах Роберта Аксельрода в начале 1980-х для повторяющейся версии игры победила простая отзывчивая стратегия «Око за око».',
       },
       this.renderRoot,
     );
-
-    this.goTo(5);
   }
 
-  _reset() {
+  async _reset() {
     this.assignment = Roles.makePairs(state.participants);
     this.selectedSwap = null;
-    this.entries = buildEntries(this.assignment);
+    this.entries = buildDilemmaEntries(this.assignment);
     this.results = null;
     Persist.clear('prisoners-dilemma');
-    this.goTo(0);
+    this.flow.reset();
+    await this.updateComplete;
+    this.flow.scrollTo(0);
   }
 
   _pairCard(p, i) {
@@ -200,7 +190,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
     const selectedB = this.selectedSwap?.i === i && this.selectedSwap?.side === 'b';
     return html`
       <div class="role-pair-card ${p.trio ? 'role-pair-trio' : ''}">
-        ${p.trio ? html`<span class="role-pair-trio-badge">🔺 трио</span>` : ''}
+        ${p.trio ? html`<span class="role-pair-trio-badge">${unsafeHTML(ICON_TRIO)} трио</span>` : ''}
         <div class="role-pair-side left">
           <button
             type="button"
@@ -232,7 +222,6 @@ export class RetroGamePrisonersDilemma extends LitElement {
       ${
         trio
           ? html`<div class="info-tip">
-            <span class="tip-icon">🔺</span>
             <span
               >Нечётное число участников — ${trio.join(', ')} играют трио по кругу вместо пары:
               каждый сыграет дважды, с двумя разными партнёрами, но зато без исключений.</span
@@ -240,7 +229,6 @@ export class RetroGamePrisonersDilemma extends LitElement {
           </div>`
           : observer
             ? html`<div class="info-tip">
-              <span class="tip-icon">🔺</span>
               <span
                 >${observer} — нечётное число участников, в этом раунде наблюдатель: ведёт
                 протокол или подыгрывает за отсутствующего.</span
@@ -256,7 +244,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
     const fieldB = round === 1 ? 'r1b' : 'r2b';
     return html`
       <div class="pair-entry-card wide ${e.trio ? 'role-pair-trio' : ''}">
-        ${e.trio ? html`<span class="role-pair-trio-badge">🔺 трио</span>` : ''}
+        ${e.trio ? html`<span class="role-pair-trio-badge">${unsafeHTML(ICON_TRIO)} трио</span>` : ''}
         <div class="pair-entry-name"><b>${unsafeHTML(avatarName(e.a))}</b></div>
         <div class="toggle-pair">
           <button
@@ -307,24 +295,15 @@ export class RetroGamePrisonersDilemma extends LitElement {
     const recapFilled = this.entries.filter((e) => e.r1a !== null && e.r1b !== null);
 
     return html`
-      <div class="wrap narrow">
-        <div class="game-crumb">
-          <button class="back-link" @click=${this._goHome}>${unsafeHTML(ICON_LEFT)} Все игры</button>
-          <span class="crumb-sep">/</span>
-          <span class="crumb-current">Дилемма заключённого</span>
-        </div>
-        <div class="progress">
-          ${Array.from(
-            { length: TOTAL_SCREENS },
-            (_, i) => html`
-              <div
-                class="dot ${i === this.screenIdx ? 'active' : ''} ${i < this.screenIdx ? 'done' : ''}"
-              ></div>
-            `,
-          )}
-        </div>
+      <div class="wrap-wide" style=${gameAccentStyle('prisoners-dilemma')}>
+        <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
+          ${unsafeHTML(ICON_X)}
+        </button>
 
-        <section class="screen ${this.screenIdx === 0 ? 'active' : ''}">
+        <div class="game-shell">
+          <div class="game-main">
+        <section class="${this.flow.roundClass(0)}" id="round-0">
+          <div class="round-body">
           <p class="eyebrow">Командное упражнение · 10 минут</p>
           <h1>Один партнёр, два хода</h1>
           <p class="lede">
@@ -387,11 +366,14 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
           <div class="nav-row">
             <span></span>
-            <button class="primary" @click=${() => this.goTo(1)}>Распределить пары ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(1)}>Распределить пары ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(0)}
         </section>
 
-        <section class="screen ${this.screenIdx === 1 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(1)}" id="round-1">
+          <div class="round-body">
           <p class="eyebrow">Распределение ролей</p>
           <h2>Кто с кем в паре</h2>
           <p class="lede">
@@ -408,12 +390,15 @@ export class RetroGamePrisonersDilemma extends LitElement {
           </button>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button class="primary" @click=${() => this._lockPairs()}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(1)}
         </section>
 
-        <section class="screen ${this.screenIdx === 2 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(2)}" id="round-2">
+          <div class="round-body">
           <p class="eyebrow">Раунд 1 из 2 · Вслепую</p>
           <h2>Впишите ход каждого в паре</h2>
           <p class="lede">
@@ -432,19 +417,22 @@ export class RetroGamePrisonersDilemma extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-1"
-              ?disabled=${filled1 < 1}
+              ?disabled=${!hasEnough(filled1, MIN_FILLED_PAIRS)}
               @click=${() => this._showRecap()}
             >
               Что получилось в раунде 1 ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(2)}
         </section>
 
-        <section class="screen ${this.screenIdx === 3 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(3)}" id="round-3">
+          <div class="round-body">
           <p class="eyebrow">Итог раунда 1</p>
           <h2>Вот что выбрала каждая пара</h2>
           <p class="lede">Прочитайте вслух — теперь каждый знает, что сделал его партнёр в первый раз.</p>
@@ -459,11 +447,11 @@ export class RetroGamePrisonersDilemma extends LitElement {
             </thead>
             <tbody id="recap-tbody">
               ${recapFilled.map((e) => {
-                const pts = payoff(e.r1a, e.r1b);
+                const pts = prisonersDilemmaPayoff(e.r1a, e.r1b);
                 return html`
                   <tr>
                     <td class="name">${unsafeHTML(avatarName(e.a))} ↔ ${unsafeHTML(avatarName(e.b))}</td>
-                    <td>${label(e.r1a)} / ${label(e.r1b)}</td>
+                    <td>${choiceLabel(e.r1a)} / ${choiceLabel(e.r1b)}</td>
                     <td>${pts[0]} / ${pts[1]}</td>
                   </tr>
                 `;
@@ -474,12 +462,15 @@ export class RetroGamePrisonersDilemma extends LitElement {
           <p class="note">Раунд 2 — с тем же партнёром. Решайте заново, уже зная, как он повёл себя в первый раз.</p>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(4)}>Раунд 2 ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(4)}>Раунд 2 ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(3)}
         </section>
 
-        <section class="screen ${this.screenIdx === 4 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(4)}" id="round-4">
+          <div class="round-body">
           <p class="eyebrow">Раунд 2 из 2 · Уже зная итог раунда 1</p>
           <h2>Тот же партнёр — решайте заново</h2>
           <p class="lede">Что выбрал каждый теперь, зная, как повёл себя партнёр в первый раз.</p>
@@ -496,49 +487,45 @@ export class RetroGamePrisonersDilemma extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
               id="next-btn-2"
-              ?disabled=${filled2 < 1}
-              @click=${() => this._showResults()}
+              ?disabled=${!hasEnough(filled2, MIN_FILLED_PAIRS)}
+              @click=${() => this.flow.advance(5, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
+          </div>
+          ${this.flow.lock(4)}
         </section>
 
-        <section class="screen ${this.screenIdx === 5 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(5)}" id="round-5">
+          <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
-          <div class="print-header" id="print-header-prisoners-dilemma"></div>
 
-          <div class="reveal">
-            <div class="n">${r ? (r.delta >= 0 ? '+' : '') + r.delta + ' п.п.' : '—'}</div>
-            <p>
-              <b>Насколько изменилась доля «Сотрудничать»</b> между раундами — раунд 2 минус
-              раунд 1, в процентных пунктах.
-            </p>
-          </div>
+          ${renderReveal({ value: r ? `${(r.delta >= 0 ? '+' : '') + r.delta} п.п.` : '—', ...REVEAL_COPY.prisonersDilemma(r ? { coopR1: r.coopR1, coopR2: r.coopR2, delta: r.delta, echoRate: r.echoRate } : null) })}
 
           <div class="group-compare">
             <div class="g low">
               <div class="t">Раунд 1 · доля сотрудничества</div>
-              <div class="v">${r ? r.coopR1 + '%' : '—'}</div>
+              <div class="v">${r ? `${r.coopR1}%` : '—'}</div>
             </div>
             <div class="g high">
               <div class="t">Раунд 2 · доля сотрудничества</div>
-              <div class="v">${r ? r.coopR2 + '%' : '—'}</div>
+              <div class="v">${r ? `${r.coopR2}%` : '—'}</div>
             </div>
           </div>
 
           <div class="stat-row">
             <div class="stat">
-              <div class="n">${r ? r.echoRate + '%' : '—'}</div>
+              <div class="n">${r ? `${r.echoRate}%` : '—'}</div>
               <div class="lab">ходов во втором раунде повторили ход партнёра в первом («как эхо»)</div>
             </div>
             <div class="stat">
-              <div class="n">${r ? r.ccCount + ' из ' + r.filled.length : '—'}</div>
+              <div class="n">${r ? `${r.ccCount} из ${r.filled.length}` : '—'}</div>
               <div class="lab">пар с обоюдным сотрудничеством хотя бы в одном раунде</div>
             </div>
           </div>
@@ -555,48 +542,37 @@ export class RetroGamePrisonersDilemma extends LitElement {
             <tbody id="results-tbody">
               ${
                 r
-                  ? r.filled.flatMap((e) => {
-                      const p1 = payoff(e.r1a, e.r1b);
-                      const p2 = payoff(e.r2a, e.r2b);
-                      return [
-                        html`
-                        <tr>
-                          <td>1</td>
-                          <td class="name">${unsafeHTML(avatarName(e.a))} ↔ ${unsafeHTML(avatarName(e.b))}</td>
-                          <td>${label(e.r1a)} / ${label(e.r1b)}</td>
-                          <td>${p1[0]} / ${p1[1]}</td>
-                        </tr>
-                      `,
-                        html`
-                        <tr>
-                          <td>2</td>
-                          <td class="name">${unsafeHTML(avatarName(e.a))} ↔ ${unsafeHTML(avatarName(e.b))}</td>
-                          <td>${label(e.r2a)} / ${label(e.r2b)}</td>
-                          <td>${p2[0]} / ${p2[1]}</td>
-                        </tr>
-                      `,
-                      ];
-                    })
+                  ? prisonersDilemmaRoundRows(r.filled).map(
+                      (row) => html`
+                      <tr>
+                        <td>${row.round}</td>
+                        <td class="name">${unsafeHTML(avatarName(row.a))} ↔ ${unsafeHTML(avatarName(row.b))}</td>
+                        <td>${choiceLabel(row.choiceA)} / ${choiceLabel(row.choiceB)}</td>
+                        <td>${row.pointsA} / ${row.pointsB}</td>
+                      </tr>
+                    `,
+                    )
                   : ''
               }
             </tbody>
           </table>
 
-          <div class="print-footer" id="print-footer-prisoners-dilemma"></div>
-
-          <div class="pdf-row">
-            <button class="ghost" id="pdf-btn" @click=${() => Print.run()}>
-              ${unsafeHTML(ICON_PRINT)} Сохранить / отправить PDF
+          <div class="export-row">
+            <button class="ghost" id="export-btn" @click=${(e) => ReportExport.download(e.currentTarget)}>
+              ${unsafeHTML(ICON_DOWNLOAD)} Сохранить результаты
             </button>
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.goTo(4)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.goTo(6)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(4)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(6)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
+          </div>
+          ${this.flow.lock(5)}
         </section>
 
-        <section class="screen ${this.screenIdx === 6 ? 'active' : ''}">
+        <section class="${this.flow.roundClass(6)}" id="round-6">
+          <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Дилемма заключённого</h1>
           <p class="lede">
@@ -683,7 +659,21 @@ export class RetroGamePrisonersDilemma extends LitElement {
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
+          </div>
+          ${this.flow.lock(6)}
         </section>
+          </div>
+
+          <aside class="game-rail">
+            <div class="game-rail-title">Дилемма заключённого</div>
+            ${renderTrail({
+              current: this.flow.activeRound,
+              total: TOTAL_SCREENS,
+              gameId: 'prisoners-dilemma',
+              stepLabels: ROUND_TITLES,
+            })}
+          </aside>
+        </div>
       </div>
     `;
   }

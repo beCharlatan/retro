@@ -29,7 +29,7 @@ try {
 
   fs.copyFileSync(src, dest);
   fs.chmodSync(dest, 0o755);
-  console.log('install-hooks: pre-push hook installed -> ' + dest);
+  console.log(`install-hooks: pre-push hook installed -> ${dest}`);
 } catch {
   console.log('install-hooks: skipped (not inside a git repository)');
 }
