@@ -7,10 +7,17 @@
    its original plain ids, same reasoning as crowd-wisdom's header
    comment.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawSwarm } from '../charts/swarm.js';
+import CONTENT from '../content/false-consensus.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
-import { confirmExit, renderReveal } from '../game-shell.js';
+import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
 import {
@@ -30,6 +37,7 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
+import { escapeHtml } from '../logic/format.js';
 import { falseConsensusResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -39,6 +47,7 @@ import { sharedStyles } from '../styles/shared-styles.js';
 
 const DEFAULT_QUESTION =
   'Готовы ли вы прямо сейчас, без подготовки, провести 5-минутную презентацию перед всей командой?';
+const ENTRY_TIMER_SECONDS = 30;
 const TOTAL_SCREENS = 4;
 const ROUND_TITLES = [
   'Один вопрос про вас — и про всех остальных',
@@ -64,6 +73,15 @@ export class RetroGameFalseConsensus extends LitElement {
     super();
     this.names = state.participants.slice();
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
+    this.charts = new ChartController(this, [
+      {
+        id: 'fc-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
+    // A 30s countdown for collecting everyone's answers (visual only).
+    this.timer = new AnswerTimerController(this, ENTRY_TIMER_SECONDS);
     this.data = this._blankData();
     this.results = null;
     this.question = DEFAULT_QUESTION;
@@ -169,9 +187,43 @@ export class RetroGameFalseConsensus extends LitElement {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('false-consensus');
+    this.timer.reset();
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
+  }
+
+  // Everyone's forecast of "% of the team that says yes", split by what they said
+  // themselves — with the REAL share as a reference line. If each side's cloud sits
+  // around its own answer instead of around the line, that's the false consensus.
+  _drawChart(svg, theme) {
+    const { filled, realYesPct } = this.results;
+    const lane = (label, color, own) => ({
+      label,
+      color,
+      domain: [0, 100],
+      ticks: [0, 25, 50, 75, 100],
+      format: (v) => `${v}%`,
+      refs: [{ value: realYesPct, label: `на самом деле «да»: ${realYesPct}%`, color: theme.gold }],
+      points: filled
+        .filter((d) => d.own === own)
+        .map((d) => ({
+          id: d.name,
+          value: d.estimate,
+          tip: tipHtml(escapeHtml(d.name), [
+            ['Свой ответ', own === 'yes' ? 'Да' : 'Нет'],
+            ['Ждал(а) «да»', `${d.estimate}%`],
+            ['Ошибка', `${d.estimate - realYesPct >= 0 ? '+' : ''}${d.estimate - realYesPct} п.п.`],
+          ]),
+        })),
+    });
+    drawSwarm(svg, {
+      lanes: [
+        lane('Сказали «да» — ждали «да» у…', theme.accent, 'yes'),
+        lane('Сказали «нет» — ждали «да» у…', theme.red, 'no'),
+      ],
+      theme,
+    });
   }
 
   _entryRow(row, idx) {
@@ -201,6 +253,7 @@ export class RetroGameFalseConsensus extends LitElement {
           min="0"
           max="100"
           inputmode="numeric"
+          aria-label="${row.name}: прогноз доли «да», %"
           placeholder="0–100"
           .value=${row.estimate ?? ''}
           @input=${(e) => this._onEstimateInput(e, idx)}
@@ -252,29 +305,9 @@ export class RetroGameFalseConsensus extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Задайте вопрос вслух</b>
-                <span id="fc-question-text">«${this.question}» Каждый отвечает про себя: да или нет.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Каждый оценивает команду</b>
-                <span
-                  >Теперь — какой процент всей команды, по-вашему, тоже ответит «да»? Число от 0
-                  до 100.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps, { question: this.question })}
 
-          <p class="note">
-            Отвечайте на первый вопрос до того, как думать над вторым — не пересчитывайте назад.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="custom-q-toggle-row">
             <button type="button" class="secondary" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
@@ -321,6 +354,13 @@ export class RetroGameFalseConsensus extends LitElement {
           <h2>Впишите ответы каждого участника</h2>
           <p class="lede">Свой ответ (да/нет) и оценку, какой % команды тоже скажет «да».</p>
 
+          ${renderAnswerTimer(this.timer, {
+            compact: true,
+            defaultDuration: ENTRY_TIMER_SECONDS,
+            onDurationChange: (seconds) => this.timer.setDuration(seconds),
+            runningLabel: 'на ответы',
+          })}
+
           <div class="entry-head toggle-col">
             <div>Участник</div>
             <div>Свой ответ</div>
@@ -337,7 +377,11 @@ export class RetroGameFalseConsensus extends LitElement {
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(2, () => this._showResults())}>
+            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() =>
+              this.flow.advance(2, () => {
+                this.timer.reset();
+                this._showResults();
+              })}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
@@ -364,6 +408,12 @@ export class RetroGameFalseConsensus extends LitElement {
           </div>
 
           <p id="fc-compare-text">${r ? r.compareText : ''}</p>
+
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Кого сколько ждали «да» — по ответам</div>
+            <svg id="fc-chart" class="d3-chart-svg" role="img" aria-label="Прогнозы доли «да» у тех, кто ответил «да», и у тех, кто ответил «нет»"></svg>
+            <p class="d3-chart-cap">Точка — прогноз одного человека. Золотая линия — реальная доля «да» в команде. Если каждая сторона сгруппировалась вокруг собственного ответа, а не вокруг линии, — это и есть ложный консенсус.</p>
+          </div>
 
           <table class="results-table" id="results-table">
             <thead>
@@ -408,91 +458,12 @@ export class RetroGameFalseConsensus extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект ложного консенсуса</h1>
-          <p class="lede">
-            Мы систематически переоцениваем, насколько остальные разделяют наше собственное
-            мнение или поведение.
-          </p>
-
-          <p>
-            В 1977 году психологи Ли Росс, Дэвид Грин и Памела Хаус провели серию опытов в
-            Стэнфорде. В одном из них студентам предлагали (по желанию) походить по кампусу с
-            рекламным щитом «Ешьте в Joe's» — и заранее спрашивали, какой процент других
-            студентов, по их мнению, тоже на это согласится.
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">~62%</div>
-              <div class="lab">ожидаемая согласившимися доля студентов, которые тоже согласятся</div>
-            </div>
-            <div class="stat">
-              <div class="n">~33%</div>
-              <div class="lab">ожидаемая отказавшимися доля студентов, которые согласятся</div>
-            </div>
-          </div>
-
-          <p>
-            Обе группы студентов были уверены, что большинство поступит так же, как они сами —
-            просто в разные стороны. Работа опубликована как Ross L., Greene D., House P. (1977).
-            The False Consensus Effect: An Egocentric Bias in Social Perception and Attribution
-            Processes. <i>Journal of Experimental Social Psychology</i>.
-          </p>
-
-          <p>
-            <b>Откуда берётся искажение.</b> Когда мы прогнозируем чужое мнение, у нас нет доступа
-            к головам других людей — единственная реальная точка отсчёта, которая есть под рукой,
-            это наше собственное мнение. Мозг использует его как черновой шаблон: «раз я так
-            думаю, и мои причины кажутся мне разумными, то и другие, скорее всего, придут к тому
-            же выводу». Это быстрый и в целом полезный способ прогноза — в большинстве повседневных
-            ситуаций люди вокруг нас действительно часто думают похоже. Проблема в том, что мозг
-            не делает скидку на то, что сам является участником оценки: собственная позиция
-            используется не как один из голосов, а как эталон, вокруг которого мысленно строится
-            вся остальная популяция.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Отчасти это не иллюзия, а реальность локального пузыря</b
-            ><span
-              >Мы дружим и работаем с похожими на себя людьми — поэтому в нашем непосредственном
-              окружении консенсус вокруг нашего мнения зачастую и правда выше среднего по
-              популяции, что делает искажение ещё труднее заметить.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Эффект усиливается для морально окрашенных вопросов</b
-            ><span
-              >Чем сильнее мы уверены, что наша позиция «единственно правильная», тем выше мы
-              склонны переоценивать долю согласных с нами — эффект слабее для нейтральных
-              фактических вопросов.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Работает и в обратную сторону — для меньшинств</b
-            ><span
-              >Люди с редкими привычками или взглядами иногда, наоборот, недооценивают, сколько
-              единомышленников у них есть — потому что молчаливое большинство вокруг создаёт
-              впечатление, что «таких, как я, почти нет».</span
-            >
-          </div>
-          <div class="fact">
-            <b>Соцсети усиливают эффект</b
-            ><span
-              >Алгоритмические ленты показывают нам контент, похожий на то, что мы уже
-              поддерживаем — из-за этого ощущение «все согласны со мной» может расти даже без
-              реального роста согласия в обществе.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Прямое приложение к работе</b
-            ><span
-              >«Всем же очевидно, что нужно делать именно так» — одна из самых частых форм
-              ложного консенсуса в рабочих спорах; стоит явно спросить мнение команды, а не
-              полагаться на ощущение всеобщего согласия.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

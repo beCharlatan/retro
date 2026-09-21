@@ -41,46 +41,111 @@
        an in-progress attempt's draft gets cleared on exit, see
        _goHome()).
 ========================================================= */
+
 import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
-import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
+import CONTENT from '../content/framing.json';
+import { renderContext, renderNote, renderSteps } from '../content.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
-import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
+import { RoundTimers } from '../controllers/round-timers.js';
+import { SpoilerController } from '../controllers/spoiler-controller.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
 import {
   ICON_CLIPBOARD,
-  ICON_COPY,
   ICON_DOWNLOAD,
-  ICON_HIDE,
   ICON_LEFT,
   ICON_RIGHT,
-  ICON_SHOW,
   ICON_SHUFFLE,
   ICON_X,
 } from '../icons.js';
-import {
-  buildFramingEntries,
-  countFilled,
-  hasEnough,
-  hasFields,
-  loadableDraft,
-  patchRow,
-} from '../logic/entries.js';
-import { framingResults } from '../logic/results.js';
+import { buildFramingEntries, loadableDraft, patchItem } from '../logic/entries.js';
+import { framingFrame, framingReady, framingResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
 import { REVEAL_COPY } from '../reveal-copy.js';
 import { Roles } from '../roles.js';
+import { renderSpoilerCard } from '../spoiler-card.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
-import { copyToClipboard } from '../toast.js';
 
-const TOTAL_SCREENS = 6;
 const GROUP_LABEL = { A: 'А', B: 'Б' };
-const ANSWER_TIMER_SECONDS = 120;
+const FRAME_LABEL = { gain: 'выигрыш', loss: 'потеря' };
+const ANSWER_TIMER_SECONDS = 40;
+
+// The two scenarios. Each one has the SAME choice in two wordings —
+// a gain frame ("saved / fixed") and a loss frame ("die / missed") with
+// identical expected outcomes (a sure third vs a 1/3 gamble). In scenario 1
+// group A hears the gain wording and B the loss one; in scenario 2 they swap
+// (framingFrame() in logic/results.js), so everyone meets both wordings.
+//   lines   the plain text sent to a group (copied to the clipboard)
+//   shown   the same, typeset for the on-screen spoiler card
+const SCENARIOS = [
+  {
+    name: 'Проект',
+    title: 'Сценарий 1 · Проект на 600 человек',
+    optionWord: 'Программа',
+    intro: 'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.',
+    question: 'Какую программу вы выбираете?',
+    gain: {
+      lines: [
+        'Программа 1 — спасено ровно 200 человек.',
+        'Программа 2 — с вероятностью 1/3 спасены все 600, с вероятностью 2/3 не спасён никто.',
+      ],
+      shown: [
+        'Программа 1 — «спасено ровно 200 человек».',
+        'Программа 2 — «с вероятностью ⅓ спасены все 600, с вероятностью ⅔ не спасён никто».',
+      ],
+    },
+    loss: {
+      lines: [
+        'Программа 1 — умрёт ровно 400 человек.',
+        'Программа 2 — с вероятностью 1/3 никто не умрёт, с вероятностью 2/3 умрут все 600.',
+      ],
+      shown: [
+        'Программа 1 — «умрёт ровно 400 человек».',
+        'Программа 2 — «с вероятностью ⅓ никто не умрёт, с вероятностью ⅔ умрут все 600».',
+      ],
+    },
+  },
+  {
+    name: 'Релиз',
+    title: 'Сценарий 2 · Релиз и баги',
+    optionWord: 'Стратегия',
+    intro:
+      'Через два дня релиз, а в продукте найдено 30 критичных багов. Исправить всё до дедлайна невозможно — есть две стратегии.',
+    question: 'Какую стратегию вы выбираете?',
+    gain: {
+      lines: [
+        'Стратегия 1 — гарантированно исправим ровно 10 багов.',
+        'Стратегия 2 — с вероятностью 1/3 исправим все 30 багов, с вероятностью 2/3 не исправим ни одного.',
+      ],
+      shown: [
+        'Стратегия 1 — «гарантированно исправим ровно 10 багов».',
+        'Стратегия 2 — «с вероятностью ⅓ исправим все 30, с вероятностью ⅔ не исправим ни одного».',
+      ],
+    },
+    loss: {
+      lines: [
+        'Стратегия 1 — гарантированно пропустим в релиз ровно 20 багов.',
+        'Стратегия 2 — с вероятностью 1/3 не пропустим ни одного бага, с вероятностью 2/3 пропустим все 30.',
+      ],
+      shown: [
+        'Стратегия 1 — «гарантированно пропустим в релиз ровно 20 багов».',
+        'Стратегия 2 — «с вероятностью ⅓ не пропустим ни одного, с вероятностью ⅔ пропустим все 30».',
+      ],
+    },
+  },
+];
+const ROUND_COUNT = SCENARIOS.length;
+const FIRST_SCENARIO_ROUND = 2;
+const ENTRY_ROUND = FIRST_SCENARIO_ROUND + ROUND_COUNT; // 4
+const RESULTS_ROUND = ENTRY_ROUND + 1; // 5
+const CONTEXT_ROUND = RESULTS_ROUND + 1; // 6
+const TOTAL_SCREENS = CONTEXT_ROUND + 1;
 
 // One title per round, in order — the ONLY thing a not-yet-reached
 // round shows (see .round-lock in render()): the rest of that
@@ -92,27 +157,21 @@ const ANSWER_TIMER_SECONDS = 120;
 const ROUND_TITLES = [
   'Один выбор, две формулировки',
   'Кто в какой группе',
-  'Текст для каждой группы — по отдельности',
+  ...SCENARIOS.map((sc) => sc.title),
   'Впишите выбор каждого участника',
   'Что получилось у вашей команды',
   'Эффект фрейминга',
 ];
 
-// Spoiler + copy-to-clipboard for each group's scenario text, so the
-// facilitator can send the right wording privately instead of
-// reading both aloud off a shared screen.
-const SCENARIO_TEXT = {
-  a:
-    'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
-    'Программа 1 — спасено ровно 200 человек.\n' +
-    'Программа 2 — с вероятностью 1/3 спасены все 600, с вероятностью 2/3 не спасён никто.\n\n' +
-    'Какую программу вы выбираете?',
-  b:
-    'Готовится проект, в котором участвуют 600 человек. Есть две программы действий.\n\n' +
-    'Программа 1 — умрёт ровно 400 человек.\n' +
-    'Программа 2 — с вероятностью 1/3 никто не умрёт, с вероятностью 2/3 умрут все 600.\n\n' +
-    'Какую программу вы выбираете?',
+// Plain text of the scenario as one group hears it (what gets copied).
+const scenarioText = (round, group) => {
+  const sc = SCENARIOS[round];
+  return `${sc.intro}\n\n${sc[framingFrame(group, round)].lines.join('\n')}\n\n${sc.question}`;
 };
+
+// Spoiler-card keys: 'a'/'b' for scenario 1 (the original ids, kept as they
+// were), 'a2'/'b2' for scenario 2.
+const cardKey = (group, round) => `${group.toLowerCase()}${round === 0 ? '' : round + 1}`;
 
 export class RetroGameFraming extends LitElement {
   static styles = sharedStyles;
@@ -124,7 +183,6 @@ export class RetroGameFraming extends LitElement {
     results: { state: true },
     selectedSwapName: { state: true },
     shuffleSpin: { state: true },
-    textHidden: { state: true },
   };
 
   constructor() {
@@ -135,23 +193,33 @@ export class RetroGameFraming extends LitElement {
     this.results = null;
     this.selectedSwapName = null;
     this.shuffleSpin = false;
-    this.textHidden = { a: true, b: true };
-    this.timer = new AnswerTimerController(this, ANSWER_TIMER_SECONDS);
+    this.spoilers = new SpoilerController(this, this._spoilerKeys());
+    // One timer, live for one scenario at a time; each scenario keeps its own length.
+    this.timers = new RoundTimers(this, { seconds: ANSWER_TIMER_SECONDS, count: SCENARIOS.length });
 
     this.draft = loadableDraft(Persist.load('framing'), {
       key: 'entries',
       length: state.participants.length,
+      // drafts of the single-scenario version stored one `choice`, not `choices[]`
+      rowCheck: (row) => Array.isArray(row.choices) && row.choices.length === ROUND_COUNT,
     });
+  }
+
+  // Every spoiler text starts hidden: 'a'/'b' (scenario 1), 'a2'/'b2' (scenario 2).
+  _spoilerKeys() {
+    return SCENARIOS.flatMap((_, round) => [cardKey('A', round), cardKey('B', round)]);
   }
 
   updated() {
     if (this.results) {
-      this._drawAnswerChart(this.results.filled);
+      this.results.perRound.forEach((_, round) => {
+        this._drawRoundChart(round);
+      });
     }
   }
 
   _restoreDraft() {
-    this.flow.advance(3, () => {
+    this.flow.advance(ENTRY_ROUND, () => {
       this.groups = this.draft.payload.groups;
       this.entries = this.draft.payload.entries;
       this.draft = null;
@@ -192,33 +260,36 @@ export class RetroGameFraming extends LitElement {
     this.groups = { ...this.groups };
   }
 
-  _toggleText(key) {
-    this.textHidden = { ...this.textHidden, [key]: !this.textHidden[key] };
-  }
-
-  _copyText(key, e) {
-    copyToClipboard(SCENARIO_TEXT[key], e.currentTarget);
-  }
-
   // Matches the legacy behaviour exactly: pressing "Вносить данные →"
   // always (re)builds fresh blank entries for the current groups —
   // see docs/modernization-plan.md / this file's git history if that
   // ever needs revisiting; preserved as-is here, not a new choice.
   _enterData() {
-    this.entries = buildFramingEntries(this.groups);
+    this.entries = buildFramingEntries(this.groups, ROUND_COUNT);
   }
 
-  _onToggleChoice(idx, val) {
-    this.entries = patchRow(this.entries, idx, { choice: val });
+  _onToggleChoice(idx, round, val) {
+    this.entries = patchItem(this.entries, idx, 'choices', round, val);
     Persist.save('framing', { groups: this.groups, entries: this.entries });
   }
 
-  _filledCount() {
-    return countFilled(this.entries, hasFields('choice'));
+  // How many people answered every scenario.
+  _completeCount() {
+    return this.entries.filter((e) => e.choices.every((c) => c !== null)).length;
+  }
+
+  _nextFromScenario(round) {
+    this.timers.reset();
+    // Reaching the entry screen builds it fresh, like the single-scenario version did.
+    const isLast = round === ROUND_COUNT - 1;
+    this.flow.advance(
+      FIRST_SCENARIO_ROUND + round + 1,
+      isLast ? () => this._enterData() : undefined,
+    );
   }
 
   _showResults() {
-    this.results = framingResults(this.entries);
+    this.results = framingResults(this.entries, ROUND_COUNT);
     const { filled } = this.results;
 
     ReportExport.register(
@@ -226,9 +297,9 @@ export class RetroGameFraming extends LitElement {
       {
         subtitle:
           'Один и тот же выбор выглядит разумным или рискованным — в зависимости от формулировки.',
-        meta: ReportExport.meta(filled.length),
+        meta: ReportExport.meta(filled.length, '2 сценария: проект и релиз'),
         explanation:
-          'Одна и та же по сути информация, поданная как выигрыш или как потеря, приводит к разным решениям — хотя математически варианты идентичны. Классический эксперимент — Tversky, Kahneman (1981), легший в основу теории перспектив, за которую Канеман получил Нобелевскую премию по экономике в 2002 году.',
+          'Одна и та же по сути информация, поданная как выигрыш или как потеря, приводит к разным решениям — хотя математически варианты идентичны. Классический эксперимент — Tversky, Kahneman (1981), легший в основу теории перспектив, за которую Канеман получил Нобелевскую премию по экономике в 2002 году. Второй сценарий — та же логика на рабочей ситуации: сколько багов пропустить до дедлайна.',
       },
       this.renderRoot,
     );
@@ -243,11 +314,13 @@ export class RetroGameFraming extends LitElement {
   // per dot) is the same "give it some game-like personality" move as
   // the chunky buttons elsewhere, just applied to a chart instead of a
   // button.
-  _drawAnswerChart(filled) {
-    const svg = this.renderRoot.getElementById('framing-chart');
+  _drawRoundChart(round) {
+    const svg = this.renderRoot.getElementById(`framing-chart-${round}`);
     if (!svg) return;
     svg.innerHTML = '';
+    const filled = this.results.perRound[round].points;
     if (!filled.length) return;
+    const optionWord = SCENARIOS[round].optionWord;
 
     const wrap = this.renderRoot.querySelector('.wrap-wide');
     const cs = getComputedStyle(wrap);
@@ -286,7 +359,7 @@ export class RetroGameFraming extends LitElement {
         .style('fill', 'var(--ink-faint)')
         .style('text-transform', 'uppercase')
         .style('letter-spacing', '0.04em')
-        .text(`Программа ${choice}`);
+        .text(`${optionWord} ${choice}`);
     });
 
     root
@@ -315,7 +388,7 @@ export class RetroGameFraming extends LitElement {
         .style('font-size', '13px')
         .style('font-weight', 700)
         .style('fill', COLOR[gKey])
-        .text(`Группа ${GROUP_LABEL[gKey]}`);
+        .text(`Группа ${GROUP_LABEL[gKey]} · ${FRAME_LABEL[framingFrame(gKey, round)]}`);
     });
 
     const buckets = new Map();
@@ -391,7 +464,7 @@ export class RetroGameFraming extends LitElement {
       ChartTip.attach(
         hit,
         () =>
-          `<b>${p.name}</b><span class="tip-row"><span>Группа</span><span>${GROUP_LABEL[p.group]}</span></span><span class="tip-row"><span>Выбор</span><span>Программа ${p.choice}</span></span>`,
+          `<b>${p.name}</b><span class="tip-row"><span>Группа</span><span>${GROUP_LABEL[p.group]}</span></span><span class="tip-row"><span>Формулировка</span><span>${FRAME_LABEL[p.frame]}</span></span><span class="tip-row"><span>Выбор</span><span>${optionWord} ${p.choice}</span></span>`,
       );
       hit.addEventListener('mouseenter', () => {
         d3.select(dotNodes[i])
@@ -409,8 +482,8 @@ export class RetroGameFraming extends LitElement {
     this.selectedSwapName = null;
     this.entries = buildFramingEntries(this.groups);
     this.results = null;
-    this.textHidden = { a: true, b: true };
-    this.timer.reset();
+    this.spoilers.hideAll();
+    this.timers.resetAll();
     Persist.clear('framing');
     this.flow.reset();
     await this.updateComplete;
@@ -447,52 +520,61 @@ export class RetroGameFraming extends LitElement {
     `;
   }
 
-  _spoilerCard(key, groupLabel, borderColor, members) {
-    const hidden = this.textHidden[key];
-    return html`
-      <div class="quote-card spoiler-card" style=${borderColor ? `border-left-color:${borderColor};` : ''}>
-        <div class="spoiler-head">
-          <b>Группа ${groupLabel}</b>
-          <div class="spoiler-actions">
-            <button
-              type="button"
-              class="ghost spoiler-toggle"
-              id="toggle-${key}"
-              @click=${() => this._toggleText(key)}
-            >
-              ${hidden ? html`${unsafeHTML(ICON_SHOW)} Показать` : html`${unsafeHTML(ICON_HIDE)} Скрыть`}
-            </button>
-            <!-- .btn-label wraps only the text, not the icon:
-                 copyToClipboard() (toast.js) swaps that span's text
-                 imperatively for the "✓ Скопировано" feedback — doing
-                 that to the whole button would delete the icon's
-                 Lit-managed ChildPart along with it and throw on the
-                 next render ("ChildPart has no parentNode"). -->
-            <button type="button" class="ghost" id="copy-${key}" @click=${(e) => this._copyText(key, e)}>
-              ${unsafeHTML(ICON_COPY)} <span class="btn-label">Скопировать</span>
-            </button>
-          </div>
-        </div>
-        <p class="spoiler-placeholder" id="placeholder-${key}" ?hidden=${!hidden}>
-          Текст скрыт — нажмите «Показать», чтобы прочитать самому, или сразу скопируйте и
-          отправьте группе ${groupLabel} в чат.
-        </p>
-        <p class="spoiler-text" id="text-${key}" ?hidden=${hidden}>
-          ${
-            key === 'a'
-              ? html`Программа 1 — «спасено ровно 200 человек».<br />Программа 2 — «с вероятностью
-              ⅓ спасены все 600, с вероятностью ⅔ не спасён никто».`
-              : html`Программа 1 — «умрёт ровно 400 человек».<br />Программа 2 — «с вероятностью ⅓
-              никто не умрёт, с вероятностью ⅔ умрут все 600».`
-          }
-        </p>
+  // One group's card for one scenario: the wording that group hears (a spoiler,
+  // so the facilitator can copy it privately instead of reading both aloud) and
+  // who to send it to.
+  _spoilerCard(round, group, borderColor) {
+    const groupLabel = GROUP_LABEL[group];
+    const members = group === 'A' ? this.groups.groupA : this.groups.groupB;
+    const wording = SCENARIOS[round][framingFrame(group, round)];
+    return renderSpoilerCard(this.spoilers, {
+      key: cardKey(group, round),
+      title: `Группа ${groupLabel}`,
+      hint: `Текст скрыт — нажмите «Показать», чтобы прочитать самому, или сразу скопируйте и отправьте группе ${groupLabel} в чат.`,
+      body: html`${wording.shown[0]}<br />${wording.shown[1]}`,
+      copyText: scenarioText(round, group),
+      borderColor,
+      footer: html`
         <div class="spoiler-members">
           <span class="spoiler-members-label">Кому отправлять · ${members.length} чел.</span>
           <div class="role-group-chips">
             ${members.map((n) => html`<span class="role-chip readonly">${unsafeHTML(avatarName(n))}</span>`)}
           </div>
         </div>
-      </div>
+      `,
+    });
+  }
+
+  // One scenario: its situation, the wording each group gets, and a timer.
+  _scenarioRound(round) {
+    const sc = SCENARIOS[round];
+    const roundIdx = FIRST_SCENARIO_ROUND + round;
+    const isLast = round === ROUND_COUNT - 1;
+    return html`
+      <section class="${this.flow.roundClass(roundIdx)}" id="round-${roundIdx}">
+        <div class="round-body">
+          <p class="eyebrow">Сценарий ${round + 1} из ${ROUND_COUNT}${round > 0 ? ' · рабочая ситуация' : ''}</p>
+          <h2>${sc.title}</h2>
+          <p class="lede">
+            ${sc.intro}
+            Тексты спрятаны — раскройте или скопируйте только тот, что нужен, и отправьте его
+            своей группе в чат.
+          </p>
+
+          ${this._spoilerCard(round, 'A', 'var(--game-accent, var(--blue))')}
+          ${this._spoilerCard(round, 'B', 'var(--red)')}
+
+          ${this.timers.card(round, { runningLabel: 'Запустите, когда тексты уже отправлены группам — на обсуждение и ответ' })}
+
+          <div class="nav-row">
+            <button class="ghost" @click=${() => this.flow.scrollTo(roundIdx - 1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" id="next-scenario-${round}" @click=${() => this._nextFromScenario(round)}>
+              ${isLast ? 'Вносить данные' : `Сценарий ${round + 2} · ${SCENARIOS[round + 1].name.toLowerCase()}`} ${unsafeHTML(ICON_RIGHT)}
+            </button>
+          </div>
+        </div>
+        ${this.flow.lock(roundIdx)}
+      </section>
     `;
   }
 
@@ -503,25 +585,30 @@ export class RetroGameFraming extends LitElement {
         <div class="team-entry-list">
           ${list.map(
             (e) => html`
-              <div class="team-entry-card wide-control">
+              <div class="team-entry-card wide-control multi-choice">
                 <div class="team-entry-name">${unsafeHTML(avatarName(e.name))}</div>
-                <div class="toggle-pair">
-                  <button
-                    type="button"
-                    data-val="1"
-                    class="${e.choice === '1' ? 'on' : ''}"
-                    @click=${() => this._onToggleChoice(e.idx, '1')}
-                  >
-                    Программа 1
-                  </button>
-                  <button
-                    type="button"
-                    data-val="2"
-                    class="${e.choice === '2' ? 'on' : ''}"
-                    @click=${() => this._onToggleChoice(e.idx, '2')}
-                  >
-                    Программа 2
-                  </button>
+                <div class="choice-rows">
+                  ${SCENARIOS.map(
+                    (sc, round) => html`
+                      <div class="choice-row" data-round=${round}>
+                        <span class="choice-label">${sc.name}</span>
+                        <div class="toggle-pair">
+                          ${['1', '2'].map(
+                            (val) => html`
+                              <button
+                                type="button"
+                                data-val=${val}
+                                class="${e.choices[round] === val ? 'on' : ''}"
+                                @click=${() => this._onToggleChoice(e.idx, round, val)}
+                              >
+                                ${sc.optionWord} ${val}
+                              </button>
+                            `,
+                          )}
+                        </div>
+                      </div>
+                    `,
+                  )}
                 </div>
               </div>
             `,
@@ -531,8 +618,45 @@ export class RetroGameFraming extends LitElement {
     `;
   }
 
+  // One scenario's results: the two wordings side by side (so everyone sees exactly
+  // what the other group was told), who heard each, how many gambled, and the chart.
+  _resultsForRound(round) {
+    const r = this.results;
+    const sc = SCENARIOS[round];
+    const pr = r?.perRound[round];
+    const pct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+    const card = (frame, cls) => {
+      const group = ['A', 'B'].find((g) => framingFrame(g, round) === frame);
+      const members = group === 'A' ? this.groups.groupA : this.groups.groupB;
+      const wording = sc[frame];
+      return html`
+        <div class="g ${cls} wording-card">
+          <div class="t">Формулировка ${frame === 'gain' ? 'выигрыша' : 'потери'} · слышала группа ${GROUP_LABEL[group]}</div>
+          <p class="wording-text">${wording.shown[0]}<br />${wording.shown[1]}</p>
+          <div class="wording-members">
+            ${members.map((n) => html`<span class="role-chip readonly">${unsafeHTML(avatarName(n))}</span>`)}
+          </div>
+          <div class="t">Выбрали рискованный вариант</div>
+          <div class="v">${pct(frame === 'gain' ? pr?.gainRisky : pr?.lossRisky)}</div>
+        </div>
+      `;
+    };
+    return html`
+      <h3 class="scenario-result-title">${sc.title}</h3>
+      <p class="note scenario-situation">${sc.intro}</p>
+      <div class="group-compare wording-compare">
+        ${card('gain', 'low team-a')} ${card('loss', 'high team-b')}
+      </div>
+      <div class="d3-chart-card">
+        <div class="d3-chart-title">Кто что выбрал · ${sc.name.toLowerCase()}</div>
+        <svg id="framing-chart-${round}" class="d3-chart-svg" role="img" aria-label="Выбор каждого участника по группам, сценарий ${round + 1}"></svg>
+      </div>
+    `;
+  }
+
   render() {
-    const filled = this._filledCount();
+    const complete = this._completeCount();
+    const ready = framingReady(this.entries, ROUND_COUNT);
     const r = this.results;
     const withIdx = this.entries.map((e, i) => ({ ...e, idx: i }));
     const listA = withIdx.filter((e) => e.group === 'A');
@@ -548,11 +672,12 @@ export class RetroGameFraming extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 7 минут</p>
+          <p class="eyebrow">Командное упражнение · 11 минут</p>
           <h1>Один выбор, две формулировки</h1>
           <p class="lede">
             Мы разделим вас на две группы. Каждая услышит свою версию одной и той же дилеммы — с
-            одинаковыми числами внутри.
+            одинаковыми числами внутри. Два сценария: сначала история про людей, потом рабочая
+            ситуация про баги перед релизом.
           </p>
 
           <div class="draft-mount">
@@ -578,24 +703,9 @@ export class RetroGameFraming extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Группы получат разные формулировки</b>
-                <span>Числа и суть решения одинаковы для всех — отличаются только слова, которыми это описано.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Каждый выбирает одну из двух программ</b>
-                <span>Программу 1 или Программу 2 — только свою, из формулировки для своей группы.</span>
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">Дальше мы распределим группы и покажем каждой её текст отдельно.</p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -621,42 +731,19 @@ export class RetroGameFraming extends LitElement {
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.flow.advance(2)}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this.flow.advance(FIRST_SCENARIO_ROUND)}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
           </div>
           ${this.flow.lock(1)}
         </section>
 
-        <section class="${this.flow.roundClass(2)}" id="round-2">
-          <div class="round-body">
-          <p class="eyebrow">Сценарий</p>
-          <h2>Текст для каждой группы — по отдельности</h2>
-          <p class="lede">
-            Готовится проект, в котором участвуют 600 человек. Есть две программы действий.
-            Тексты спрятаны — раскройте или скопируйте только тот, что нужен, и отправьте его
-            своей группе в чат.
-          </p>
+        ${SCENARIOS.map((_, round) => this._scenarioRound(round))}
 
-          ${this._spoilerCard('a', 'А', 'var(--game-accent, var(--blue))', this.groups.groupA)}
-          ${this._spoilerCard('b', 'Б', 'var(--red)', this.groups.groupB)}
-
-          ${renderAnswerTimer(this.timer, {
-            runningLabel: 'Запустите, когда тексты уже отправлены группам — на обсуждение и ответ',
-          })}
-
-          <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.flow.advance(3, () => this._enterData())}>Вносить данные ${unsafeHTML(ICON_RIGHT)}</button>
-          </div>
-          </div>
-          ${this.flow.lock(2)}
-        </section>
-
-        <section class="${this.flow.roundClass(3)}" id="round-3">
+        <section class="${this.flow.roundClass(ENTRY_ROUND)}" id="round-${ENTRY_ROUND}">
           <div class="round-body">
           <p class="eyebrow">Сбор данных</p>
           <h2>Впишите выбор каждого участника</h2>
-          <p class="lede">Программа 1 или Программа 2 — по формулировке своей группы.</p>
+          <p class="lede">Для каждого сценария — вариант 1 или вариант 2, по формулировке, которую слышал этот участник.</p>
 
           <div id="entry-body">
             ${this._entrySection('Группа А', listA, 'team-a')}
@@ -664,51 +751,53 @@ export class RetroGameFraming extends LitElement {
           </div>
 
           <div class="fill-progress">
-            Заполнено: <span>${filled}</span> из <span>${this.entries.length}</span>
+            Ответили на оба сценария: <span>${complete}</span> из <span>${this.entries.length}</span>
             <div class="track">
-              <div style="width:${(filled / this.entries.length) * 100}%"></div>
+              <div style="width:${(complete / this.entries.length) * 100}%"></div>
             </div>
           </div>
+          <p class="note">Чтобы сравнить формулировки, в каждом сценарии нужен ответ хотя бы из каждой группы.</p>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" ?disabled=${!hasEnough(filled)} @click=${() => this.flow.advance(4, () => this._showResults())}>
+            <button class="ghost" @click=${() => this.flow.scrollTo(ENTRY_ROUND - 1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" id="next-btn" ?disabled=${!ready} @click=${() => this.flow.advance(RESULTS_ROUND, () => this._showResults())}>
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
           </div>
-          ${this.flow.lock(3)}
+          ${this.flow.lock(ENTRY_ROUND)}
         </section>
 
-        <section class="${this.flow.roundClass(4)}" id="round-4">
+        <section class="${this.flow.roundClass(RESULTS_ROUND)}" id="round-${RESULTS_ROUND}">
           <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
 
-          ${renderReveal({ value: r ? r.flipText : '—', ...REVEAL_COPY.framing(r ? { aRisky: r.aRisky, bRisky: r.bRisky } : null) })}
+          ${renderReveal({
+            value: r ? r.flipText : '—',
+            ...REVEAL_COPY.framing(
+              r
+                ? {
+                    gainRisky: r.gainRisky,
+                    lossRisky: r.lossRisky,
+                    rounds: r.perRound.map((x, i) => ({
+                      name: SCENARIOS[i].name,
+                      gainRisky: x.gainRisky,
+                      lossRisky: x.lossRisky,
+                    })),
+                  }
+                : null,
+            ),
+          })}
 
-          <div class="group-compare">
-            <div class="g low team-a">
-              <div class="t">Группа А (формулировка выигрыша) · риск</div>
-              <div class="v">${r && r.aRisky !== null ? `${r.aRisky}%` : '—'}</div>
-            </div>
-            <div class="g high team-b">
-              <div class="t">Группа Б (формулировка потери) · риск</div>
-              <div class="v">${r && r.bRisky !== null ? `${r.bRisky}%` : '—'}</div>
-            </div>
-          </div>
-
-          <div class="d3-chart-card">
-            <div class="d3-chart-title">Кто что выбрал</div>
-            <svg id="framing-chart" class="d3-chart-svg" aria-label="Выбор каждого участника по группам"></svg>
-          </div>
+          ${SCENARIOS.map((_, round) => this._resultsForRound(round))}
 
           <table class="results-table" id="results-table">
             <thead>
               <tr>
                 <th>Участник</th>
                 <th>Группа</th>
-                <th>Выбор</th>
+                ${SCENARIOS.map((sc) => html`<th>${sc.name}</th>`)}
               </tr>
             </thead>
             <tbody id="results-tbody">
@@ -719,7 +808,7 @@ export class RetroGameFraming extends LitElement {
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(e.name))}</td>
                         <td>${GROUP_LABEL[e.group]}</td>
-                        <td>Программа ${e.choice}</td>
+                        ${e.choices.map((c, round) => html`<td>${c === null ? '—' : `${SCENARIOS[round].optionWord} ${c} · ${FRAME_LABEL[framingFrame(e.group, round)]}`}</td>`)}
                       </tr>
                     `,
                     )
@@ -735,120 +824,29 @@ export class RetroGameFraming extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.flow.advance(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(ENTRY_ROUND)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(CONTEXT_ROUND)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
           </div>
-          ${this.flow.lock(4)}
+          ${this.flow.lock(RESULTS_ROUND)}
         </section>
 
-        <section class="${this.flow.roundClass(5)}" id="round-5">
+        <section class="${this.flow.roundClass(CONTEXT_ROUND)}" id="round-${CONTEXT_ROUND}">
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект фрейминга</h1>
-          <p class="lede">
-            Одна и та же по сути информация, поданная как «выигрыш» или как «потеря», приводит к
-            разным решениям — хотя математически варианты идентичны.
-          </p>
-
-          <p>
-            Это адаптация знаменитой «проблемы азиатской болезни» из статьи Tversky A., Kahneman
-            D. (1981). The Framing of Decisions and the Psychology of Choice. <i>Science</i>,
-            211(4481) — одного из ключевых экспериментов, лёгших в основу «теории перспектив»
-            (prospect theory), за которую Канеман получил Нобелевскую премию по экономике в 2002
-            году.
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">~72%</div>
-              <div class="lab">выбирают безопасный вариант при формулировке выигрыша</div>
-            </div>
-            <div class="stat">
-              <div class="n">~78%</div>
-              <div class="lab">выбирают рискованный вариант при формулировке потери</div>
-            </div>
-          </div>
-
-          <p>
-            <b>Почему одинаковые числа ощущаются по-разному.</b> Согласно теории перспектив, люди
-            оценивают исходы не в абсолютных величинах, а относительно точки отсчёта — и реагируют
-            на выигрыши и потери несимметрично. Когда решение подано как выигрыш («спасено 200 из
-            600»), мы становимся осторожными: гарантированный небольшой выигрыш кажется
-            привлекательнее, чем риск потерять его в погоне за большим. Когда то же самое подано
-            как потеря («умрёт 400 из 600»), психологически невыносима сама мысль о гарантированной
-            потере — и мы охотнее идём на риск, лишь бы был шанс вообще не потерять ничего, даже
-            если статистически шансы одинаковы. Гарантированная потеря «болит» сильнее, чем такая
-            же по размеру гарантированная недополученная выгода — из-за этого одна и та же дилемма
-            выглядит совершенно по-разному в зависимости от того, с какой стороны на неё
-            посмотреть.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <h2>Ещё немного фактов</h2>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Тот же приём — в маркетинге и медицине</b>
-                <span
-                  >«95% успешных операций» звучит убедительнее, чем «5% смертность» — хотя это одно
-                  и то же число, поданное через выигрыш вместо потери.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Эффект устойчив даже у экспертов</b>
-                <span
-                  >Врачи в оригинальных репликах тоже меняли рекомендации в зависимости от
-                  формулировки статистики выживаемости — специальные знания не отменяют эффект
-                  фрейминга полностью.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">3</div>
-              <div class="step-body">
-                <b>Работает и на бытовых решениях</b>
-                <span
-                  >Люди чаще соглашаются на небольшую скидку за оплату наличными, если её называют
-                  «скидкой», и заметно реже — если ровно ту же разницу в цене называют «доплатой за
-                  оплату картой», хотя итоговая сумма одинакова.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">4</div>
-              <div class="step-body">
-                <b>Формулировки влияют на согласие с политикой и налогами</b>
-                <span
-                  >В опросах поддержка одной и той же меры заметно меняется в зависимости от того,
-                  описана ли она как «сохранение существующих рабочих мест» или как «предотвращение
-                  потери рабочих мест» — хотя по сути речь о совершенно одинаковом результате.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">5</div>
-              <div class="step-body">
-                <b>Рабочая параллель</b>
-                <span
-                  >«Мы можем сохранить 80% бюджета» и «мы потеряем 20% бюджета» — одно и то же
-                  решение, но вторая формулировка обычно подталкивает команду к более рискованным
-                  шагам, чтобы избежать ощущаемой потери.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
           </div>
-          ${this.flow.lock(5)}
+          ${this.flow.lock(CONTEXT_ROUND)}
         </section>
           </div>
 

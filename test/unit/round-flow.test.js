@@ -6,7 +6,7 @@ import {
   clearFlash,
   initialFlow,
   isRoundLocked,
-  roundClassName,
+  roundClassMap,
   setActiveRound,
 } from '../../src/logic/round-flow.js';
 
@@ -71,13 +71,27 @@ describe('locking and class names', () => {
     expect(isRoundLocked(s, 2)).toBe(false);
     expect(isRoundLocked(s, 3)).toBe(true);
   });
-  test('locked round gets round-pending, flashed round gets round-just-completed', () => {
-    expect(roundClassName(s, 3)).toContain('round-pending');
-    expect(roundClassName(s, 1)).toContain('round-just-completed');
-    const open = roundClassName(s, 0);
-    expect(open).not.toContain('round-pending');
-    expect(open).not.toContain('round-just-completed');
-    expect(open.startsWith('round')).toBe(true);
+  test('a locked round is round-pending, the flashed one round-just-completed, every one is a round', () => {
+    expect(roundClassMap(s, 3)).toEqual({
+      round: true,
+      'round-pending': true,
+      'round-just-completed': false,
+    });
+    expect(roundClassMap(s, 1)).toEqual({
+      round: true,
+      'round-pending': false,
+      'round-just-completed': true,
+    });
+    expect(roundClassMap(s, 0)).toEqual({
+      round: true,
+      'round-pending': false,
+      'round-just-completed': false,
+    });
+  });
+  test('a flashing round is never one that is still locked', () => {
+    // justCompletedIdx is always a round the player has been on, so never beyond screenIdx.
+    const flashed = advanceFlow(initialFlow(), 2);
+    expect(roundClassMap(flashed, flashed.justCompletedIdx)['round-pending']).toBe(false);
   });
 });
 

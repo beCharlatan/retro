@@ -241,20 +241,16 @@ const GAMES = [
       // availability's toResults() above — ".screen.active" matches
       // nothing now that every round is always in the DOM.
       await page.click('#next-btn-0');
-      await page.waitForTimeout(80);
-      let inputs = await page.$$('#entry-body-1 input');
-      for (let i = 0; i < inputs.length; i += 2) {
-        await inputs[i].fill('5000');
-        await inputs[i + 1].fill('6000');
+      // the remaining questions (there are four by default): every range 0..5000
+      for (let q = 1; q < 4; q++) {
+        await page.waitForTimeout(80);
+        const inputs = await page.$$(`#entry-body-${q} input`);
+        for (let i = 0; i < inputs.length; i += 2) {
+          await inputs[i].fill('0');
+          await inputs[i + 1].fill('5000');
+        }
+        await page.click(`#next-btn-${q}`);
       }
-      await page.click('#next-btn-1');
-      await page.waitForTimeout(80);
-      inputs = await page.$$('#entry-body-2 input');
-      for (let i = 0; i < inputs.length; i += 2) {
-        await inputs[i].fill('3000');
-        await inputs[i + 1].fill('4000');
-      }
-      await page.click('#next-btn-2');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -265,23 +261,39 @@ const GAMES = [
     id: 'endowment',
     name: 'Эффект владения',
     hasRoles: true,
+    // roles → lot 1 → lot 2 → lot 3 → the one entry screen with a price per lot
     async toEntryScreen(page) {
       await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(80);
-      await page.click('button:has-text("Дальше")');
+      await page.click('button:has-text("Лот 1")');
+      await page.waitForTimeout(80);
+      await page.click('#next-lot-0');
+      await page.waitForTimeout(80);
+      await page.click('#next-lot-1');
+      await page.waitForTimeout(80);
+      await page.click('#next-lot-2');
     },
     async fill(page, opts = {}) {
-      const inputs = await page.$$('#entry-body-1 input');
-      const n = opts.count ?? inputs.length;
-      for (let i = 0; i < n; i++) await inputs[i].fill(String(200 + i * 15));
+      // three inputs per person (mug, car, house), in row order
+      const inputs = await page.$$('#entry-body input');
+      const people = inputs.length / 3;
+      const n = opts.count ?? people;
+      const scale = [1, 2000, 15000];
+      for (let i = 0; i < n; i++) {
+        // owners ask more than buyers offer, like the real effect
+        const owner = i < Math.ceil(people / 2);
+        for (let lot = 0; lot < 3; lot++) {
+          await inputs[i * 3 + lot].fill(
+            String(Math.round((owner ? 700 : 400) * scale[lot] + i * 10)),
+          );
+        }
+      }
       return n;
     },
     async toResults(page) {
-      await page.click('#next-btn-1');
-      await page.waitForTimeout(80);
-      const inputs = await page.$$('#entry-body-2 input');
-      for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(100 + i * 10));
-      await page.click('#next-btn-2');
+      // every lot needs a seller AND a buyer price, so fill everyone
+      await this.fill(page, {});
+      await page.click('#next-btn');
     },
     async verifyResults(page) {
       const n = await page.textContent('.reveal .n');
@@ -292,17 +304,23 @@ const GAMES = [
     id: 'framing',
     name: 'Эффект фрейминга',
     hasRoles: true,
+    // roles → scenario 1 (project) → scenario 2 (release) → entry
     async toEntryScreen(page) {
       await page.click('button:has-text("Распределить группы")');
       await page.waitForTimeout(80);
       await page.click('button:has-text("Дальше")');
       await page.waitForTimeout(80);
-      await page.click('button:has-text("Вносить данные")');
+      await page.click('#next-scenario-0');
+      await page.waitForTimeout(80);
+      await page.click('#next-scenario-1');
     },
     async fill(page, opts = {}) {
       const rows = await page.$$('#entry-body .team-entry-card');
       const n = opts.count ?? rows.length;
-      for (let i = 0; i < n; i++) await (await rows[i].$('button[data-val="2"]')).click();
+      // each person answers both scenarios
+      for (let i = 0; i < n; i++) {
+        for (const btn of await rows[i].$$('button[data-val="2"]')) await btn.click();
+      }
       return n;
     },
     async toResults(page) {

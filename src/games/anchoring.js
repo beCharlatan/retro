@@ -17,10 +17,13 @@
    .game-rail, and a × in the corner (.game-exit) that confirms before
    leaving instead of the old .game-crumb back-link.
 ========================================================= */
+
 import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
+import CONTENT from '../content/anchoring.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -207,7 +210,6 @@ export class RetroGameAnchoring extends LitElement {
         .attr('y', MT + plotH + 18)
         .attr('text-anchor', 'middle')
         .style('font-size', '11px')
-        .style('font-family', 'IBM Plex Mono, monospace')
         .style('fill', 'var(--ink-faint)')
         .text(t);
       svgSel
@@ -223,7 +225,6 @@ export class RetroGameAnchoring extends LitElement {
         .attr('y', ty2 + 4)
         .attr('text-anchor', 'end')
         .style('font-size', '11px')
-        .style('font-family', 'IBM Plex Mono, monospace')
         .style('fill', 'var(--ink-faint)')
         .text(t);
     });
@@ -234,7 +235,6 @@ export class RetroGameAnchoring extends LitElement {
       .attr('y', H - 4)
       .attr('text-anchor', 'middle')
       .style('font-size', '12px')
-      .style('font-family', 'IBM Plex Mono, monospace')
       .style('fill', 'var(--ink)')
       .text('ЧИСЛО ИЗ ШАГА 1');
     svgSel
@@ -244,7 +244,6 @@ export class RetroGameAnchoring extends LitElement {
       .attr('text-anchor', 'middle')
       .attr('transform', `rotate(-90 14 ${MT + plotH / 2})`)
       .style('font-size', '12px')
-      .style('font-family', 'IBM Plex Mono, monospace')
       .style('fill', 'var(--ink)')
       .text('ОЦЕНКА');
 
@@ -288,7 +287,6 @@ export class RetroGameAnchoring extends LitElement {
       .attr('text-anchor', 'end')
       .style('font-size', '11px')
       .style('font-weight', 700)
-      .style('font-family', 'IBM Plex Mono, monospace')
       .style('fill', gold)
       .text('28% — правильный ответ');
 
@@ -322,7 +320,6 @@ export class RetroGameAnchoring extends LitElement {
       .attr('y', (p) => y(p.guess) - 10)
       .attr('text-anchor', 'middle')
       .style('font-size', '10.5px')
-      .style('font-family', 'IBM Plex Sans, sans-serif')
       .style('fill', 'var(--ink)')
       .style('opacity', 0)
       .text((p) => p.name)
@@ -374,6 +371,7 @@ export class RetroGameAnchoring extends LitElement {
           min="0"
           max="99"
           inputmode="numeric"
+          aria-label="${row.name}: число, которое он увидел"
           placeholder="напр. 42"
           .value=${row.anchor ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, 'anchor')}
@@ -383,6 +381,7 @@ export class RetroGameAnchoring extends LitElement {
           min="0"
           max="100"
           inputmode="numeric"
+          aria-label="${row.name}: его оценка"
           placeholder="напр. 30"
           .value=${row.guess ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, 'guess')}
@@ -435,42 +434,9 @@ export class RetroGameAnchoring extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Каждый молча пишет число</b>
-                <span
-                  >Не показывая соседям, запишите последние две цифры своего номера телефона —
-                  число от 00 до 99.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Задайте вопрос вслух</b>
-                <span
-                  >«Как думаете, доля стран Африки среди членов ООН больше или меньше числа,
-                  которое вы записали?» Каждый отвечает про себя.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">3</div>
-              <div class="step-body">
-                <b>Каждый пишет точную оценку</b>
-                <span
-                  >Теперь — конкретный процент: какая, по-вашему, доля стран ООН находится в
-                  Африке? Готово, дальше вносим оба числа сюда.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">
-            Шаг 1 нужно сделать до того, как прозвучит вопрос в шаге 2 — не забегайте вперёд.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -582,103 +548,12 @@ export class RetroGameAnchoring extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект якоря</h1>
-          <p class="lede">
-            То, что вы только что сделали, — короткая версия одного из самых известных
-            экспериментов в психологии решений.
-          </p>
-
-          <p>
-            В 1974 году психологи Амос Тверски и Дэниел Канеман крутили перед испытуемыми колесо
-            фортуны с числами от 0 до 100. Колесо было подстроено: оно всегда останавливалось либо
-            на 10, либо на 65. После этого людей спрашивали, какая доля африканских стран среди
-            членов ООН — больше или меньше выпавшего числа, а затем просили назвать точную оценку.
-          </p>
-
-          <p>Число на колесе было полностью случайным и не имело никакого отношения к вопросу. Но результат оказался таким:</p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">25%</div>
-              <div class="lab">средняя оценка у тех, кто увидел число 10</div>
-            </div>
-            <div class="stat">
-              <div class="n">45%</div>
-              <div class="lab">средняя оценка у тех, кто увидел число 65</div>
-            </div>
-          </div>
-
-          <p>
-            Бессмысленное число со случайного колеса сдвинуло оценки почти на 20 процентных
-            пунктов. Люди неосознанно «цеплялись» за первое увиденное число и потом недостаточно
-            от него отходили — этот эффект назвали <b>якорением</b>. Ваш номер телефона в шаге 1
-            сыграл ровно ту же роль, что и колесо фортуны — только на этот раз якорь принесли вы
-            сами. Работа легла в основу поведенческой экономики, а в 2002 году Канеман получил за
-            неё Нобелевскую премию по экономике.
-          </p>
-
-          <p>
-            <b>Как это работает внутри головы.</b> Оценивая неизвестную величину, мозг редко
-            считает «с нуля». Вместо этого он берёт первое число, которое оказалось у него под
-            рукой — даже если оно случайное и логически ни с чем не связано — и начинает
-            <i>подстраивать</i> ответ от этой точки. Проблема в том, что подстройка почти всегда
-            недостаточна: мы останавливаемся слишком рано, как только ответ начинает казаться
-            «правдоподобным», а не когда он становится точным. Это происходит быстро и неосознанно
-            — тем самым автоматическим режимом мышления, который Канеман в книге «Thinking, Fast
-            and Slow» назвал Системой 1, в отличие от медленной аналитической Системы 2.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Эффект не пропадает, даже если платить за точность</b
-            ><span
-              >В оригинальном опыте участникам предлагали вознаграждение за правильный ответ —
-              якорение всё равно сохранялось почти в той же силе.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Дэн Ариели пошёл дальше — номер соцстрахования и аукцион</b
-            ><span
-              >Людей просили записать две последние цифры номера соцстрахования, а затем сделать
-              ставку на вино и шоколад на аукционе. У кого цифры были больше — в среднем ставили на
-              60–120% больше денег за один и тот же товар (Ariely, Loewenstein, Prelec, 2003).</span
-            >
-          </div>
-          <div class="fact">
-            <b>Риелторы тоже подвержены эффекту</b
-            ><span
-              >Даже профессиональные оценщики недвижимости завышают оценку дома, если им заранее
-              показать более высокую цену листинга — при том, что сами знают: цена
-              произвольная.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Даже судьи не защищены</b
-            ><span
-              >В эксперименте Englich, Mussweiler и Strack (2006) опытным немецким судьям перед
-              вынесением приговора предлагали бросить игральные кости. Кости были подстроены на
-              маленькое или большое число — и судьи с высоким броском давали в среднем заметно
-              более суровые сроки за одно и то же преступление, хотя прекрасно понимали, что кости
-              никак не связаны с делом.</span
-            >
-          </div>
-          <div class="fact">
-            <b>На этом строится вся «цена со скидкой»</b
-            ><span
-              >Зачёркнутая старая цена рядом с новой — классический якорь: сама скидка может быть
-              скромной, но контраст с высоким «было» заставляет новую цену казаться настоящей
-              находкой.</span
-            >
-          </div>
-          <div class="fact">
-            <b>А у вас это тоже есть — в Planning Poker</b
-            ><span
-              >Если кто-то в комнате первым называет «на глаз пять сторипоинтов», оценка всей
-              команды потом гравитирует к этому числу — даже если оно взято с потолка. Стоит
-              обсудить на ретро, бывало ли у вас такое.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

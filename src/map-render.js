@@ -59,14 +59,18 @@ import { hexToRgb } from './logic/color.js';
 import {
   applyTransform,
   focusTransform as computeFocusTransform,
+  computeIconScale,
   computeSafeBounds,
   hashString,
   IDENTITY,
   initialNodes,
   interpolateTransform,
+  MIN_SEPARATION,
   moveNodes,
   mulberry32,
   separateNodes,
+  smoothHeading,
+  wakeDots,
 } from './logic/map-physics.js';
 import { isLite } from './perf.js';
 import { GAMES } from './state.js';
@@ -134,10 +138,17 @@ export function createMap(container, { onOpenGame, onSelect }) {
     const dpr = Math.min(window.devicePixelRatio || 1, isLite() ? 1 : 2);
     canvas.width = Math.max(1, Math.round(rect.width * dpr));
     canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    // The backing store is in device pixels, but the element's on-screen size
+    // must stay the container's size in CSS pixels. Without this an absolutely
+    // positioned <canvas> is laid out at its INTRINSIC size — i.e. `dpr` times
+    // too big — so on a Retina screen every trail dot was drawn twice as far
+    // from its icon as it should be (and, toward the bottom-right, off-screen).
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     return rect;
   }
-  const canvasRect = resizeCanvas();
+  let canvasRect = resizeCanvas();
 
   // The host element (outside this shadow-root subtree) — reached only
   // to set the cursor-parallax custom properties the background image
@@ -154,8 +165,24 @@ export function createMap(container, { onOpenGame, onSelect }) {
     return computeSafeBounds(rect.width, rect.height);
   }
 
-  const bounds = safeBounds();
-  const nodes = initialNodes(GAMES, bounds);
+  // On a small or zoomed-in window there isn't room for 13 full-size icons
+  // (and their glow) inside the safe area — they'd spill off-screen or slide
+  // under the HUD. So the icons themselves shrink to fit: `iconScale`
+  // (0.4..1, exactly 1 on any normal screen) is published to the CSS as
+  // --icon-scale and also scales how far apart the icons keep each other.
+  let iconScale = 1;
+  function syncLayout() {
+    const b = safeBounds();
+    const next = computeIconScale(b, GAMES.length);
+    if (Math.abs(next - iconScale) > 0.005) {
+      iconScale = next;
+      hostEl?.style.setProperty('--icon-scale', iconScale.toFixed(3));
+    }
+    return b;
+  }
+
+  const bounds = syncLayout();
+  const nodes = initialNodes(GAMES, bounds, { minSeparation: MIN_SEPARATION * iconScale });
 
   let currentTransform = IDENTITY;
   let focusedId = null;
@@ -311,24 +338,37 @@ export function createMap(container, { onOpenGame, onSelect }) {
     ctx.restore();
   }
 
-  // Short motion trail behind each freely-drifting icon — a fading
-  // string of dots in the icon's own sampled color (ICON_COLORS),
-  // reading as a comet-like wake. Frozen (selected) icons don't get
-  // one: they're not moving, and a stale trail would just sit there.
-  const TRAIL_LENGTH = 10;
-  for (const n of nodes) n.trail = [];
+  // The wake: a fading comet tail of dots behind each freely-drifting icon, in
+  // the icon's own sampled colour (ICON_COLORS). Laid out from the icon's
+  // heading (logic/map-physics.js's wakeDots) rather than from its recent
+  // positions — those are ~2px apart at the drift speeds we use, which put
+  // the whole tail underneath the icon where it couldn't be seen. Frozen
+  // (selected) icons don't get one: they're not moving.
+  for (const n of nodes) {
+    const speed = Math.hypot(n.vx, n.vy) || 1;
+    n.heading = { x: n.vx / speed, y: n.vy / speed };
+  }
 
   function drawTrails(transform) {
+    // The camera zooming in on a selected icon (k up to 4.6) fades the wake
+    // out — the other icons dim, and their tails shouldn't stay bright.
+    const zoomFade = Math.max(0, 1 - (transform.k - 1) / 0.5);
+    if (zoomFade <= 0) return;
     ctx.save();
     for (const n of nodes) {
-      if (n.frozen || n.trail.length < 2) continue;
+      if (n.frozen) continue;
       const [r, g, b] = hexToRgb(ICON_COLORS[n.icon] || '#8a81a8');
-      for (let i = 0; i < n.trail.length; i++) {
-        const age = i / n.trail.length; // 0 = oldest, ~1 = newest
-        const [sx, sy] = applyTransform(transform, [n.trail[i].x, n.trail[i].y]);
+      const [sx, sy] = applyTransform(transform, [n.x, n.y]);
+      for (const dot of wakeDots(n.heading, iconScale)) {
         ctx.beginPath();
-        ctx.fillStyle = `rgba(${r},${g},${b},${(age * 0.22).toFixed(3)})`;
-        ctx.arc(sx, sy, 3 + age * 9, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r},${g},${b},${(dot.alpha * zoomFade).toFixed(3)})`;
+        ctx.arc(
+          sx + dot.dx * transform.k,
+          sy + dot.dy * transform.k,
+          dot.radius * transform.k,
+          0,
+          Math.PI * 2,
+        );
         ctx.fill();
       }
     }
@@ -349,18 +389,11 @@ export function createMap(container, { onOpenGame, onSelect }) {
     const dt = Math.min((t - lastT) / 1000, 0.1);
     lastT = t;
     elapsed += dt;
-    const b = safeBounds();
+    const b = syncLayout();
 
     moveNodes(nodes, dt, b, mouseWorld);
-    for (const n of nodes) {
-      if (n.frozen) {
-        n.trail.length = 0;
-        continue;
-      }
-      n.trail.push({ x: n.x, y: n.y });
-      if (n.trail.length > TRAIL_LENGTH) n.trail.shift();
-    }
-    separateNodes(nodes, dt);
+    for (const n of nodes) n.heading = smoothHeading(n.heading, n.vx, n.vy, dt);
+    separateNodes(nodes, dt, MIN_SEPARATION * iconScale);
 
     const rect = canvasRect;
     ctx.clearRect(0, 0, rect.width, rect.height);
@@ -463,7 +496,7 @@ export function createMap(container, { onOpenGame, onSelect }) {
     const rect = container.getBoundingClientRect();
     const w = rect.width || 900;
     const h = rect.height || 600;
-    const coverScale = (Math.max(w, h) / LOCATION_SIZE) * 1.4;
+    const coverScale = (Math.max(w, h) / (LOCATION_SIZE * iconScale)) * 1.4;
     const target = {
       k: coverScale,
       x: w / 2 - coverScale * node.x,
@@ -541,7 +574,20 @@ export function createMap(container, { onOpenGame, onSelect }) {
     }
   }
 
+  // Window resized / browser zoom changed: re-fit the icons right away and pull
+  // any that ended up outside the new safe area back in. The tick loop does
+  // this every frame too, but it doesn't run under prefers-reduced-motion.
+  const resizeObserver = new ResizeObserver(() => {
+    canvasRect = resizeCanvas(); // (resizing a canvas also clears it)
+    for (const p of particles) p.x = Math.min(p.x, canvasRect.width);
+    moveNodes(nodes, 0, syncLayout(), null);
+    positionAll();
+    if (REDUCED_MOTION) drawParticles(canvasRect, 0, 0); // no tick loop to repaint it
+  });
+  resizeObserver.observe(container);
+
   function destroy() {
+    resizeObserver.disconnect();
     if (rafId) cancelAnimationFrame(rafId);
     overlay.remove();
   }

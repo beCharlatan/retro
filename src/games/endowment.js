@@ -1,10 +1,11 @@
 /* =========================================================
    GAME: Эффект владения (endowment)
-   Two rounds instead of one: round 1 keeps the groups as
-   assigned, round 2 swaps roles — owners become buyers and
-   buyers become owners, for the same mug. Everyone ends up
-   giving both a WTA and a WTP price, which doubles the sample
-   behind each average instead of splitting the room in half.
+   ONE role for the whole game — a group SELLS, the other group BUYS —
+   but three lots of growing value and scale: a mug, a car, a house.
+   Steps: roles → lot 1 → lot 2 → lot 3 (each: a description and a
+   timer, everyone decides a price silently) → enter every price for
+   all lots at once → results → context. Comparing the ratio across
+   lots shows whether the effect grows or fades as the stakes rise.
 
    Lit/Shadow DOM component (docs/modernization-plan.md Phase 3) —
    first game with a group-split/click-to-swap screen (the group
@@ -13,9 +14,16 @@
    Roles.makeGroups()/swapInGroups() (pure data, no DOM) are reused as
    -is. Keeps all original plain ids.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawSwarm } from '../charts/swarm.js';
+import CONTENT from '../content/endowment.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
@@ -27,16 +35,15 @@ import {
   ICON_SHUFFLE,
   ICON_X,
 } from '../icons.js';
+import { zeroBasedDomain } from '../logic/chart-data.js';
 import {
   buildEndowmentEntries,
-  countFilled,
-  hasEnough,
-  hasFields,
   loadableDraft,
   parseNumberInput,
-  patchRow,
+  patchItem,
 } from '../logic/entries.js';
-import { endowmentResults } from '../logic/results.js';
+import { escapeHtml, formatCompact } from '../logic/format.js';
+import { endowmentReady, endowmentResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
 import { REVEAL_COPY } from '../reveal-copy.js';
@@ -44,18 +51,53 @@ import { Roles } from '../roles.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
-const TOTAL_SCREENS = 6;
+// Three lots of growing value and scale. `hint` is a rough market reference so
+// people price against something real instead of pulling numbers from air.
+const LOTS = [
+  {
+    id: 'mug',
+    name: 'Кружка',
+    accusative: 'кружку',
+    title: 'Лот 1 · Фирменная кружка',
+    description:
+      'Керамическая кружка с логотипом команды, 350 мл, ни разу не использованная. Обычная вещь — просто повод назвать цену.',
+    hint: 'В магазинах такие кружки стоят примерно 400–800 ₽.',
+  },
+  {
+    id: 'car',
+    name: 'Автомобиль',
+    accusative: 'автомобиль',
+    title: 'Лот 2 · Автомобиль',
+    description:
+      'Пятилетний седан: пробег 80 000 км, один владелец, без аварий, свежее ТО. Вещь уже серьёзная — на ней экономят месяцами.',
+    hint: 'Похожие объявления стоят примерно 1,2–1,6 млн ₽.',
+  },
+  {
+    id: 'house',
+    name: 'Дом',
+    accusative: 'дом',
+    title: 'Лот 3 · Дом за городом',
+    description:
+      'Дом 120 м² с участком в 8 соток, газ и вода, в 40 км от города. Самая крупная покупка в жизни большинства людей.',
+    hint: 'Похожие объекты стоят примерно 8–12 млн ₽.',
+  },
+];
+const LOT_TIMER_SECONDS = 60;
+const FIRST_LOT_ROUND = 2;
+const ENTRY_ROUND = FIRST_LOT_ROUND + LOTS.length; // 5
+const RESULTS_ROUND = ENTRY_ROUND + 1; // 6
+const CONTEXT_ROUND = RESULTS_ROUND + 1; // 7
+
+const TOTAL_SCREENS = CONTEXT_ROUND + 1;
 const ROUND_TITLES = [
-  'Одна кружка, две цены — и роли поменяются',
-  'Кто продаёт, кто покупает — в раунде 1',
-  'Впишите цену каждого участника',
-  'Та же кружка, противоположная роль',
+  'Одна вещь, две роли — три масштаба',
+  'Кто продаёт, кто покупает',
+  ...LOTS.map((l) => l.title),
+  'Впишите цены по всем лотам',
   'Что получилось у вашей команды',
   'Эффект владения',
 ];
 
-// r1Role is where they start (from the groups screen); r2Role is
-// always the opposite — that's the whole point of round 2.
 export class RetroGameEndowment extends LitElement {
   static styles = sharedStyles;
 
@@ -72,19 +114,30 @@ export class RetroGameEndowment extends LitElement {
     super();
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.groups = Roles.makeGroups(state.participants);
-    this.entries = buildEndowmentEntries(this.groups);
+    this.entries = buildEndowmentEntries(this.groups, LOTS.length);
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'end-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
     this.selectedSwapName = null;
     this.shuffleSpin = false;
+    // One timer, live for one lot at a time; each lot keeps its own length.
+    this.timers = new RoundTimers(this, { seconds: LOT_TIMER_SECONDS, count: LOTS.length });
 
     this.draft = loadableDraft(Persist.load('endowment'), {
       key: 'entries',
       length: state.participants.length,
+      // drafts from the old two-round version had r1Price/r2Price, not prices[]
+      rowCheck: (row) => Array.isArray(row.prices) && row.prices.length === LOTS.length,
     });
   }
 
   _restoreDraft() {
-    this.flow.advance(2, () => {
+    this.flow.advance(ENTRY_ROUND, () => {
       this.groups = this.draft.payload.groups;
       this.entries = this.draft.payload.entries;
       this.draft = null;
@@ -125,35 +178,88 @@ export class RetroGameEndowment extends LitElement {
   }
 
   _lockGroups() {
-    this.flow.advance(2, () => {
-      this.entries = buildEndowmentEntries(this.groups);
+    this.flow.advance(FIRST_LOT_ROUND, () => {
+      this.entries = buildEndowmentEntries(this.groups, LOTS.length);
     });
   }
 
-  _onEntryInput(e, idx, round) {
-    const priceField = round === 1 ? 'r1Price' : 'r2Price';
-    this.entries = patchRow(this.entries, idx, {
-      [priceField]: parseNumberInput(e.target.value, { min: 0 }),
-    });
+  _nextFromLot(lot) {
+    this.timers.reset();
+    this.flow.advance(FIRST_LOT_ROUND + lot + 1);
+  }
+
+  // ---- entering prices ----
+
+  _onPriceInput(e, idx, lot) {
+    this.entries = patchItem(
+      this.entries,
+      idx,
+      'prices',
+      lot,
+      parseNumberInput(e.target.value, { min: 0 }),
+    );
     Persist.save('endowment', { groups: this.groups, entries: this.entries });
   }
 
-  _filledCount(round) {
-    const priceField = round === 1 ? 'r1Price' : 'r2Price';
-    return countFilled(this.entries, hasFields(priceField));
+  // How many people have priced every lot.
+  _completeCount() {
+    return this.entries.filter((e) => e.prices.every((p) => p !== null)).length;
+  }
+
+  // For each lot two lanes on the SAME price axis: what owners ask (their minimum) and
+  // what buyers offer (their maximum). A mug and a house differ 10 000×, so every lot
+  // has its own axis; the gap between the two clouds IS the endowment effect.
+  _drawChart(svg, theme) {
+    const lanes = [];
+    LOTS.forEach((lot, i) => {
+      const prices = (role) => this.entries.filter((e) => e.role === role && e.prices[i] !== null);
+      const owners = prices('owner');
+      const buyers = prices('buyer');
+      const domain = zeroBasedDomain([...owners, ...buyers].map((e) => e.prices[i]));
+      const stat = this.results.perLot[i];
+      const lane = (label, color, list, avg, verb) => ({
+        label,
+        color,
+        domain,
+        format: formatCompact,
+        refs:
+          avg === null
+            ? []
+            : [
+                {
+                  value: avg,
+                  label: `в среднем ${formatCompact(Math.round(avg))} ₽`,
+                  color: theme.gold,
+                },
+              ],
+        points: list.map((e) => ({
+          id: e.name,
+          value: e.prices[i],
+          tip: tipHtml(escapeHtml(e.name), [
+            [verb, `${e.prices[i].toLocaleString('ru-RU')} ₽`],
+            ['Роль', e.role === 'owner' ? 'владелец' : 'покупатель'],
+          ]),
+        })),
+      });
+      lanes.push(
+        lane(`${lot.name} · владельцы просят`, theme.accent, owners, stat.avgWTA, 'Просит'),
+      );
+      lanes.push(lane(`${lot.name} · покупатели дают`, theme.red, buyers, stat.avgWTP, 'Даёт'));
+    });
+    drawSwarm(svg, { lanes, theme });
   }
 
   _showResults() {
-    this.results = endowmentResults(this.entries);
+    this.results = endowmentResults(this.entries, LOTS.length);
     const { filled } = this.results;
 
     ReportExport.register(
       'endowment',
       {
         subtitle: 'Та же вещь внезапно дороже для того, кто ей уже владеет.',
-        meta: ReportExport.meta(filled.length, '2 раунда, роли поменялись'),
+        meta: ReportExport.meta(filled.length, '3 лота: кружка, автомобиль, дом'),
         explanation:
-          'Одна и та же вещь субъективно ценнее для того, кто ею уже владеет, чем для того, кто хочет её купить, хотя рационально цена должна быть одной и той же. Знаменитый «эксперимент с кружками» описан в статье Kahneman, Knetsch, Thaler (1990) — эффект считается частным случаем неприятия потерь (loss aversion).',
+          'Одна и та же вещь субъективно ценнее для того, кто ею уже владеет, чем для того, кто хочет её купить, хотя рационально цена должна быть одной и той же. Знаменитый «эксперимент с кружками» описан в статье Kahneman, Knetsch, Thaler (1990) — эффект считается частным случаем неприятия потерь (loss aversion). Три лота разного масштаба показывают, как он ведёт себя, когда ставки растут.',
       },
       this.renderRoot,
     );
@@ -162,8 +268,9 @@ export class RetroGameEndowment extends LitElement {
   async _reset() {
     this.groups = Roles.makeGroups(state.participants);
     this.selectedSwapName = null;
-    this.entries = buildEndowmentEntries(this.groups);
+    this.entries = buildEndowmentEntries(this.groups, LOTS.length);
     this.results = null;
+    this.timers.resetAll();
     Persist.clear('endowment');
     this.flow.reset();
     await this.updateComplete;
@@ -185,13 +292,13 @@ export class RetroGameEndowment extends LitElement {
       <div class="role-groups">
         <div class="role-group-col role-group-a">
           <div class="role-group-title">
-            Владельцы (раунд 1) <span class="note" style="margin:0;">· ${groupA.length} чел.</span>
+            Владельцы — продают <span class="note" style="margin:0;">· ${groupA.length} чел.</span>
           </div>
           <div class="role-group-chips">${groupA.map(chip)}</div>
         </div>
         <div class="role-group-col role-group-b">
           <div class="role-group-title">
-            Покупатели (раунд 1) <span class="note" style="margin:0;">· ${groupB.length} чел.</span>
+            Покупатели — покупают <span class="note" style="margin:0;">· ${groupB.length} чел.</span>
           </div>
           <div class="role-group-chips">${groupB.map(chip)}</div>
         </div>
@@ -200,46 +307,95 @@ export class RetroGameEndowment extends LitElement {
     `;
   }
 
-  _entrySection(title, list, cls, round) {
-    const priceField = round === 1 ? 'r1Price' : 'r2Price';
+  // One lot: a description, what each side is asked to do, and a timer.
+  _lotRound(lot) {
+    const item = LOTS[lot];
+    const round = FIRST_LOT_ROUND + lot;
+    const isLast = lot === LOTS.length - 1;
+    const { groupA, groupB } = this.groups;
+    const readonlyChip = (n) =>
+      html`<span class="role-chip readonly">${unsafeHTML(avatarName(n))}</span>`;
+    return html`
+      <section class="${this.flow.roundClass(round)}" id="round-${round}">
+        <div class="round-body">
+          <p class="eyebrow">Лот ${lot + 1} из ${LOTS.length}</p>
+          <h2>${item.title}</h2>
+          <p class="lede">${item.description}</p>
+          <p class="note">${item.hint}</p>
+
+          <div class="group-compare lot-roles">
+            <div class="g low team-a">
+              <div class="t">Владельцы · продают</div>
+              <p class="lot-role-text">
+                Назовите <b>минимальную цену</b>, за которую вы продали бы ${item.accusative}.
+              </p>
+              <div class="role-group-chips">${groupA.map(readonlyChip)}</div>
+            </div>
+            <div class="g high team-b">
+              <div class="t">Покупатели · покупают</div>
+              <p class="lot-role-text">
+                Назовите <b>максимальную цену</b>, которую вы заплатили бы за ${item.accusative}.
+              </p>
+              <div class="role-group-chips">${groupB.map(readonlyChip)}</div>
+            </div>
+          </div>
+
+          <p class="note">
+            Каждый решает молча и запоминает своё число (или записывает) — впишем все цены разом,
+            когда пройдём три лота. Первое пришедшее в голову число — лучшее.
+          </p>
+
+          ${this.timers.card(lot, { runningLabel: 'на решение — каждый молча выбирает цену' })}
+
+          <div class="nav-row">
+            <button class="ghost" @click=${() => this.flow.scrollTo(round - 1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" id="next-lot-${lot}" @click=${() => this._nextFromLot(lot)}>
+              ${isLast ? 'Внести цены' : `Лот ${lot + 2} · ${LOTS[lot + 1].name.toLowerCase()}`} ${unsafeHTML(ICON_RIGHT)}
+            </button>
+          </div>
+        </div>
+        ${this.flow.lock(round)}
+      </section>
+    `;
+  }
+
+  _entrySection(title, cls, role) {
+    const rows = this.entries.map((e, idx) => ({ ...e, idx })).filter((e) => e.role === role);
     return html`
       <div class="team-entry-group ${cls}">
-        <div class="team-entry-group-title">${title} <span class="count">· ${list.length} чел.</span></div>
-        <div class="team-entry-list">
-          ${list.map(
-            (e) => html`
-              <div class="team-entry-card">
-                <div class="team-entry-name">${unsafeHTML(avatarName(e.name))}</div>
-                <input
-                  type="number"
-                  min="0"
-                  inputmode="numeric"
-                  placeholder="₽"
-                  .value=${e[priceField] ?? ''}
-                  @input=${(ev) => this._onEntryInput(ev, e.idx, round)}
-                />
-              </div>
-            `,
-          )}
+        <div class="team-entry-group-title">${title} <span class="count">· ${rows.length} чел.</span></div>
+        <div class="entry-head three-col price-cols">
+          <div>Участник</div>
+          ${LOTS.map((l) => html`<div>${l.name}</div>`)}
         </div>
+        ${rows.map(
+          (e) => html`
+            <div class="entry-row three-col price-cols">
+              <div class="name">${unsafeHTML(avatarName(e.name))}</div>
+              ${LOTS.map(
+                (_, lot) => html`
+                  <input
+                    type="number"
+                    min="0"
+                    inputmode="numeric"
+                    aria-label="${e.name}: цена, лот ${lot + 1}"
+                    placeholder="₽"
+                    data-lot=${lot}
+                    .value=${e.prices[lot] ?? ''}
+                    @input=${(ev) => this._onPriceInput(ev, e.idx, lot)}
+                  />
+                `,
+              )}
+            </div>
+          `,
+        )}
       </div>
     `;
   }
 
-  _entryRound(round) {
-    const roleField = round === 1 ? 'r1Role' : 'r2Role';
-    const withIdx = this.entries.map((e, i) => ({ ...e, idx: i }));
-    const owners = withIdx.filter((e) => e[roleField] === 'owner');
-    const buyers = withIdx.filter((e) => e[roleField] === 'buyer');
-    return html`
-      ${this._entrySection('Владельцы · продают', owners, 'team-a', round)}
-      ${this._entrySection('Покупатели · покупают', buyers, 'team-b', round)}
-    `;
-  }
-
   render() {
-    const filled1 = this._filledCount(1);
-    const filled2 = this._filledCount(2);
+    const complete = this._completeCount();
+    const ready = endowmentReady(this.entries, LOTS.length);
     const r = this.results;
 
     return html`
@@ -252,11 +408,11 @@ export class RetroGameEndowment extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 9 минут</p>
-          <h1>Одна кружка, две цены — и роли поменяются</h1>
+          <p class="eyebrow">Командное упражнение · 12 минут</p>
+          <h1>Одна вещь, две роли — три масштаба</h1>
           <p class="lede">
-            Два раунда. В первом одна половина продаёт, другая покупает. Во втором — наоборот, с
-            той же кружкой.
+            Одна половина команды продаёт, другая покупает — и так все три лота: от кружки до
+            дома. Роли не меняются.
           </p>
 
           <div class="draft-mount">
@@ -282,31 +438,9 @@ export class RetroGameEndowment extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Представьте фирменную кружку команды</b>
-                <span>Обычная кружка с логотипом — ничего особенного, просто повод для решения о цене.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Раунд 1 — одна роль, раунд 2 — противоположная</b>
-                <span
-                  >Владельцы называют минимальную цену продажи, покупатели — максимальную цену
-                  покупки. Во втором раунде каждый оказывается в противоположной роли — с той же
-                  кружкой.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">
-            Отвечайте первым пришедшим в голову числом — это не должно занимать больше пары
-            секунд раздумий.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -319,8 +453,8 @@ export class RetroGameEndowment extends LitElement {
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
           <p class="eyebrow">Распределение ролей</p>
-          <h2>Кто продаёт, кто покупает — в раунде 1</h2>
-          <p class="lede">Во втором раунде роли поменяются местами автоматически. Не нравится расклад — перемешайте.</p>
+          <h2>Кто продаёт, кто покупает</h2>
+          <p class="lede">Эти роли — на все три лота. Не нравится расклад — перемешайте.</p>
 
           <div>${this._groupsHolder()}</div>
           <button
@@ -332,107 +466,130 @@ export class RetroGameEndowment extends LitElement {
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this.flow.scrollTo(0)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this._lockGroups()}>Дальше ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="primary" @click=${() => this._lockGroups()}>Лот 1 · кружка ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
           </div>
           ${this.flow.lock(1)}
         </section>
 
-        <section class="${this.flow.roundClass(2)}" id="round-2">
-          <div class="round-body">
-          <p class="eyebrow">Раунд 1 из 2</p>
-          <h2>Впишите цену каждого участника</h2>
-          <p class="lede">Владельцы называют минимальную цену продажи, покупатели — максимальную цену покупки.</p>
+        ${LOTS.map((_, lot) => this._lotRound(lot))}
 
-          <div id="entry-body-1">${this._entryRound(1)}</div>
+        <section class="${this.flow.roundClass(ENTRY_ROUND)}" id="round-${ENTRY_ROUND}">
+          <div class="round-body">
+          <p class="eyebrow">Сбор данных</p>
+          <h2>Впишите цены по всем лотам</h2>
+          <p class="lede">Владельцы вписывают цену продажи, покупатели — цену покупки. По одной цене на каждый лот.</p>
+
+          <div id="entry-body">
+            ${this._entrySection('Владельцы · продают', 'team-a', 'owner')}
+            ${this._entrySection('Покупатели · покупают', 'team-b', 'buyer')}
+          </div>
 
           <div class="fill-progress">
-            Заполнено: <span>${filled1}</span> из <span>${this.entries.length}</span>
+            Заполнено полностью: <span>${complete}</span> из <span>${this.entries.length}</span>
             <div class="track">
-              <div style="width:${(filled1 / this.entries.length) * 100}%"></div>
+              <div style="width:${(complete / this.entries.length) * 100}%"></div>
             </div>
           </div>
+          <p class="note">Чтобы сравнить цены, по каждому лоту нужна хотя бы одна цена продажи и одна цена покупки.</p>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(ENTRY_ROUND - 1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
             <button
               class="primary"
-              id="next-btn-1"
-              ?disabled=${!hasEnough(filled1)}
-              @click=${() => this.flow.advance(3)}
-            >
-              Раунд 2 — роли наоборот ${unsafeHTML(ICON_RIGHT)}
-            </button>
-          </div>
-          </div>
-          ${this.flow.lock(2)}
-        </section>
-
-        <section class="${this.flow.roundClass(3)}" id="round-3">
-          <div class="round-body">
-          <p class="eyebrow">Раунд 2 из 2 · Роли поменялись</p>
-          <h2>Та же кружка, противоположная роль</h2>
-          <p class="lede">Кто в раунде 1 продавал — теперь покупает, и наоборот.</p>
-
-          <div id="entry-body-2">${this._entryRound(2)}</div>
-
-          <div class="fill-progress">
-            Заполнено: <span>${filled2}</span> из <span>${this.entries.length}</span>
-            <div class="track">
-              <div style="width:${(filled2 / this.entries.length) * 100}%"></div>
-            </div>
-          </div>
-
-          <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(2)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button
-              class="primary"
-              id="next-btn-2"
-              ?disabled=${!hasEnough(filled2)}
-              @click=${() => this.flow.advance(4, () => this._showResults())}
+              id="next-btn"
+              ?disabled=${!ready}
+              @click=${() => this.flow.advance(RESULTS_ROUND, () => this._showResults())}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
           </div>
           </div>
-          ${this.flow.lock(3)}
+          ${this.flow.lock(ENTRY_ROUND)}
         </section>
 
-        <section class="${this.flow.roundClass(4)}" id="round-4">
+        <section class="${this.flow.roundClass(RESULTS_ROUND)}" id="round-${RESULTS_ROUND}">
           <div class="round-body">
           <p class="eyebrow">Результаты</p>
           <h2>Что получилось у вашей команды</h2>
 
-          ${renderReveal({ value: r && r.ratio !== null ? `${r.ratio}×` : '—', ...REVEAL_COPY.endowment(r ? { avgWTA: r.avgWTA, avgWTP: r.avgWTP, ratio: r.ratio === null ? null : Number(r.ratio) } : null) })}
+          ${renderReveal({
+            value: r && r.ratio !== null ? `${r.ratio}×` : '—',
+            ...REVEAL_COPY.endowment(
+              r
+                ? {
+                    ratio: r.ratioN,
+                    lots: r.perLot.map((l, i) => ({ name: LOTS[i].name, ratio: l.ratio })),
+                  }
+                : null,
+            ),
+          })}
 
-          <div class="group-compare">
-            <div class="g low team-a">
-              <div class="t">Средняя цена продажи (в роли владельца)</div>
-              <div class="v">${r && r.avgWTA !== null ? `${Math.round(r.avgWTA)} ₽` : '—'}</div>
-            </div>
-            <div class="g high team-b">
-              <div class="t">Средняя цена покупки (в роли покупателя)</div>
-              <div class="v">${r && r.avgWTP !== null ? `${Math.round(r.avgWTP)} ₽` : '—'}</div>
-            </div>
+          <div class="stat-row">
+            ${
+              r
+                ? r.perLot.map(
+                    (l, i) => html`
+                    <div class="stat">
+                      <div class="n">${l.ratio !== null ? `${l.ratio.toFixed(1)}×` : '—'}</div>
+                      <div class="lab">${LOTS[i].name}: во столько раз владельцы просили больше</div>
+                    </div>
+                  `,
+                  )
+                : ''
+            }
+          </div>
+
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Что просят владельцы и что дают покупатели</div>
+            <svg id="end-chart" class="d3-chart-svg" role="img" aria-label="Цены владельцев и покупателей по каждому из трёх лотов"></svg>
+            <p class="d3-chart-cap">У каждого лота своя шкала цен. Чем правее «просят» относительно «дают» внутри одного лота, тем сильнее эффект владения.</p>
           </div>
 
           <table class="results-table" id="results-table">
             <thead>
               <tr>
-                <th>Участник</th>
-                <th>Как владелец</th>
-                <th>Как покупатель</th>
+                <th>Лот</th>
+                <th>Владельцы просят</th>
+                <th>Покупатели дают</th>
+                <th>Разрыв</th>
               </tr>
             </thead>
             <tbody id="results-tbody">
+              ${
+                r
+                  ? r.perLot.map(
+                      (l, i) => html`
+                      <tr>
+                        <td class="name">${LOTS[i].name}</td>
+                        <td>${l.avgWTA !== null ? `${Math.round(l.avgWTA).toLocaleString('ru-RU')} ₽` : '—'}</td>
+                        <td>${l.avgWTP !== null ? `${Math.round(l.avgWTP).toLocaleString('ru-RU')} ₽` : '—'}</td>
+                        <td>${l.ratio !== null ? `${l.ratio.toFixed(1)}×` : '—'}</td>
+                      </tr>
+                    `,
+                    )
+                  : ''
+              }
+            </tbody>
+          </table>
+
+          <table class="results-table" id="participants-table">
+            <thead>
+              <tr>
+                <th>Участник</th>
+                <th>Роль</th>
+                ${LOTS.map((l) => html`<th>${l.name}</th>`)}
+              </tr>
+            </thead>
+            <tbody id="participants-tbody">
               ${
                 r
                   ? r.filled.map(
                       (e) => html`
                       <tr>
                         <td class="name">${unsafeHTML(avatarName(e.name))}</td>
-                        <td>${r.wtaOf(e)} ₽</td>
-                        <td>${r.wtpOf(e)} ₽</td>
+                        <td>${e.role === 'owner' ? 'Владелец' : 'Покупатель'}</td>
+                        ${e.prices.map((p) => html`<td>${p !== null ? `${p.toLocaleString('ru-RU')} ₽` : '—'}</td>`)}
                       </tr>
                     `,
                     )
@@ -448,111 +605,30 @@ export class RetroGameEndowment extends LitElement {
           </div>
 
           <div class="nav-row">
-            <button class="ghost" @click=${() => this.flow.scrollTo(3)}>${unsafeHTML(ICON_LEFT)} Назад</button>
-            <button class="primary" @click=${() => this.flow.advance(5)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
+            <button class="ghost" @click=${() => this.flow.scrollTo(ENTRY_ROUND)}>${unsafeHTML(ICON_LEFT)} Назад</button>
+            <button class="primary" @click=${() => this.flow.advance(CONTEXT_ROUND)}>Что это было? ${unsafeHTML(ICON_RIGHT)}</button>
           </div>
           </div>
-          ${this.flow.lock(4)}
+          ${this.flow.lock(RESULTS_ROUND)}
         </section>
 
-        <section class="${this.flow.roundClass(5)}" id="round-5">
+        <section class="${this.flow.roundClass(CONTEXT_ROUND)}" id="round-${CONTEXT_ROUND}">
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект владения</h1>
-          <p class="lede">
-            Одна и та же вещь субъективно ценнее для того, кто ею уже «владеет», чем для того,
-            кто хочет её купить — хотя рационально цена должна быть одна и та же.
-          </p>
-
-          <p>
-            Знаменитый «эксперимент с кружками» описан в статье Kahneman D., Knetsch J. L.,
-            Thaler R. H. (1990). Experimental Tests of the Endowment Effect and the Coase
-            Theorem. <i>Journal of Political Economy</i>. Половине студентов раздали кружки и
-            предложили их продать, другой половине предложили купить такую же кружку. Средняя
-            цена продажи оказалась примерно вдвое выше средней цены покупки.
-          </p>
-
-          <p>
-            По теореме Коуза, при нулевых транзакционных издержках итоговое распределение не
-            должно зависеть от того, кому изначально досталось владение — цена продажи и цена
-            покупки должны сходиться. На практике они систематически расходятся.
-          </p>
-
-          <p>
-            <b>Почему владение меняет ощущение ценности.</b> Пока вещь ещё не ваша, вы оцениваете
-            её просто как один из вариантов — «сколько я готов заплатить за эту кружку среди
-            прочих способов потратить эти деньги». Но как только вещь становится вашей, точка
-            отсчёта смещается: теперь вы думаете не «сколько это стоит», а «что я потеряю, если
-            отдам её».
-          </p>
-
-          <p>
-            <b>Зачем нужен именно второй раунд.</b> В классическом дизайне WTA и WTP называют
-            РАЗНЫЕ люди — а значит, разницу можно списать на то, что одни от природы просто более
-            прижимистые продавцы, а другие — более расчётливые покупатели. Когда роли меняются
-            местами, каждый называет обе цены за одну и ту же кружку — и разница между «моя цена
-            продажи» и «моя цена покупки» становится чисто личным эффектом, а не различием между
-            двумя разными группами людей.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Не для всех вещей одинаково сильно</b
-            ><span
-              >Эффект слабее выражен для вещей, купленных «для перепродажи» — трейдеры не
-              успевают привязаться к товару — и заметно сильнее для вещей с личной или
-              эмоциональной ценностью.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Это не совсем ошибка, а часть психологии потери</b
-            ><span
-              >Эффект владения — частный случай неприятия потерь (loss aversion): расставание с
-              вещью ощущается как потеря, а потери переживаются острее, чем эквивалентные по
-              размеру приобретения.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Достаточно нескольких секунд владения</b
-            ><span
-              >В экспериментах эффект проявляется даже тогда, когда предмет побывал в руках
-              участника буквально пару минут перед «продажей» — для его возникновения не нужны
-              недели привязанности.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Влияет на реальные рынки жилья</b
-            ><span
-              >Владельцы недвижимости во время падения цен систематически выставляют квартиры
-              дороже рыночной стоимости и дольше не соглашаются на снижение — им психологически
-              труднее «признать» уменьшение ценности того, что уже принадлежит им.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Пробные периоды используют этот же механизм</b
-            ><span
-              >«30 дней бесплатно, потом можно отказаться» работает лучше простой продажи именно
-              потому, что после пробного периода товар или подписка уже ощущаются как «свои» —
-              отказаться от них труднее, чем изначально не подписываться.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Рабочая параллель</b
-            ><span
-              >Команда обычно переоценивает ценность своего же кода, процесса или архитектурного
-              решения именно потому, что уже «владеет» им — сторонний взгляд почти всегда
-              оценивает то же самое дешевле.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>
             <span></span>
           </div>
           </div>
-          ${this.flow.lock(5)}
+          ${this.flow.lock(CONTEXT_ROUND)}
         </section>
           </div>
 

@@ -169,13 +169,8 @@ const REPORT_CSS = `
 .rx-body > :first-child { margin-top: 0; }
 .rx-body .reveal { margin-bottom: 28px; }
 .rx-body .results-table { margin-bottom: 0; }
+.rx-body .results-table + .results-table { margin-top: 30px; }
 .rx-body p { max-width: none; }
-/* Charts name fonts (IBM Plex …) that aren't loaded anywhere, so inside
-   the rasterized image they'd fall back to a serif. Pin the same
-   system stack the rest of the report uses. */
-.rx svg text {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-}
 
 /* ---- explainer + footer ---- */
 .rx-what {
@@ -218,8 +213,10 @@ export const ReportExport = (() => {
   function register(gameId, data, root = document) {
     current = { gameId, data, root };
     // Test hook (see test/export.spec.js) — lets a spec assert what the
-    // report WILL say without rasterizing it.
-    window.__reportData = { gameId, ...data };
+    // report WILL say without rasterizing it. Off unless the test harness
+    // sets window.__RETRO_TEST__ (test/lib.js), so nothing extra is exposed
+    // in a real session.
+    if (window.__RETRO_TEST__) window.__reportData = { gameId, ...data };
   }
 
   // Standard "N участников" chip data, reused by every game. `extra` is

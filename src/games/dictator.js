@@ -36,10 +36,13 @@
      `sharedStyles` — see src/styles/shared-styles.js for why the whole
      file rather than a hand-picked subset.
 ========================================================= */
+
 import * as d3 from 'd3';
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
+import CONTENT from '../content/dictator.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -64,6 +67,7 @@ import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const POT = 1000;
+const VARS = { pot: POT }; // filled into {pot} in the content texts
 const TOTAL_SCREENS = 5;
 const ROUND_TITLES = [
   'Быстрое решение про деньги — дважды',
@@ -236,7 +240,7 @@ export class RetroGameDictator extends LitElement {
     svgSel
       .append('text')
       .attr('x', 12)
-      .attr('y', baseline1 + laneGap + 10)
+      .attr('y', baseline1 + laneGap - 2)
       .style('font-size', '12px')
       .style('font-weight', 700)
       .style('fill', accentDeep)
@@ -266,7 +270,6 @@ export class RetroGameDictator extends LitElement {
         .attr('y', baseline2 + 18)
         .attr('text-anchor', 'middle')
         .style('font-size', '10.5px')
-        .style('font-family', 'IBM Plex Mono, monospace')
         .style('fill', 'var(--ink-faint)')
         .text(v);
     });
@@ -288,7 +291,6 @@ export class RetroGameDictator extends LitElement {
       .attr('text-anchor', 'middle')
       .style('font-size', '10.5px')
       .style('font-weight', 700)
-      .style('font-family', 'IBM Plex Mono, monospace')
       .style('fill', gold)
       .text('поровну');
 
@@ -414,6 +416,7 @@ export class RetroGameDictator extends LitElement {
           min="0"
           max="${POT}"
           inputmode="numeric"
+          aria-label="${row.name}: ${field === 'r1' ? 'раунд 1' : 'раунд 2'}, сколько отдать (0–${POT})"
           placeholder="0–${POT}"
           .value=${row[field] ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, field)}
@@ -467,33 +470,9 @@ export class RetroGameDictator extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Раунд 1 — решение анонимное</b>
-                <span
-                  >«Вам дали ${POT} ₽. Можно оставить их себе полностью или поделиться любой частью
-                  с анонимным коллегой из другой команды. Никто не узнает, кто сколько
-                  отдал».</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Раунд 2 — та же сумма, но вас увидят</b>
-                <span
-                  >Теперь коллега узнает, кто именно принял решение — ваше имя будет рядом с
-                  суммой. Решайте заново, как будто это происходит на самом деле.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps, VARS)}
 
-          <p class="note">
-            Отвечайте на первый раунд, ещё не зная формулировки второго — не забегайте вперёд.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -646,91 +625,12 @@ export class RetroGameDictator extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Игра диктатора</h1>
-          <p class="lede">
-            Классическая экономическая теория предсказывает: рациональный и эгоистичный человек
-            отдаст 0. В реальности почти никто так не делает — а стоит убрать анонимность, отдают
-            ещё больше.
-          </p>
-
-          <p>
-            «Игра диктатора» — упрощённая версия «Ультиматума»: один человек единолично решает,
-            как разделить сумму, а второй участник вообще не может ни отказаться, ни как-либо
-            повлиять на решение. Дизайн намеренно «очищает» эксперимент от стратегии и страха
-            отказа — остаётся только чистая готовность делиться, когда экономически выгоднее не
-            делиться вовсе.
-          </p>
-
-          <p>
-            Дизайн формализован в статье Forsythe R., Horowitz J., Savin N., Sefton M. (1994).
-            Fairness in Simple Bargaining Experiments. <i>Games and Economic Behavior</i> — как
-            «очищенный» тест альтруизма, отделённый от переговорной стратегии игры «Ультиматум».
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">20–30%</div>
-              <div class="lab">типичная доля, которую отдают анонимно в мета-анализах</div>
-            </div>
-            <div class="stat">
-              <div class="n">↑</div>
-              <div class="lab">сумма обычно растёт, когда решение становится видимым</div>
-            </div>
-          </div>
-
-          <p>
-            <b>Зачем нужен именно второй раунд.</b> Первый раунд «очищен» от давления чужого
-            мнения — это чистая базовая щедрость. Второй раунд специально возвращает то самое
-            социальное давление: теперь решение видно, а значит, включается забота о репутации.
-            Разница между раундами — это, по сути, размер эффекта «наблюдаемости»: сколько
-            щедрости в нас добавляет не мораль, а желание хорошо выглядеть в чужих глазах. Оба
-            мотива реальны и оба человеческие — игра просто разводит их по разным раундам, чтобы
-            увидеть каждый по отдельности.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Анонимность сильно меняет результат</b
-            ><span
-              >Вы только что могли увидеть это на своей же команде: если участники думают, что
-              кто-то увидит их решение, сумма, которую они отдают, заметно растёт — щедрость во
-              многом зависит от «наблюдаемости», а не только от внутренних убеждений.</span
-            >
-          </div>
-          <div class="fact">
-            <b>50/50 — устойчивая «фокальная точка»</b
-            ><span
-              >Заметная доля людей делит сумму ровно пополам — не потому что посчитали оптимальную
-              стратегию, а потому что «поровну» интуитивно ощущается как самый безопасный, самый
-              честный вариант.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Результат зависит от того, кто на другом конце</b
-            ><span
-              >Люди отдают заметно меньше, если получателем назначают благотворительный фонд с
-              плохой репутацией, и заметно больше — если получателя описывают как «такого же
-              участника эксперимента, как и вы».</span
-            >
-          </div>
-          <div class="fact">
-            <b>Даже дети делятся не из выгоды</b
-            ><span
-              >Похожие опыты с детьми 3–7 лет (Fehr, Bernhard, Rockenbach, 2008) показывают, что
-              готовность делиться с незнакомцем без всякой возможности наказания появляется рано и
-              растёт с возрастом — просоциальное поведение формируется до того, как ребёнок
-              способен просчитывать стратегию.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Возраст и культура смещают щедрость по-разному</b
-            ><span
-              >В кросс-культурных повторах итоговая доля «отдал больше нуля» и средний размер
-              пожертвования заметно различаются между странами — единого «естественного» уровня
-              альтруизма не существует, он формируется социальной средой.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

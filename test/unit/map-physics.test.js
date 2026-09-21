@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   applyTransform,
+  computeIconScale,
   computeSafeBounds,
   DRIFT_SPEED,
   FOCUS_SCALE,
@@ -11,15 +12,21 @@ import {
   FOCUS_Y_FRAC,
   focusTransform,
   hashString,
+  ICON_SIZE,
   IDENTITY,
   initialNodes,
   interpolateTransform,
+  MIN_ICON_SCALE,
   MIN_SEPARATION,
+  MIN_SPAN,
   MOUSE_REPEL_RADIUS,
   moveNodes,
   mulberry32,
   SAFE_INSET,
   separateNodes,
+  smoothHeading,
+  WAKE,
+  wakeDots,
 } from '../../src/logic/map-physics.js';
 
 const GAMES = Array.from({ length: 13 }, (_, i) => ({ id: `game-${i}`, name: `Game ${i}` }));
@@ -93,10 +100,39 @@ describe('computeSafeBounds', () => {
       maxY: 900 - SAFE_INSET.bottom,
     });
   });
-  test('a tiny window still leaves at least 200px to play in per axis', () => {
-    const b = computeSafeBounds(100, 100);
-    expect(b.maxX - b.minX).toBeGreaterThanOrEqual(200);
-    expect(b.maxY - b.minY).toBeGreaterThanOrEqual(200);
+  test('a small window (300×300) still leaves MIN_SPAN to play in per axis', () => {
+    const b = computeSafeBounds(300, 300);
+    expect(b.maxX - b.minX).toBeGreaterThanOrEqual(MIN_SPAN - 1e-9);
+    expect(b.maxY - b.minY).toBeGreaterThanOrEqual(MIN_SPAN - 1e-9);
+  });
+  test('the bounds never reach outside the container (so nothing is off-screen)', () => {
+    for (const [w, h] of [
+      [390, 700],
+      [900, 360],
+      [1280, 500],
+      [1440, 800],
+      [100, 100],
+    ]) {
+      const b = computeSafeBounds(w, h);
+      expect(b.minX).toBeGreaterThanOrEqual(0);
+      expect(b.minY).toBeGreaterThanOrEqual(0);
+      expect(b.maxX).toBeLessThanOrEqual(w);
+      expect(b.maxY).toBeLessThanOrEqual(h);
+    }
+  });
+  test('on a short window the vertical HUD reserve eases off so the icons get more height', () => {
+    const tall = computeSafeBounds(1400, 900);
+    const short = computeSafeBounds(1400, 420);
+    expect(short.maxY - short.minY).toBeGreaterThan(0.5 * (420 - 240)); // more than the un-eased reserve would leave
+    expect(short.minY).toBeLessThan(tall.minY);
+  });
+  test('on a normal-height window the bounds are exactly the fixed HUD insets', () => {
+    expect(computeSafeBounds(1400, 700)).toEqual({
+      minX: SAFE_INSET.left,
+      maxX: 1400 - SAFE_INSET.right,
+      minY: SAFE_INSET.top,
+      maxY: 700 - SAFE_INSET.bottom,
+    });
   });
   test('an unmeasured (0×0) container uses the default size', () => {
     expect(computeSafeBounds(0, 0)).toEqual(computeSafeBounds(900, 600));
@@ -240,5 +276,124 @@ describe('separateNodes', () => {
     const b = node({ x: 510, y: 400 });
     for (let i = 0; i < 600; i++) separateNodes([a, b], 1 / 60);
     expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(MIN_SEPARATION * 0.95);
+  });
+});
+
+describe('computeIconScale', () => {
+  test('is exactly 1 on normal screens — nothing shrinks', () => {
+    for (const [w, h] of [
+      [1920, 1080],
+      [1440, 800],
+      [1366, 700],
+      [1280, 720],
+    ]) {
+      expect(computeIconScale(computeSafeBounds(w, h), 13)).toBe(1);
+    }
+  });
+  test('shrinks on a small or zoomed-in window, but never below the minimum', () => {
+    const small = computeIconScale(computeSafeBounds(1000, 420), 13);
+    expect(small).toBeLessThan(1);
+    expect(small).toBeGreaterThanOrEqual(MIN_ICON_SCALE);
+    expect(computeIconScale(computeSafeBounds(300, 300), 13)).toBe(MIN_ICON_SCALE);
+  });
+  test('a smaller window never gets a bigger icon', () => {
+    const scales = [1440, 1200, 1000, 800, 640, 500].map((w) =>
+      computeIconScale(computeSafeBounds(w, 500), 13),
+    );
+    for (let i = 1; i < scales.length; i++)
+      expect(scales[i]).toBeLessThanOrEqual(scales[i - 1] + 1e-9);
+  });
+  test('fewer icons need less room, so they shrink less', () => {
+    const b = computeSafeBounds(900, 420);
+    expect(computeIconScale(b, 5)).toBeGreaterThanOrEqual(computeIconScale(b, 13));
+  });
+  test('nothing to place → no shrinking', () => {
+    expect(computeIconScale(computeSafeBounds(200, 200), 0)).toBe(1);
+  });
+  test('with the icons shrunk, they actually spread inside a small window without leaving it', () => {
+    const w = 900;
+    const h = 420;
+    const b = computeSafeBounds(w, h);
+    const scale = computeIconScale(b, 13);
+    const nodes = initialNodes(GAMES, b, { minSeparation: 170 * scale });
+    for (let frame = 0; frame < 60 * 30; frame++) {
+      moveNodes(nodes, 1 / 60, b);
+      separateNodes(nodes, 1 / 60, 170 * scale);
+    }
+    moveNodes(nodes, 1 / 60, b);
+    const half = (75 / 2) * scale + 20; // icon + glow
+    for (const n of nodes) {
+      expect(n.x - half).toBeGreaterThanOrEqual(0);
+      expect(n.x + half).toBeLessThanOrEqual(w);
+      expect(n.y - half).toBeGreaterThanOrEqual(0);
+      expect(n.y + half).toBeLessThanOrEqual(h);
+    }
+  });
+});
+
+describe('the wake (tail behind an icon)', () => {
+  const east = { x: 1, y: 0 };
+
+  test('has the configured number of dots, all BEHIND the icon', () => {
+    const dots = wakeDots(east);
+    expect(dots).toHaveLength(WAKE.count);
+    for (const d of dots) {
+      expect(d.dx).toBeLessThan(0); // heading east → tail to the west
+      expect(d.dy).toBeCloseTo(0, 9);
+    }
+  });
+  test('regression: the whole tail lies outside the icon itself (it used to hide underneath it)', () => {
+    for (const scale of [1, 0.6, 0.4]) {
+      const edge = (ICON_SIZE / 2) * scale;
+      for (const d of wakeDots(east, scale))
+        expect(Math.hypot(d.dx, d.dy) - d.radius).toBeGreaterThan(edge * 0.6);
+    }
+  });
+  test('the dots move away from the icon in order, shrinking and fading toward the tip', () => {
+    const dots = wakeDots(east);
+    for (let i = 1; i < dots.length; i++) {
+      expect(Math.hypot(dots[i].dx, dots[i].dy)).toBeGreaterThan(
+        Math.hypot(dots[i - 1].dx, dots[i - 1].dy),
+      );
+      expect(dots[i].radius).toBeLessThan(dots[i - 1].radius);
+      expect(dots[i].alpha).toBeLessThan(dots[i - 1].alpha);
+    }
+    expect(dots[0].alpha).toBeCloseTo(WAKE.maxAlpha, 9);
+    expect(dots.at(-1).alpha).toBeCloseTo(0, 9);
+  });
+  test('follows the heading in any direction', () => {
+    const south = wakeDots({ x: 0, y: 1 });
+    expect(south.every((d) => d.dy < 0 && Math.abs(d.dx) < 1e-9)).toBe(true);
+    const diag = wakeDots({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
+    expect(diag.every((d) => d.dx < 0 && d.dy < 0)).toBe(true);
+  });
+  test('shrinks with the icon scale', () => {
+    const full = wakeDots(east, 1).at(-1);
+    const small = wakeDots(east, 0.5).at(-1);
+    expect(Math.abs(small.dx)).toBeCloseTo(Math.abs(full.dx) / 2, 9);
+    expect(small.radius).toBeCloseTo(full.radius / 2, 9);
+  });
+
+  test('smoothHeading: unit length, and moves toward the new direction without snapping', () => {
+    let h = { x: 1, y: 0 };
+    h = smoothHeading(h, 0, 10, 1 / 60); // the icon now heads south
+    expect(Math.hypot(h.x, h.y)).toBeCloseTo(1, 9);
+    expect(h.y).toBeGreaterThan(0);
+    expect(h.y).toBeLessThan(0.2); // one frame later: barely turned
+    for (let i = 0; i < 300; i++) h = smoothHeading(h, 0, 10, 1 / 60);
+    expect(h.y).toBeGreaterThan(0.99); // eventually fully turned
+  });
+  test('smoothHeading: a head-on 180° bounce completes the turn (regression: it used to stay stuck)', () => {
+    let h = { x: 1, y: 0 };
+    for (let i = 0; i < 200; i++) {
+      h = smoothHeading(h, -10, 0, 1 / 60);
+      expect(Number.isFinite(h.x) && Number.isFinite(h.y)).toBe(true);
+      expect(Math.hypot(h.x, h.y)).toBeCloseTo(1, 6);
+    }
+    expect(h.x).toBeLessThan(-0.9);
+  });
+  test('smoothHeading: a stationary icon keeps its previous heading', () => {
+    const h = { x: 0, y: -1 };
+    expect(smoothHeading(h, 0, 0, 1 / 60)).toBe(h);
   });
 });

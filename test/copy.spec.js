@@ -90,6 +90,10 @@ async function run() {
 
       const btnVisible = await page.isVisible('#copy-profile').catch(() => false);
       report.check('barnum: copy button visible on instructions screen', btnVisible);
+      report.check(
+        'barnum: the portrait text is hidden until revealed (but can be copied unseen)',
+        (await page.getAttribute('#text-profile', 'hidden')) !== null,
+      );
 
       await page.click('#copy-profile');
       await page.waitForTimeout(120);

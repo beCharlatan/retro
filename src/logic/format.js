@@ -7,21 +7,38 @@
    of living as private copies in whichever file needed them first.
 ========================================================= */
 
-// Russian plural form for `n`: forms = [one, few, many],
+// Russian plural form for `n` — the browser's own CLDR rules
+// (Intl.PluralRules), not a hand-written copy of them:
+// forms = [one, few, many],
 // e.g. plural(2, ['участник', 'участника', 'участников']) → 'участника'.
+// Fractions ("other" in CLDR) read like "many" in Russian ("2,5 участников").
+const PLURAL_RULES = new Intl.PluralRules('ru');
+
 export function plural(n, forms) {
-  const abs = Math.abs(n);
-  const mod10 = abs % 10;
-  const mod100 = abs % 100;
-  if (mod10 === 1 && mod100 !== 11) return forms[0];
-  if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return forms[1];
-  return forms[2];
+  switch (PLURAL_RULES.select(n)) {
+    case 'one':
+      return forms[0];
+    case 'few':
+      return forms[1];
+    default:
+      return forms[2];
+  }
 }
 
 // "+150 ₽" / "-40 ₽" / "+0": an explicit sign for a change, with an optional
 // unit suffix (include the leading space yourself: ' ₽').
 export function formatSigned(n, unit = '') {
   return `${n >= 0 ? '+' : ''}${n}${unit}`;
+}
+
+// A short number for chart axes: 950 → "950", 12 500 → "12,5 тыс", 1 500 000 → "1,5 млн".
+export function formatCompact(n) {
+  const abs = Math.abs(n);
+  const trim = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+  if (abs >= 1e9) return `${trim(n / 1e9)} млрд`;
+  if (abs >= 1e6) return `${trim(n / 1e6)} млн`;
+  if (abs >= 1e4) return `${trim(n / 1e3)} тыс`;
+  return String(Math.round(n * 10) / 10).replace('.', ',');
 }
 
 // A hit/miss/unanswered cell in a results table.
@@ -53,15 +70,17 @@ export function buildExportFilename(gameTitle, date = new Date(), ext = 'png') {
   return `${slug}_${dd}.${mm}.${date.getFullYear()}.${ext}`;
 }
 
-// "Saved 3 minutes ago" for the draft-recovery banner. `now` is injectable
-// so tests don't depend on the clock.
+const RELATIVE_TIME = new Intl.RelativeTimeFormat('ru', { numeric: 'always' });
+
+// "Saved 3 minutes ago" for the draft-recovery banner, worded and declined
+// by Intl.RelativeTimeFormat ("22 минуты назад", "3 часа назад") — the
+// only thing we add is "только что" for the first minute. `now` is
+// injectable so tests don't depend on the clock.
 export function timeAgo(ts, now = Date.now()) {
   const mins = Math.round((now - ts) / 60000);
   if (mins < 1) return 'только что';
-  if (mins === 1) return 'минуту назад';
-  if (mins < 60) return `${mins} ${plural(mins, ['минуту', 'минуты', 'минут'])} назад`;
-  const hrs = Math.round(mins / 60);
-  return hrs === 1 ? 'час назад' : `${hrs} ч. назад`;
+  if (mins < 60) return RELATIVE_TIME.format(-mins, 'minute');
+  return RELATIVE_TIME.format(-Math.round(mins / 60), 'hour');
 }
 
 // First letter of the name, uppercased — the fallback for a person with

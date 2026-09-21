@@ -23,6 +23,7 @@
    sequencing is unit-testable without a DOM or real waiting.
 ========================================================= */
 import { html } from 'lit';
+import { classMap } from 'lit/directives/class-map.js';
 import {
   activeIndexFromTops,
   advanceFlow,
@@ -30,7 +31,7 @@ import {
   initialFlow,
   isRoundLocked,
   READING_LINE_FRAC,
-  roundClassName,
+  roundClassMap,
   setActiveRound,
 } from '../logic/round-flow.js';
 
@@ -139,8 +140,14 @@ export class RoundFlowController {
 
   // ---- template helpers ----
 
+  // `class="${this.flow.roundClass(i)}"` — a classMap() directive.
   roundClass(i) {
-    return roundClassName(this.state, i);
+    return classMap(this.roundClassMap(i));
+  }
+
+  // The same thing as a plain { class: boolean } object (what classMap wraps).
+  roundClassMap(i) {
+    return roundClassMap(this.state, i);
   }
 
   // The blurred-content overlay for a round not reached yet — only a

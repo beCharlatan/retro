@@ -47,8 +47,15 @@ export function isRoundLocked(state, i) {
   return i > state.screenIdx;
 }
 
-export function roundClassName(state, i) {
-  return `round ${isRoundLocked(state, i) ? 'round-pending' : ''} ${state.justCompletedIdx === i ? 'round-just-completed' : ''}`;
+// Which classes a round's <section> should have, as a { class: boolean } map
+// — the shape Lit's classMap() directive wants (no string concatenation,
+// no stray double spaces).
+export function roundClassMap(state, i) {
+  return {
+    round: true,
+    'round-pending': isRoundLocked(state, i),
+    'round-just-completed': state.justCompletedIdx === i,
+  };
 }
 
 // Index of the last round whose top edge is at or above the reading

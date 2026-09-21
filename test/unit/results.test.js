@@ -8,14 +8,19 @@ import {
   availabilityResults,
   availabilityRows,
   barnumResults,
+  calibrationBars,
   calibrationResults,
   calibrationRows,
   choiceLabel,
   corrLabel,
   crowdWisdomResults,
   dictatorResults,
+  endowmentLotCounts,
+  endowmentReady,
   endowmentResults,
   falseConsensusResults,
+  framingFrame,
+  framingReady,
   framingResults,
   isCorrectAnswer,
   isDeal,
@@ -27,6 +32,7 @@ import {
   prisonersDilemmaRoundRows,
   publicGoodsResults,
   publicGoodsRoundStats,
+  publicGoodsSummary,
   scoreOutcomes,
   ultimatumResults,
 } from '../../src/logic/results.js';
@@ -87,7 +93,10 @@ describe('availability', () => {
     expect(r.totalAnswered).toBe(5);
     expect(r.totalCorrect).toBe(3);
     expect(r.correctRate).toBe('60%');
-    expect(r.perQuestionStats).toEqual([{ pct: 67 }, { pct: 50 }]);
+    expect(r.perQuestionStats).toEqual([
+      { pct: 67, answered: 3, correct: 2 },
+      { pct: 50, answered: 2, correct: 1 },
+    ]);
   });
   test('finds the hardest question', () => {
     expect(availabilityResults(entries, questions).worst).toEqual({ short: 'Q2', pct: 50 });
@@ -219,26 +228,77 @@ describe('dictator', () => {
 });
 
 describe('endowment', () => {
-  // Person 1 owned first (asked 300), bought second (offered 100);
-  // person 2 bought first (offered 200), owned second (asked 400).
+  // Owners ask, buyers offer — one price per lot (mug, car, house).
+  const row = (role, ...prices) => ({ name: role, role, prices });
   const entries = [
-    { r1Role: 'owner', r2Role: 'buyer', r1Price: 300, r2Price: 100 },
-    { r1Role: 'buyer', r2Role: 'owner', r1Price: 200, r2Price: 400 },
+    row('owner', 800, 1_600_000, 12_000_000),
+    row('owner', 600, 1_400_000, 10_000_000),
+    row('buyer', 400, 1_000_000, 9_000_000),
+    row('buyer', 500, 1_100_000, 9_000_000),
   ];
-  test('picks each person’s sell price from their owner round and buy price from their buyer round', () => {
-    const r = endowmentResults(entries);
-    expect(r.avgWTA).toBe(350);
-    expect(r.avgWTP).toBe(150);
-    expect(r.ratio).toBe('2.3');
+
+  test('per lot: average asking price, average offer, and their ratio', () => {
+    const r = endowmentResults(entries, 3);
+    expect(r.perLot).toHaveLength(3);
+    expect(r.perLot[0]).toMatchObject({ sellers: 2, buyers: 2, avgWTA: 700, avgWTP: 450 });
+    expect(r.perLot[0].ratio).toBeCloseTo(700 / 450, 9);
+    expect(r.perLot[2].ratio).toBeCloseTo(11_000_000 / 9_000_000, 9);
   });
-  test('ratio is null when nobody would pay anything', () => {
-    const r = endowmentResults([{ r1Role: 'owner', r2Role: 'buyer', r1Price: 100, r2Price: 0 }]);
+  test('the headline is the average of the per-lot ratios, so a house does not drown out a mug', () => {
+    const r = endowmentResults(entries, 3);
+    const expected = (700 / 450 + 1_500_000 / 1_050_000 + 11_000_000 / 9_000_000) / 3;
+    expect(r.ratioN).toBeCloseTo(expected, 9);
+    expect(r.ratio).toBe(expected.toFixed(1));
+  });
+  test('roles stay fixed: an owner’s price is only ever an asking price, a buyer’s only an offer', () => {
+    const r = endowmentResults([row('owner', 1000), row('buyer', 100)], 1);
+    expect(r.perLot[0].avgWTA).toBe(1000);
+    expect(r.perLot[0].avgWTP).toBe(100);
+  });
+  test('people who priced nothing are left out of `filled`; partial rows stay in', () => {
+    const r = endowmentResults(
+      [row('owner', 1, null, null), row('buyer', null, null, null), row('buyer', 5, 6, 7)],
+      3,
+    );
+    expect(r.filled).toHaveLength(2);
+  });
+  test('a lot nobody on one side priced has a null ratio, others still count', () => {
+    const r = endowmentResults([row('owner', 10, null), row('buyer', 5, 7)], 2);
+    expect(r.perLot[0].ratio).toBe(2);
+    expect(r.perLot[1].ratio).toBeNull();
+    expect(r.ratioN).toBe(2);
+  });
+  test('ratio is null when buyers offered nothing but zero (no division by zero)', () => {
+    const r = endowmentResults([row('owner', 100), row('buyer', 0)], 1);
+    expect(r.perLot[0].ratio).toBeNull();
     expect(r.ratio).toBeNull();
   });
-  test('no complete rows → null everything', () => {
-    const r = endowmentResults([{ r1Role: 'owner', r2Role: 'buyer', r1Price: 1, r2Price: null }]);
-    expect(r.avgWTA).toBeNull();
+  test('no data → null headline, no NaN', () => {
+    const r = endowmentResults([row('owner', null, null, null)], 3);
     expect(r.ratio).toBeNull();
+    expect(r.ratioN).toBeNull();
+    expect(r.filled).toEqual([]);
+  });
+  test('the lot count defaults to the number of prices per row', () => {
+    expect(endowmentResults(entries).perLot).toHaveLength(3);
+    expect(endowmentResults([]).perLot).toEqual([]);
+  });
+  test('endowmentLotCounts counts each side that priced a lot', () => {
+    const e = [row('owner', 1, null), row('owner', null, 2), row('buyer', 3, null)];
+    expect(endowmentLotCounts(e, 0)).toEqual({ sellers: 1, buyers: 1 });
+    expect(endowmentLotCounts(e, 1)).toEqual({ sellers: 1, buyers: 0 });
+  });
+  test('endowmentReady needs a seller AND a buyer price for EVERY lot', () => {
+    expect(endowmentReady(entries, 3)).toBe(true);
+    // lot 2 has only a seller price
+    const half = [row('owner', 1, 2), row('buyer', 3, null)];
+    expect(endowmentReady(half, 2)).toBe(false);
+    // nobody priced anything, or there are no lots
+    expect(endowmentReady([row('owner', null), row('buyer', null)], 1)).toBe(false);
+    expect(endowmentReady(entries, 0)).toBe(false);
+  });
+  test('a single seller and a single buyer are enough to compare', () => {
+    expect(endowmentReady([row('owner', 5), row('buyer', 4)], 1)).toBe(true);
   });
 });
 
@@ -272,31 +332,87 @@ describe('falseConsensus', () => {
 });
 
 describe('framing', () => {
-  const e = (group, choice) => ({ group, choice });
-  test('flip: group B (loss frame) takes the risky option more often', () => {
-    const r = framingResults([
-      e('A', '1'),
-      e('A', '1'),
-      e('A', '2'),
-      e('B', '2'),
-      e('B', '2'),
-      e('B', '1'),
-    ]);
-    expect(r.aRisky).toBe(33);
-    expect(r.bRisky).toBe(67);
+  // choices: ['1'|'2'|null, ...] — one per scenario. '2' is the gamble.
+  const e = (group, ...choices) => ({ name: `${group}-${choices.join('')}`, group, choices });
+
+  test('the wording alternates: A hears gain then loss, B loss then gain', () => {
+    expect([framingFrame('A', 0), framingFrame('A', 1)]).toEqual(['gain', 'loss']);
+    expect([framingFrame('B', 0), framingFrame('B', 1)]).toEqual(['loss', 'gain']);
+    expect(framingFrame('A', 2)).toBe('gain');
+  });
+
+  test('per scenario: % who gambled under the gain wording vs the loss wording', () => {
+    // scenario 1: A (gain) 1 of 3 gambled = 33%; B (loss) 2 of 3 = 67%
+    const r = framingResults(
+      [e('A', '1'), e('A', '1'), e('A', '2'), e('B', '2'), e('B', '2'), e('B', '1')],
+      1,
+    );
+    expect(r.perRound[0]).toMatchObject({ gainRisky: 33, lossRisky: 67, diff: 34, flipped: true });
     expect(r.flipText).toBe('Формулировка сработала');
   });
-  test('no flip when B is not riskier', () => {
-    const r = framingResults([e('A', '2'), e('B', '1')]);
+
+  test('in scenario 2 the groups swap wordings, so group A is now the loss group', () => {
+    // scenario 2: A hears LOSS, B hears GAIN
+    const r = framingResults([e('A', '1', '2'), e('B', '1', '1')], 2);
+    expect(r.perRound[1]).toMatchObject({ lossRisky: 100, gainRisky: 0, flipped: true });
+    expect(r.perRound[1].points.find((p) => p.group === 'A').frame).toBe('loss');
+  });
+
+  test('pools both scenarios: every person contributes one answer per wording', () => {
+    // A: gain→1(safe), loss→2(gamble); B: loss→2(gamble), gain→1(safe)
+    const r = framingResults([e('A', '1', '2'), e('B', '2', '1')], 2);
+    expect(r.gainRisky).toBe(0);
+    expect(r.lossRisky).toBe(100);
+    expect(r.diff).toBe(100);
+    expect(r.decided).toBe(2);
+    expect(r.flippedRounds).toBe(2);
+    expect(r.flipText).toBe('Сработала в 2 из 2');
+  });
+
+  test('the effect can show in one scenario and not the other', () => {
+    // scenario 1: loss group (B) gambles more → flips. scenario 2: gain group (B) gambles more → does not.
+    const r = framingResults([e('A', '1', '1'), e('B', '2', '2')], 2);
+    expect(r.perRound[0].flipped).toBe(true);
+    expect(r.perRound[1].flipped).toBe(false);
+    expect(r.flippedRounds).toBe(1);
+    expect(r.flipText).toBe('Сработала в 1 из 2');
+  });
+
+  test('no flip anywhere', () => {
+    const r = framingResults([e('A', '2', '1'), e('B', '1', '2')], 2);
+    expect(r.flippedRounds).toBe(0);
     expect(r.flipText).toBe('В этот раз без переворота');
   });
-  test('an empty group leaves the verdict undecided', () => {
-    const r = framingResults([e('A', '2')]);
-    expect(r.bRisky).toBeNull();
-    expect(r.flipText).toBe('—');
+
+  test('a scenario where one wording was never answered is undecided, the other still counts', () => {
+    const r = framingResults([e('A', '2', null), e('B', '1', null)], 2);
+    expect(r.perRound[1].flipped).toBeNull();
+    expect(r.perRound[1].gainRisky).toBeNull();
+    expect(r.decided).toBe(1);
   });
-  test('ignores people who have not chosen', () => {
-    expect(framingResults([e('A', null), e('B', '2')]).filled).toHaveLength(1);
+
+  test('nothing answered → undecided, no NaN', () => {
+    const r = framingResults([e('A', null, null)], 2);
+    expect(r.flipText).toBe('—');
+    expect(r.gainRisky).toBeNull();
+    expect(r.diff).toBeNull();
+    expect(r.filled).toEqual([]);
+  });
+
+  test('ignores nobody who answered at least one scenario', () => {
+    expect(
+      framingResults([e('A', null, '2'), e('B', '1', null), e('A', null, null)], 2).filled,
+    ).toHaveLength(2);
+  });
+
+  test('framingReady needs both wordings answered in EVERY scenario', () => {
+    expect(framingReady([e('A', '1', '1'), e('B', '2', '2')], 2)).toBe(true);
+    // only group A answered scenario 2 → only the loss wording there
+    expect(framingReady([e('A', '1', '1'), e('B', '2', null)], 2)).toBe(false);
+    // only one group answered anything
+    expect(framingReady([e('A', '1', '1'), e('A', '2', '2')], 2)).toBe(false);
+    expect(framingReady([], 2)).toBe(false);
+    expect(framingReady([e('A', '1')], 0)).toBe(false);
   });
 });
 
@@ -532,5 +648,97 @@ describe('ultimatum deal rule', () => {
     expect(isDeal({ offer: 200, min: 200 })).toBe(true);
     expect(isDeal({ offer: 199, min: 200 })).toBe(false);
     expect(isDeal({ offer: 500, min: 100 })).toBe(true);
+  });
+});
+
+describe('publicGoodsSummary (the round-1 recap shown in round 2)', () => {
+  const rows = (...r1) => r1.map((v) => ({ r1: v, r2: null }));
+  test('average, spread, pot after doubling and each player’s equal share', () => {
+    // 4 players put in 100, 50, 0, 0 → total 150, pot 300, share 75 each
+    const s = publicGoodsSummary(rows(100, 50, 0, 0), 'r1', 100);
+    expect(s).toMatchObject({ n: 4, avg: 37.5, min: 0, max: 100, total: 150, pot: 300, share: 75 });
+  });
+  test('what a full contributor and a free rider each end up with', () => {
+    const s = publicGoodsSummary(rows(100, 50, 0, 0), 'r1', 100);
+    expect(s.fullContributorGets).toBe(75); // kept nothing, gets the share
+    expect(s.freeRiderGets).toBe(175); // kept 100 + the share
+    expect(s.freeRiderGets - s.fullContributorGets).toBeCloseTo(100, 9); // the free rider is always exactly the stake ahead
+  });
+  test('counts free riders and full contributors', () => {
+    const s = publicGoodsSummary(rows(100, 100, 0, 30), 'r1', 100);
+    expect(s.freeRiders).toBe(1);
+    expect(s.fullContributors).toBe(2);
+  });
+  test('people who have not answered yet are ignored', () => {
+    const s = publicGoodsSummary(
+      [
+        { r1: 40, r2: null },
+        { r1: null, r2: null },
+        { r1: 60, r2: null },
+      ],
+      'r1',
+      100,
+    );
+    expect(s.n).toBe(2);
+    expect(s.avg).toBe(50);
+  });
+  test('nothing entered → no recap', () => {
+    expect(publicGoodsSummary(rows(null, null), 'r1', 100)).toBeNull();
+    expect(publicGoodsSummary([], 'r1', 100)).toBeNull();
+  });
+  test('works for round 2 too', () => {
+    const s = publicGoodsSummary(
+      [
+        { r1: 10, r2: 20 },
+        { r1: 10, r2: 40 },
+      ],
+      'r2',
+      100,
+    );
+    expect(s.avg).toBe(30);
+  });
+  test('the pot is exactly double the total, and the shares add up to it', () => {
+    const s = publicGoodsSummary(rows(10, 20, 30), 'r1', 100);
+    expect(s.pot).toBe(2 * s.total);
+    expect(s.share * s.n).toBeCloseTo(s.pot, 9);
+  });
+});
+
+describe('calibrationBars (data for the interval chart)', () => {
+  const questions = [{ answer: 100 }, { answer: 50 }];
+  const entries = [
+    {
+      name: 'A',
+      ranges: [
+        { low: 90, high: 110 },
+        { low: 60, high: 70 },
+      ],
+    },
+    {
+      name: 'B',
+      ranges: [
+        { low: 120, high: 80 },
+        { low: null, high: 5 },
+      ],
+    }, // typed backwards / skipped
+  ];
+  test('one entry per question, holding every answered range', () => {
+    const r = calibrationBars(entries, questions);
+    expect(r).toHaveLength(2);
+    expect(r[0].bars.map((b) => b.name)).toEqual(['A', 'B']);
+    expect(r[1].bars.map((b) => b.name)).toEqual(['A']); // B skipped question 2
+  });
+  test('ranges typed backwards are normalised so low ≤ high', () => {
+    expect(calibrationBars(entries, questions)[0].bars[1]).toMatchObject({ low: 80, high: 120 });
+  });
+  test('each bar knows whether it contained the true answer', () => {
+    const r = calibrationBars(entries, questions);
+    expect(r[0].bars.map((b) => b.hit)).toEqual([true, true]);
+    expect(r[1].bars[0].hit).toBe(false);
+  });
+  test('the hit count agrees with calibrationResults', () => {
+    const bars = calibrationBars(entries, questions);
+    const hits = bars.flatMap((q) => q.bars).filter((b) => b.hit).length;
+    expect(hits).toBe(calibrationResults(entries, questions).totalHits);
   });
 });

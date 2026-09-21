@@ -20,8 +20,14 @@
    all original plain ids
    (entry-body-1/2, next-btn-1/2, results-table/tbody, ...).
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawScatter } from '../charts/scatter.js';
+import CONTENT from '../content/ultimatum.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -35,6 +41,7 @@ import {
   ICON_TRIO,
   ICON_X,
 } from '../icons.js';
+import { sharedDomain } from '../logic/chart-data.js';
 import {
   buildUltimatumEntries,
   countFilled,
@@ -45,6 +52,7 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
+import { escapeHtml } from '../logic/format.js';
 import { isDeal, ultimatumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -54,6 +62,7 @@ import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const STAKE = 1000;
+const VARS = { stake: STAKE }; // filled into {stake} in the content texts
 const TOTAL_SCREENS = 6;
 const ROUND_TITLES = [
   'Разделите деньги на двоих — дважды',
@@ -82,6 +91,13 @@ export class RetroGameUltimatum extends LitElement {
     this.assignment = Roles.makePairs(state.participants);
     this.entries = buildUltimatumEntries(this.assignment);
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'ult-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
     this.selectedSwap = null;
     this.shuffleSpin = false;
 
@@ -153,6 +169,36 @@ export class RetroGameUltimatum extends LitElement {
     const offerField = round === 1 ? 'r1_offer' : 'r2_offer';
     const minField = round === 1 ? 'r1_min' : 'r2_min';
     return countFilled(this.entries, hasFields(offerField, minField));
+  }
+
+  // Offer (x) against the least the responder would accept (y). The diagonal is the
+  // deal line: a dot on or below it is a deal, above it the offer was rejected.
+  _drawChart(svg, theme) {
+    const { instances } = this.results;
+    const domain = sharedDomain(instances.map((x) => [x.offer, x.min]));
+    drawScatter(svg, {
+      points: instances.map((x) => ({
+        x: x.offer,
+        y: x.min,
+        color: isDeal(x) ? theme.accent : theme.red,
+        tip: tipHtml(`${escapeHtml(x.proposer)} → ${escapeHtml(x.responder)}`, [
+          ['Раунд', x.round],
+          ['Предложил(а)', `${x.offer} ₽`],
+          ['Минимум для согласия', `${x.min} ₽`],
+          ['Итог', isDeal(x) ? 'Сделка' : 'Отказ'],
+        ]),
+      })),
+      xDomain: domain,
+      yDomain: domain,
+      xLabel: 'ПРЕДЛОЖЕНИЕ, ₽',
+      yLabel: 'МИНИМУМ, ЗА КОТОРЫЙ СОГЛАСЕН, ₽',
+      guides: [{ slope: 1, label: 'предложение = минимум', color: theme.inkSoft }],
+      legend: [
+        { label: 'сделка', color: theme.accent },
+        { label: 'отказ', color: theme.red },
+      ],
+      theme,
+    });
   }
 
   _showResults() {
@@ -251,6 +297,7 @@ export class RetroGameUltimatum extends LitElement {
           min="0"
           max="${STAKE}"
           inputmode="numeric"
+          aria-label="${proposer}: предложение, раунд ${round}"
           placeholder="Предложил"
           .value=${entry[offerField] ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, offerField)}
@@ -261,6 +308,7 @@ export class RetroGameUltimatum extends LitElement {
           min="0"
           max="${STAKE}"
           inputmode="numeric"
+          aria-label="${responder}: минимум, который примет, раунд ${round}"
           placeholder="Минимум"
           .value=${entry[minField] ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, minField)}
@@ -315,30 +363,9 @@ export class RetroGameUltimatum extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Раунд 1: один — Предлагающий, другой — Отвечающий</b>
-                <span
-                  >Предлагающему достаётся ${STAKE} ₽, он решает, сколько предложить партнёру.
-                  Отвечающий независимо называет минимальную сумму, на которую согласился бы.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Раунд 2: те же пары, роли наоборот</b>
-                <span
-                  >Кто был Отвечающим — теперь Предлагающий, и наоборот. Те же ${STAKE} ₽, то же
-                  решение, только с другой стороны.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps, VARS)}
 
-          <p class="note">В каждом раунде оба решения в паре принимаются одновременно и независимо.</p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -457,6 +484,12 @@ export class RetroGameUltimatum extends LitElement {
             </div>
           </div>
 
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Предложения и пороги согласия</div>
+            <svg id="ult-chart" class="d3-chart-svg" role="img" aria-label="Каждое предложение и минимальная сумма, за которую партнёр был согласен"></svg>
+            <p class="d3-chart-cap">Ниже диагонали — предложение хватило, сделка. Выше — партнёр отказался, хотя ему предлагали деньги: он предпочёл остаться ни с чем, лишь бы не соглашаться на «нечестно».</p>
+          </div>
+
           <table class="results-table" id="results-table">
             <thead>
               <tr>
@@ -506,90 +539,12 @@ export class RetroGameUltimatum extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Ультиматум</h1>
-          <p class="lede">
-            Классическая экономическая теория предсказывает: рациональный Отвечающий согласится
-            на любую ненулевую сумму. В реальности люди массово отвергают «несправедливые»
-            предложения — даже теряя деньги.
-          </p>
-
-          <p>
-            Игра формализована в статье Güth W., Schmittberger R., Schwarze B. (1982). An
-            Experimental Analysis of Ultimatum Bargaining. <i>Journal of Economic Behavior &
-            Organization</i> — одна из первых работ, экспериментально показавших, что модель
-            «человека экономического» не описывает реальное поведение: люди систематически
-            платят за справедливость и наказывают жадность.
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">40–50%</div>
-              <div class="lab">типичное предложение в классических опытах</div>
-            </div>
-            <div class="stat">
-              <div class="n">&lt;20%</div>
-              <div class="lab">предложения такого размера обычно отвергают</div>
-            </div>
-          </div>
-
-          <p>
-            <b>Почему отказ — это тоже рациональное поведение, просто по другим правилам.</b> С
-            точки зрения чистой выгоды отказ бессмыслен: Отвечающий теряет свою долю, а взамен
-            ничего не получает — предлагающий тоже остаётся без денег, но это ему уже не поможет.
-            Однако люди явно считают не только «сколько я получу», но и «насколько справедливо со
-            мной обошлись» — а несправедливое предложение воспринимается как оскорбление, за
-            которое стоит наказать, даже по цене собственных денег. Мозг обрабатывает такие
-            ситуации отчасти эмоционально: сканирование мозга Отвечающих во время несправедливых
-            предложений показывает активацию зон, связанных с отвращением и негативными эмоциями —
-            то есть отказ ощущается не как холодный расчёт, а как что-то близкое к моральному
-            возмущению.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Чувство «справедливой доли» не универсально</b
-            ><span
-              >Кросс-культурное исследование Henrich et al. (2001) в 15 небольших сообществах по
-              всему миру показало, что средний размер «справедливого» предложения сильно
-              варьируется между культурами — от ~26% до ~57%.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Вы только что сыграли в обе роли</b
-            ><span
-              >В большинстве лабораторных версий этой игры участник — либо только Предлагающий,
-              либо только Отвечающий. Сыграв оба раунда, вы могли заметить, что предложение самому
-              себе «справедливым» и оценка чужого предложения как «справедливого» — не всегда одно
-              и то же число.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Отказ активирует те же зоны мозга, что и отвращение к еде</b
-            ><span
-              >Исследования на фМРТ (Sanfey et al., 2003) показали, что несправедливые предложения
-              активируют островковую долю мозга — область, также отвечающую за реакцию на
-              неприятные запахи и вкусы. Несправедливость буквально «противна» на нейронном
-              уровне.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Размер ставки почти не меняет картину</b
-            ><span
-              >Даже когда на кону оказываются суммы, эквивалентные нескольким месячным зарплатам
-              (эксперименты проводили в странах с низким доходом, где ставки были очень весомыми
-              относительно дохода участников), люди продолжают отвергать откровенно
-              несправедливые предложения — хотя абсолютная цена отказа становится куда выше.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Рабочая параллель</b
-            ><span
-              >Первое предложение на переговорах о зарплате или бюджете задаёт тон всему разговору
-              — слишком низкий «якорь» может привести к отказу от сделки целиком, даже если
-              условия объективно приемлемы.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

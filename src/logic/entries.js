@@ -68,12 +68,15 @@ export const minCount = (counts) => (counts.length ? Math.min(...counts) : 0);
 //   length    required row count (omit for pair games, whose rows depend
 //             on a saved assignment instead)
 //   requires  another payload field that must be present (`assignment`)
-export function loadableDraft(loaded, { key, length, requires } = {}) {
+//   rowCheck  predicate every saved row must pass — rejects a draft saved by
+//             an older version of the game with a different row shape
+export function loadableDraft(loaded, { key, length, requires, rowCheck } = {}) {
   if (!loaded?.payload) return null;
   const rows = loaded.payload[key];
   if (!Array.isArray(rows)) return null;
   if (length !== undefined && rows.length !== length) return null;
   if (requires && !loaded.payload[requires]) return null;
+  if (rowCheck && !rows.every((r) => r && rowCheck(r))) return null;
   return loaded;
 }
 
@@ -81,29 +84,27 @@ export function loadableDraft(loaded, { key, length, requires } = {}) {
 // Built from Roles.makeGroups() ({ groupA, groupB }) or Roles.makePairs()
 // ({ pairs: [{ a, b, trio? }] }) once people are assigned.
 
-// Endowment effect: group A owns in round 1 and buys in round 2, group B the
-// other way round — so everyone experiences both roles.
-export function buildEndowmentEntries(groups) {
-  const blank = { r1Price: null, r2Price: null };
-  const owners = groups.groupA.map((name) => ({
-    name,
-    r1Role: 'owner',
-    r2Role: 'buyer',
-    ...blank,
-  }));
-  const buyers = groups.groupB.map((name) => ({
-    name,
-    r1Role: 'buyer',
-    r2Role: 'owner',
-    ...blank,
-  }));
+// Endowment effect: one group SELLS every lot (owners), the other BUYS every
+// lot — roles don't swap. Each row keeps one price per lot (mug, car, house…).
+export const ENDOWMENT_LOT_COUNT = 3;
+
+export function buildEndowmentEntries(groups, lotCount = ENDOWMENT_LOT_COUNT) {
+  const blank = () => Array.from({ length: lotCount }, () => null);
+  const owners = groups.groupA.map((name) => ({ name, role: 'owner', prices: blank() }));
+  const buyers = groups.groupB.map((name) => ({ name, role: 'buyer', prices: blank() }));
   return owners.concat(buyers);
 }
 
-// Framing: group A reads the gain frame, group B the loss frame.
-export function buildFramingEntries(groups) {
-  const a = groups.groupA.map((name) => ({ name, group: 'A', choice: null }));
-  const b = groups.groupB.map((name) => ({ name, group: 'B', choice: null }));
+// Framing: two scenarios (rounds). In round 1 group A reads the gain frame and
+// group B the loss frame; in round 2 they swap — so every person sees BOTH
+// frames, one per scenario, and a group being braver by chance can't fake an
+// effect. `choices[round]` is '1' (sure thing) | '2' (gamble) | null.
+export const FRAMING_ROUND_COUNT = 2;
+
+export function buildFramingEntries(groups, roundCount = FRAMING_ROUND_COUNT) {
+  const blank = () => Array.from({ length: roundCount }, () => null);
+  const a = groups.groupA.map((name) => ({ name, group: 'A', choices: blank() }));
+  const b = groups.groupB.map((name) => ({ name, group: 'B', choices: blank() }));
   return a.concat(b);
 }
 

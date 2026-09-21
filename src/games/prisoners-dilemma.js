@@ -16,8 +16,14 @@
    ids (entry-body-1/2, next-btn-1/2, recap-table/tbody,
    results-table/tbody, ...).
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { drawStackedBars } from '../charts/bars.js';
+import { tipHtml } from '../charts/kit.js';
+import CONTENT from '../content/prisoners-dilemma.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -31,6 +37,7 @@ import {
   ICON_TRIO,
   ICON_X,
 } from '../icons.js';
+import { dilemmaOutcomes } from '../logic/chart-data.js';
 import {
   buildDilemmaEntries,
   countFilled,
@@ -82,6 +89,13 @@ export class RetroGamePrisonersDilemma extends LitElement {
     this.assignment = Roles.makePairs(state.participants);
     this.entries = buildDilemmaEntries(this.assignment);
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'pd-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
     this.selectedSwap = null;
     this.shuffleSpin = false;
 
@@ -156,6 +170,32 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
   _showRecap() {
     this.flow.advance(3);
+  }
+
+  // What the pairs actually did in each round: both cooperated / one was betrayed / both defected.
+  _drawChart(svg, theme) {
+    const { filled } = this.results;
+    const parts = [
+      { key: 'mutual', label: 'оба сотрудничали', color: theme.accent },
+      { key: 'exploited', label: 'одного предали', color: theme.gold },
+      { key: 'defect', label: 'оба предали', color: theme.red },
+    ];
+    drawStackedBars(svg, {
+      legend: parts,
+      rows: [1, 2].map((round) => {
+        const o = dilemmaOutcomes(filled, round);
+        return {
+          label: `Раунд ${round}`,
+          segments: parts.map((p) => ({
+            key: p.key,
+            value: o[p.key],
+            color: p.color,
+            tip: tipHtml(`Раунд ${round}`, [[p.label, `${o[p.key]} из ${o.total} пар`]]),
+          })),
+        };
+      }),
+      theme,
+    });
   }
 
   _showResults() {
@@ -334,35 +374,9 @@ export class RetroGamePrisonersDilemma extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Прочитайте вслух правила игры</b>
-                <span
-                  >У каждого в паре — два варианта: «Сотрудничать» или «Предать». Оба
-                  «Сотрудничать» — по 3 балла каждому. Оба «Предать» — по 1 баллу каждому. Один
-                  предал, другой сотрудничал — предавший получает 5, преданный — 0.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Раунд 1 — вслепую, раунд 2 — уже зная итог</b>
-                <span
-                  >В первом раунде оба выбирают одновременно, не видя друг друга. После него мы
-                  покажем, что выбрала каждая пара — и предложим сыграть второй раунд с тем же
-                  партнёром, уже с этим знанием.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">
-            В первом раунде партнёры не должны видеть выбор друг друга до того, как оба
-            определились.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -530,6 +544,12 @@ export class RetroGamePrisonersDilemma extends LitElement {
             </div>
           </div>
 
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Что делали пары в каждом раунде</div>
+            <svg id="pd-chart" class="d3-chart-svg" role="img" aria-label="Сколько пар сотрудничали, сколько обманули и сколько предали друг друга в раундах 1 и 2"></svg>
+            <p class="d3-chart-cap">Каждый ряд — все пары в раунде. Если зелёного стало меньше, а красного больше — «тень будущего» не сработала.</p>
+          </div>
+
           <table class="results-table" id="results-table">
             <thead>
               <tr>
@@ -575,85 +595,12 @@ export class RetroGamePrisonersDilemma extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Дилемма заключённого</h1>
-          <p class="lede">
-            Рационально для каждого — предать. Но если предадут оба, обоим будет хуже, чем если
-            бы оба сотрудничали. А если встреча не последняя — правила игры меняются.
-          </p>
-
-          <p>
-            Игра сформулирована Мерриллом Флудом и Мелвином Дрешером в 1950 году в RAND
-            Corporation; классическую формулировку про двух заключённых и её название предложил
-            математик Альберт Такер. В начале 1980-х Роберт Аксельрод провёл знаменитые
-            компьютерные турниры стратегий для повторяющейся версии игры — победила простейшая
-            стратегия «Око за око» (Tit for Tat): начать с сотрудничества, дальше повторять
-            последний ход оппонента.
-          </p>
-
-          <p>
-            <b>Почему рационально предать — и почему это ловушка.</b> Представьте, что вы уже
-            знаете ход партнёра. Если он сотрудничает — вам выгоднее предать (5 баллов вместо 3).
-            Если он предаёт — вам всё равно выгоднее предать (1 балл вместо 0). Предательство
-            оказывается лучшим ответом <i>независимо</i> от того, что выберет другой — это
-            называется доминирующей стратегией. Проблема в том, что оба партнёра рассуждают
-            одинаково — хотя если бы оба выбрали сотрудничество, каждый получил бы больше (3
-            балла), чем при взаимном предательстве (1 балл).
-          </p>
-
-          <p>
-            <b>Зачем нужен именно второй раунд.</b> В однораундовой игре нет «тени будущего» —
-            предательство ничем не грозит, партнёр не сможет ответить. Как только добавляется
-            второй раунд с тем же человеком, появляется возможность отреагировать: наказать
-            предательство или поддержать сотрудничество. Именно эта возможность реагировать — то
-            самое условие, при котором в турнирах Аксельрода побеждала не самая хитрая, а самая
-            отзывчивая стратегия.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Один раунд — не то же самое, что много раундов</b
-            ><span
-              >Вы могли увидеть это прямо на своей команде: в однораундовой версии реального
-              сотрудничества обычно заметно меньше, чем во втором раунде с тем же партнёром —
-              постоянные отношения повышают доверие именно потому, что у них есть «тень
-              будущего».</span
-            >
-          </div>
-          <div class="fact">
-            <b>«Око за око» победило не потому, что карательна</b
-            ><span
-              >Стратегия Аксельрода выигрывала турниры за счёт простоты, отзывчивости и
-              незлопамятности — она прощает партнёра сразу, как только тот вернётся к
-              сотрудничеству, не затягивая месть.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Более мягкая версия иногда выигрывает ещё больше</b
-            ><span
-              >В некоторых более поздних турнирах стратегии с редким «случайным прощением» ошибок
-              партнёра (Generous Tit for Tat) показывали результат ещё лучше классического «Око
-              за око» — избыточная мстительность иногда запускает бесконечную цепочку взаимных
-              предательств из-за одной случайной ошибки.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Применяется в биологии</b
-            ><span
-              >Ту же логику используют для объяснения кооперации у животных — например,
-              взаимного вычёсывания паразитов у приматов или совместной охоты у хищников:
-              сотрудничество устойчиво закрепляется эволюционно именно тогда, когда встречи
-              повторяются, а не разовые.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Рабочая параллель</b
-            ><span
-              >Разовые сделки с новым подрядчиком похожи на однораундовую игру — соблазн
-              «предать» выше. Долгосрочные рабочие отношения в команде естественно подталкивают к
-              кооперации именно потому, что раунды повторяются.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

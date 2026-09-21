@@ -100,7 +100,11 @@ export function availabilityResults(entries, questions) {
   const correctRate = totalAnswered ? `${percent(totalCorrect, totalAnswered)}%` : '—';
   const perQuestionStats = questions.map((_, qi) => {
     const answered = entries.filter((e) => e.answers[qi] !== null).length;
-    return { pct: answered ? percent(correctPerQuestion[qi], answered) : 0 };
+    return {
+      pct: answered ? percent(correctPerQuestion[qi], answered) : 0,
+      answered,
+      correct: correctPerQuestion[qi],
+    };
   });
   const worst =
     perQuestionStats
@@ -138,6 +142,22 @@ export function calibrationRows(entries, questions) {
         rangeAnswered(e.ranges[qi]) ? isRangeHit(e.ranges[qi], q.answer) : null,
       ),
     ),
+  }));
+}
+
+// For each question: every named range (low/high normalised so low ≤ high) and
+// whether it contained the true answer — the data behind the interval chart.
+export function calibrationBars(entries, questions) {
+  return questions.map((q, qi) => ({
+    question: q,
+    bars: entries
+      .filter((e) => rangeAnswered(e.ranges[qi]))
+      .map((e) => ({
+        name: e.name,
+        low: Math.min(e.ranges[qi].low, e.ranges[qi].high),
+        high: Math.max(e.ranges[qi].low, e.ranges[qi].high),
+        hit: isRangeHit(e.ranges[qi], q.answer),
+      })),
   }));
 }
 
@@ -206,17 +226,56 @@ export function dictatorResults(data) {
 
 // ---------- Эффект владения ----------
 
-// entries: [{ r1Role, r2Role, r1Price, r2Price }] — everyone was an owner
-// in one round and a buyer in the other.
-export function endowmentResults(entries) {
-  const filled = entries.filter((e) => e.r1Price !== null && e.r2Price !== null);
-  const wtaOf = (e) => (e.r1Role === 'owner' ? e.r1Price : e.r2Price);
-  const wtpOf = (e) => (e.r1Role === 'buyer' ? e.r1Price : e.r2Price);
-  const avgWTA = mean(filled.map(wtaOf));
-  const avgWTP = mean(filled.map(wtpOf));
-  const ratio =
-    avgWTA !== null && avgWTP !== null && avgWTP > 0 ? (avgWTA / avgWTP).toFixed(1) : null;
-  return { filled, avgWTA, avgWTP, ratio, wtaOf, wtpOf };
+// entries: [{ role: 'owner' | 'buyer', prices: (number|null)[] }] — one price per
+// lot. Owners state the least they would SELL for (WTA), buyers the most they
+// would PAY (WTP); the same people keep the same role for every lot.
+const pricesOf = (entries, role, lot) =>
+  entries.filter((e) => e.role === role && e.prices[lot] !== null).map((e) => e.prices[lot]);
+
+// How many owners / buyers have named a price for one lot.
+export function endowmentLotCounts(entries, lot) {
+  return {
+    sellers: pricesOf(entries, 'owner', lot).length,
+    buyers: pricesOf(entries, 'buyer', lot).length,
+  };
+}
+
+// A lot can be compared only once BOTH sides have priced it.
+export function endowmentReady(entries, lotCount) {
+  for (let lot = 0; lot < lotCount; lot++) {
+    const { sellers, buyers } = endowmentLotCounts(entries, lot);
+    if (sellers < 1 || buyers < 1) return false;
+  }
+  return lotCount > 0;
+}
+
+export function endowmentLotStats(entries, lot) {
+  const sell = pricesOf(entries, 'owner', lot);
+  const buy = pricesOf(entries, 'buyer', lot);
+  const avgWTA = mean(sell);
+  const avgWTP = mean(buy);
+  return {
+    sellers: sell.length,
+    buyers: buy.length,
+    avgWTA,
+    avgWTP,
+    ratio: avgWTA !== null && avgWTP !== null && avgWTP > 0 ? avgWTA / avgWTP : null,
+  };
+}
+
+export function endowmentResults(entries, lotCount = entries[0]?.prices.length ?? 0) {
+  const perLot = Array.from({ length: lotCount }, (_, lot) => endowmentLotStats(entries, lot));
+  const ratios = perLot.map((l) => l.ratio).filter((r) => r !== null);
+  const meanRatio = mean(ratios);
+  return {
+    // people who priced at least one lot
+    filled: entries.filter((e) => e.prices.some((p) => p !== null)),
+    perLot,
+    // The headline: the average of the per-lot ratios, so a cheap mug and an
+    // expensive house count equally rather than the house drowning out the mug.
+    ratioN: meanRatio,
+    ratio: meanRatio === null ? null : meanRatio.toFixed(1),
+  };
 }
 
 // ---------- Ложный консенсус ----------
@@ -240,17 +299,81 @@ export function falseConsensusResults(data) {
 
 // ---------- Эффект фрейминга ----------
 
-// entries: [{ group: 'A'|'B', choice: '1'|'2'|null }]
-export function framingResults(entries) {
-  const filled = entries.filter((e) => e.choice !== null);
-  const riskyPct = (arr) => percent(arr.filter((e) => e.choice === '2').length, arr.length);
-  const aRisky = riskyPct(filled.filter((e) => e.group === 'A'));
-  const bRisky = riskyPct(filled.filter((e) => e.group === 'B'));
+// The wording each group hears in each scenario. Round 1: group A gets the
+// GAIN frame ("saved / fixed"), group B the LOSS frame ("die / left"); round 2
+// they swap. Every person therefore hears both wordings, once each.
+export function framingFrame(group, round) {
+  return (group === 'A') === (round % 2 === 0) ? 'gain' : 'loss';
+}
+
+// entries: [{ name, group: 'A'|'B', choices: ('1'|'2'|null)[] }] — '2' is the
+// risky gamble, '1' the sure thing (mathematically the same in expectation).
+// Per scenario: how many percent gambled under each wording, and whether the
+// loss wording pushed people toward the gamble (the effect).
+export function framingResults(entries, roundCount = entries[0]?.choices.length ?? 0) {
+  const perRound = Array.from({ length: roundCount }, (_, round) => {
+    const points = entries
+      .filter((e) => e.choices[round] !== null)
+      .map((e) => ({
+        name: e.name,
+        group: e.group,
+        frame: framingFrame(e.group, round),
+        choice: e.choices[round],
+      }));
+    const riskyPct = (frame) => {
+      const inFrame = points.filter((p) => p.frame === frame);
+      return percent(inFrame.filter((p) => p.choice === '2').length, inFrame.length);
+    };
+    const gainRisky = riskyPct('gain');
+    const lossRisky = riskyPct('loss');
+    const comparable = gainRisky !== null && lossRisky !== null;
+    return {
+      points,
+      gainRisky,
+      lossRisky,
+      diff: comparable ? lossRisky - gainRisky : null,
+      flipped: comparable ? lossRisky > gainRisky : null,
+    };
+  });
+
+  // Pool both scenarios (every person contributes one answer per wording).
+  const all = perRound.flatMap((r) => r.points);
+  const pooledRisky = (frame) => {
+    const inFrame = all.filter((p) => p.frame === frame);
+    return percent(inFrame.filter((p) => p.choice === '2').length, inFrame.length);
+  };
+  const gainRisky = pooledRisky('gain');
+  const lossRisky = pooledRisky('loss');
+
+  const decided = perRound.filter((r) => r.flipped !== null).length;
+  const flippedRounds = perRound.filter((r) => r.flipped === true).length;
   let flipText = '—';
-  if (aRisky !== null && bRisky !== null) {
-    flipText = bRisky > aRisky ? 'Формулировка сработала' : 'В этот раз без переворота';
+  if (decided > 0) {
+    if (flippedRounds === 0) flipText = 'В этот раз без переворота';
+    else if (decided === 1) flipText = 'Формулировка сработала';
+    else flipText = `Сработала в ${flippedRounds} из ${decided}`;
   }
-  return { filled, aRisky, bRisky, flipText };
+  return {
+    perRound,
+    filled: entries.filter((e) => e.choices.some((c) => c !== null)),
+    gainRisky,
+    lossRisky,
+    diff: gainRisky !== null && lossRisky !== null ? lossRisky - gainRisky : null,
+    decided,
+    flippedRounds,
+    flipText,
+  };
+}
+
+// Results are meaningful once, in every scenario, BOTH wordings were answered
+// by at least one person (otherwise there's nothing to compare).
+export function framingReady(entries, roundCount) {
+  for (let round = 0; round < roundCount; round++) {
+    const answered = entries.filter((e) => e.choices[round] !== null);
+    const frames = new Set(answered.map((e) => framingFrame(e.group, round)));
+    if (!(frames.has('gain') && frames.has('loss'))) return false;
+  }
+  return roundCount > 0;
 }
 
 // ---------- Ошибка планирования ----------
@@ -343,6 +466,33 @@ export function publicGoodsRoundStats(filled, field, stake) {
   const sumContrib = sum(filled.map((d) => d[field]));
   const pot = sumContrib * 2;
   return { avg: sumContrib / n, totalPayoff: Math.round(n * stake - sumContrib + pot) };
+}
+
+// What a finished round looked like, as a reminder for the next one: how much each
+// person put in on average (and the spread), the pot after doubling, and what
+// that pays EVERY player on top of what they kept — plus what a full contributor
+// and a free rider each ended up with. `field` is 'r1' or 'r2'.
+export function publicGoodsSummary(data, field, stake) {
+  const values = data.map((d) => d[field]).filter((v) => v !== null);
+  const n = values.length;
+  if (!n) return null;
+  const total = sum(values);
+  const pot = total * 2;
+  const share = pot / n; // every player gets an equal share, contributors or not
+  return {
+    n,
+    avg: total / n,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    total,
+    pot,
+    share,
+    // ending balance for someone who put in `c`: what they kept + the equal share
+    fullContributorGets: share, // put in everything → keeps 0
+    freeRiderGets: stake + share, // put in nothing → keeps all
+    freeRiders: values.filter((v) => v === 0).length,
+    fullContributors: values.filter((v) => v === stake).length,
+  };
 }
 
 // data: [{ r1, r2 }] contributions in round 1 / round 2.

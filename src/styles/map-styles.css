@@ -14,7 +14,7 @@
   --map-social: #ff5d8f;
   --map-ink: #2b2540;
   --map-ink-soft: #5b527a;
-  --map-ink-faint: #8a81a8;
+  --map-ink-faint: #6d648c;
   --map-surface: rgba(255, 255, 255, 0.94);
   --map-surface-solid: #ffffff;
   --map-line: rgba(43, 37, 64, 0.1);
@@ -121,8 +121,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 140px;
-  height: 140px;
+  /* --icon-scale (map-render.js's syncLayout): 1 on a normal screen, down to
+       0.4 when the window is too small to fit 13 full-size icons. */
+  width: calc(140px * var(--icon-scale, 1));
+  height: calc(140px * var(--icon-scale, 1));
   border: none;
   background: none;
   padding: 0;
@@ -238,8 +240,8 @@
   transition: scale 0.18s var(--map-ease);
 }
 .loc-badge img {
-  width: 75px;
-  height: 75px;
+  width: calc(75px * var(--icon-scale, 1));
+  height: calc(75px * var(--icon-scale, 1));
   object-fit: contain;
   /* Follows the image's own alpha shape instead of assuming a circle
        (there's no ring/background behind it any more) — the hover glow
@@ -407,7 +409,7 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--map-cognitive);
+  background: #6d4be8;
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -601,7 +603,7 @@ button.chip-x {
   border-color: var(--map-cognitive);
 }
 .filter-pill .filter-count {
-  opacity: 0.6;
+  opacity: 0.85;
   font-weight: 600;
   margin-left: 2px;
 }

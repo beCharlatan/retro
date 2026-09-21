@@ -18,7 +18,7 @@
   --surface: #f2f2f2; /* Light gray 2 — заливка инпутов/селектов/свитчей/кнопки Default */
   --line: #e0e0e0; /* Light gray 4 — единственный цвет обводки во всём ките */
   --avatar-ring: #eeeeee; /* grayLight2 — тонкая обводка вокруг аватара в Collaborator token */
-  --ink-faint: #757575; /* Light — приглушённый текст, uppercase-лейблы */
+  --ink-faint: #6b6b6b; /* Light — приглушённый текст, uppercase-лейблы */
   --ink-soft: #424242; /* Dark gray 2 — текст средней яркости (селект/свитч) */
   --ink: #333333; /* Dark — основной текст, подпись кнопок */
 
@@ -363,8 +363,8 @@ button.ghost {
      form: it's the first thing a player's hand touches every round
      (settled on framing.js). */
 button.primary {
-  background: var(--game-accent, var(--blue));
-  color: #fff;
+  background: var(--game-accent-fill, var(--game-accent, var(--blue)));
+  color: var(--game-accent-on, #fff);
   box-shadow: 0 4px 0 var(--game-accent-deep, var(--blue-deep));
 }
 /* The face would otherwise darken to --game-accent-deep on hover —
@@ -372,7 +372,7 @@ button.primary {
      flush with the face. The shadow is the feedback here; keep the
      face color put. */
 button.primary:hover {
-  background: var(--game-accent, var(--blue));
+  background: var(--game-accent-fill, var(--game-accent, var(--blue)));
   transform: translateY(-1px);
 }
 button.primary:active {
@@ -415,7 +415,7 @@ button.secondary {
   padding: 0;
   background: none;
   border: none;
-  color: var(--game-accent, var(--blue));
+  color: var(--game-accent-deep, var(--blue-deep));
   cursor: pointer;
   transition: color 0.15s var(--ease);
 }
@@ -425,7 +425,7 @@ button.secondary:hover {
 }
 
 :where(button, input, [tabindex]):focus-visible {
-  outline: 2px solid var(--game-accent, var(--blue));
+  outline: 2px solid var(--game-accent-deep, var(--blue-deep));
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -838,7 +838,7 @@ button.shuffle-btn {
   padding: 0;
   border: none;
   background: none;
-  color: var(--game-accent, var(--blue));
+  color: var(--game-accent-deep, var(--blue-deep));
   cursor: pointer;
   transition: color 0.16s var(--ease);
 }
@@ -1177,7 +1177,7 @@ button.shuffle-btn.spin .dice {
   margin: 14px auto 0;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--trail-color, var(--ink-soft));
+  color: var(--trail-text, var(--ink-soft));
   padding: 5px 14px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--trail-color, var(--blue)) 16%, white);
@@ -1325,6 +1325,12 @@ button.shuffle-btn.spin .dice {
 .entry-row.three-col {
   grid-template-columns: 1fr 100px 100px 100px;
 }
+/* Три цены разного порядка (кружка → дом, до 8 знаков): колонки шире и
+     растут слева направо вместе со значениями. */
+.entry-head.price-cols,
+.entry-row.price-cols {
+  grid-template-columns: 1fr 96px 128px 150px;
+}
 
 .entry-row input {
   width: 100%;
@@ -1372,8 +1378,8 @@ button.shuffle-btn.spin .dice {
 }
 .toggle-pair button.on,
 .toggle-pair button.on:hover {
-  background: var(--game-accent, var(--blue));
-  color: #fff;
+  background: var(--game-accent-fill, var(--game-accent, var(--blue)));
+  color: var(--game-accent-on, #fff);
 }
 
 .fill-progress {
@@ -1451,6 +1457,86 @@ button.shuffle-btn.spin .dice {
   padding: 7px 16px;
   font-size: 13px;
 }
+/* Редактируемая длительность (пока таймер не запущен): − [0:20] + и,
+     когда значение не стандартное, ссылка «вернуть 0:20». Само время —
+     поле ввода, оформленное как обычное число таймера, рамка
+     появляется только на hover/focus. */
+.round-timer-adjust {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.round-timer-input {
+  width: 4.4ch;
+  padding: 2px 4px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  text-align: center;
+  box-shadow: none;
+  filter: none;
+  transition:
+    border-color 0.12s var(--ease),
+    background 0.12s var(--ease);
+}
+.round-timer-input:hover {
+  border-color: var(--line);
+}
+.round-timer-input:focus {
+  outline: none;
+  background: var(--white);
+  border-color: var(--game-accent, var(--blue));
+}
+.timer-step {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink-soft);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.12s var(--ease),
+    color 0.12s var(--ease),
+    transform 0.12s var(--ease);
+}
+.timer-step:hover:not(:disabled) {
+  border-color: var(--game-accent, var(--blue));
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.timer-step:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.timer-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.round-timer-actions {
+  gap: 10px;
+  align-items: center;
+}
+.round-timer-actions .timer-default,
+.round-timer-actions .secondary {
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+.round-timer.compact .timer-step {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+}
+.round-timer.compact .round-timer-input {
+  width: 4ch;
+  padding: 0 2px;
+}
+
 /* Compact variant (availability.js) — one slim row: clock · time ·
      label on the left, button on the right, hairline progress bar
      under them. Sits ABOVE the participant table so the whole
@@ -1673,11 +1759,28 @@ button.shuffle-btn.spin .dice {
   color: var(--ink-soft);
   margin-bottom: 8px;
 }
+.d3-chart-cap {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  max-width: none;
+}
 .d3-chart-svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
+}
+.d3-chart-svg text {
+  /* The charts used to name IBM Plex, which isn't loaded anywhere — the
+       browser fell back to a generic monospace that lacks Cyrillic, so
+       bold labels like «поровну» came out in a serif. Use the page's own
+       font; tabular digits keep tick labels aligned. */
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 .d3-chart-svg .answer-dot {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.16));
@@ -2130,6 +2233,127 @@ table.results-table td.name {
   background: var(--surface);
 }
 
+.spoiler-text .question-list {
+  font-style: normal;
+  margin-bottom: 4px;
+}
+.questions-recap .question-list {
+  margin-bottom: 4px;
+}
+.round-recap {
+  margin: 4px 0 18px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 7%, white);
+  border: 1px solid color-mix(in srgb, var(--game-accent, var(--blue)) 28%, var(--line));
+}
+.round-recap-title {
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.round-recap-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.round-recap-stat .n {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.round-recap-stat .lab {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+.round-recap-note {
+  margin: 12px 0 0;
+}
+@media (max-width: 560px) {
+  .round-recap-stats {
+    grid-template-columns: 1fr;
+  }
+}
+.scenario-result-title {
+  margin: 34px 0 12px;
+  font-size: 18px;
+}
+.team-entry-card.wide-control.multi-choice {
+  /* name | the two choice rows — sized to the buttons, not the 220px of a
+       single toggle (which the two 270px rows used to overflow) */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.choice-rows {
+  display: grid;
+  gap: 8px;
+}
+.choice-row .toggle-pair {
+  width: 270px;
+}
+.choice-row .toggle-pair button {
+  white-space: nowrap;
+  padding-inline: 4px;
+}
+.choice-row .choice-label {
+  width: 58px;
+  text-align: right;
+}
+.choice-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.choice-row .choice-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+
+.wording-card .wording-text {
+  margin: 6px 0 12px;
+  font-style: italic;
+  font-size: 14.5px;
+  line-height: 1.55;
+  max-width: none;
+}
+.wording-card .wording-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.wording-card .t + .v {
+  margin-top: 2px;
+}
+.scenario-situation {
+  margin: 0 0 14px;
+}
+
+.lot-roles .g {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lot-role-text {
+  margin: 4px 0 10px;
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: none;
+}
+.lot-roles .role-group-chips {
+  margin-top: auto;
+}
+
 .swap-hint {
   margin-top: 2px;
 }
@@ -2285,9 +2509,27 @@ table.results-table td.name {
 
 @media (max-width: 560px) {
   .team-entry-card,
-  .team-entry-card.wide-control {
+  .team-entry-card.wide-control,
+  .team-entry-card.wide-control.multi-choice {
     grid-template-columns: 1fr;
     text-align: center;
+  }
+  /* phone: the label and the pair share the card's width instead of a fixed 270px */
+  .choice-row {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    justify-content: stretch;
+  }
+  .choice-row .choice-label {
+    width: auto;
+    text-align: left;
+  }
+  .choice-row .toggle-pair {
+    width: auto;
+  }
+  .choice-row .toggle-pair button {
+    font-size: 12px;
+    padding-inline: 2px;
   }
 }
 
@@ -2344,6 +2586,11 @@ table.results-table td.name {
   .entry-head.three-col,
   .entry-row.three-col {
     grid-template-columns: 1fr 62px 62px 62px;
+    gap: 6px;
+  }
+  .entry-head.price-cols,
+  .entry-row.price-cols {
+    grid-template-columns: 1fr 64px 84px 100px;
     gap: 6px;
   }
   .entry-row input {
@@ -2487,4 +2734,57 @@ table.results-table td.name {
 :host-context(html[data-perf="lite"]) .trail-traveler-img,
 :host-context(html[data-perf="lite"]) .d3-chart-svg .answer-dot {
   filter: none;
+}
+
+/* =====================================================
+     Диалог подтверждения (confirm-dialog.js) — настоящий <dialog>,
+     поэтому лежит в top layer поверх всего; стили глобальные, потому
+     что элемент создаётся в document.body, а не внутри shadow root.
+  ===================================================== */
+.confirm-dialog {
+  width: min(400px, calc(100vw - 32px));
+  padding: 26px 26px 22px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 6px);
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 24px 60px -18px rgba(43, 37, 64, 0.45);
+  font-family: inherit;
+}
+.confirm-dialog::backdrop {
+  /* Plain dim, no backdrop-filter blur — that one is expensive on the
+       weak machines this app is also run on. */
+  background: rgba(43, 37, 64, 0.42);
+}
+.confirm-dialog[open] {
+  animation: confirm-pop 0.16s var(--ease);
+}
+@keyframes confirm-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog[open] {
+    animation: none;
+  }
+}
+.confirm-dialog form {
+  margin: 0;
+}
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.confirm-dialog p {
+  margin: 0 0 22px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }

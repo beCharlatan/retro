@@ -52,7 +52,8 @@ class Report {
 // any uncaught JS error or console.error (excluding the expected 403 from
 // Google Fonts, which has no network access in this sandbox).
 async function openPage(browser, report, viewport) {
-  const page = await browser.newPage({
+  // A context (not browser.newPage) so tools that insist on one — axe — work too.
+  const context = await browser.newContext({
     viewport: viewport || { width: 1000, height: 1300 },
     // The map's idle "drifting island" wobble (src/styles/map-styles.css)
     // is a continuous CSS animation on every location button — great
@@ -64,6 +65,13 @@ async function openPage(browser, report, viewport) {
     // a workaround bolted onto the feature.
     reducedMotion: 'reduce',
   });
+  await enableTestHooks(context);
+  const page = await context.newPage();
+  const closePage = page.close.bind(page);
+  page.close = async (...args) => {
+    await closePage(...args);
+    await context.close();
+  };
   page.on('pageerror', (e) => report.fail('no uncaught JS errors', String(e)));
   page.on('console', (msg) => {
     if (msg.type() === 'error' && !msg.text().includes('403')) {
@@ -72,6 +80,14 @@ async function openPage(browser, report, viewport) {
   });
   await page.goto(DIST_URL);
   return page;
+}
+
+// Turns on the app's test-only hooks (window.__reportData, see
+// src/report-export.js). Specs that build their own context call this too.
+async function enableTestHooks(context) {
+  await context.addInitScript(() => {
+    window.__RETRO_TEST__ = true;
+  });
 }
 
 async function withBrowser(fn) {
@@ -106,14 +122,12 @@ async function openGameFromHome(page, gameId) {
 // Leaves the current game and returns to the map via the × in the
 // corner (src/game-shell.js's confirmExit() — replaced the old
 // .game-crumb "← Все игры" back-link everywhere, see that file).
-// confirmExit() opens a native window.confirm() first; Playwright
-// auto-dismisses any dialog it doesn't otherwise handle (equivalent to
-// clicking Cancel, so confirm() returns false and the click would
-// silently no-op) — registering an accept handler right before the
-// click is what makes this behave like a real user clicking "OK".
+// confirmExit() opens an in-page <dialog> (src/confirm-dialog.js) asking
+// "Выйти из игры?" — the click on × alone doesn't leave, so this also
+// presses its "Выйти" button, like a real person confirming.
 async function exitToHome(page) {
-  page.once('dialog', (dialog) => dialog.accept());
   await page.click('.game-exit');
+  await page.click('dialog.confirm-dialog button[value="ok"]');
   await page.waitForTimeout(150);
 }
 
@@ -122,6 +136,7 @@ module.exports = {
   DIST_URL,
   Report,
   openPage,
+  enableTestHooks,
   withBrowser,
   openGameFromHome,
   exitToHome,

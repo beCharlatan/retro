@@ -12,13 +12,23 @@ const path = require('node:path');
 const ALL_SUITES = [
   'smoke',
   'home',
+  'map-layout',
+  'endowment',
+  'framing',
+  'barnum',
+  'public-goods-calibration',
+  'false-consensus',
   'persistence',
   'export',
   'swap',
   'copy',
   'trio',
   'custom-question',
+  'timer',
+  'exit-dialog',
   'chart-tip',
+  'charts',
+  'a11y',
 ];
 
 function parseOnly() {

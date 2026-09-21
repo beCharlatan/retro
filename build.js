@@ -49,8 +49,8 @@ ${css}
 </style>
 </head>
 <body>
-<div id="app"></div>
-<div id="toast"></div>
+<main id="app"></main>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
 ${js}

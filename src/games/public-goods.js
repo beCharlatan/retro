@@ -13,9 +13,16 @@
    data-testid test hooks). This game has no chart, so it's actually
    simpler than dictator — no imperative SVG-drawing step at all.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawSwarm } from '../charts/swarm.js';
+import CONTENT from '../content/public-goods.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
@@ -28,8 +35,8 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
-import { formatSigned } from '../logic/format.js';
-import { publicGoodsResults } from '../logic/results.js';
+import { escapeHtml, formatSigned } from '../logic/format.js';
+import { publicGoodsResults, publicGoodsSummary } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
 import { REVEAL_COPY } from '../reveal-copy.js';
@@ -37,6 +44,8 @@ import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const STAKE = 100;
+const VARS = { stake: STAKE }; // filled into {stake} in the content texts
+const ROUND_TIMER_SECONDS = 20;
 const TOTAL_SCREENS = 5;
 const ROUND_TITLES = [
   'Общий котёл — дважды подряд',
@@ -61,6 +70,15 @@ export class RetroGamePublicGoods extends LitElement {
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'pg-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
+    // One 20s timer, live for one round at a time; each round keeps its own length.
+    this.timers = new RoundTimers(this, { seconds: ROUND_TIMER_SECONDS, count: 2 });
 
     this.draft = loadableDraft(Persist.load('public-goods'), {
       key: 'data',
@@ -96,6 +114,71 @@ export class RetroGamePublicGoods extends LitElement {
     Persist.save('public-goods', { data: this.data });
   }
 
+  // Both rounds as swarm lanes with a line per person — see who moved, and which way.
+  _drawChart(svg, theme) {
+    const { filled, s1, s2 } = this.results;
+    const lane = (label, color, field, avg) => ({
+      label,
+      color,
+      domain: [0, STAKE],
+      ticks: [0, 25, 50, 75, 100],
+      refs: [{ value: avg, label: `в среднем ${Math.round(avg * 10) / 10}`, color: theme.gold }],
+      points: filled.map((d) => ({
+        id: d.name,
+        value: d[field],
+        tip: tipHtml(escapeHtml(d.name), [
+          ['Раунд 1', `${d.r1} из ${STAKE}`],
+          ['Раунд 2', `${d.r2} из ${STAKE}`],
+          ['Изменение', `${d.r2 - d.r1 >= 0 ? '+' : ''}${d.r2 - d.r1}`],
+        ]),
+      })),
+    });
+    drawSwarm(svg, {
+      lanes: [
+        lane('Раунд 1', theme.accent, 'r1', s1.avg),
+        lane('Раунд 2', theme.accentDeep, 'r2', s2.avg),
+      ],
+      links: true,
+      theme,
+    });
+  }
+
+  // The timer card shown above a round's entry table.
+  _roundTimer(round) {
+    return this.timers.card(round, { compact: true, runningLabel: 'на решение' });
+  }
+
+  // Round 1 in numbers, shown at the top of round 2 so people can orient by it if
+  // they forgot how it went. Aggregates only — nobody's individual number.
+  _round1Recap() {
+    const s = publicGoodsSummary(this.data, 'r1', STAKE);
+    if (!s) return '';
+    const r = (v) => Math.round(v * 10) / 10;
+    return html`
+      <div class="round-recap" id="round1-recap">
+        <div class="round-recap-title">Как прошёл раунд 1</div>
+        <div class="round-recap-stats">
+          <div class="round-recap-stat">
+            <div class="n">${r(s.avg)}</div>
+            <div class="lab">в среднем вложили из ${STAKE} (от ${s.min} до ${s.max})</div>
+          </div>
+          <div class="round-recap-stat">
+            <div class="n">${r(s.pot)}</div>
+            <div class="lab">стало в котле после удвоения (вложили ${r(s.total)})</div>
+          </div>
+          <div class="round-recap-stat">
+            <div class="n">${r(s.share)}</div>
+            <div class="lab">получил каждый из котла — вложил он или нет</div>
+          </div>
+        </div>
+        <p class="note round-recap-note">
+          Кто вложил всё, остался с ${r(s.fullContributorGets)}; кто не вложил ничего — с
+          ${r(s.freeRiderGets)}.${s.freeRiders ? ` Ничего не вложили: ${s.freeRiders} чел.` : ''}${s.fullContributors ? ` Вложили всё: ${s.fullContributors} чел.` : ''}
+        </p>
+      </div>
+    `;
+  }
+
   _filledCount(field) {
     return countFilled(this.data, hasFields(field));
   }
@@ -121,6 +204,7 @@ export class RetroGamePublicGoods extends LitElement {
     this.data = this._blankData();
     this.results = null;
     Persist.clear('public-goods');
+    this.timers.resetAll();
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
@@ -135,6 +219,7 @@ export class RetroGamePublicGoods extends LitElement {
           min="0"
           max="${STAKE}"
           inputmode="numeric"
+          aria-label="${row.name}: ${field === 'r1' ? 'раунд 1' : 'раунд 2'}, вклад (0–${STAKE})"
           placeholder="0–${STAKE}"
           .value=${row[field] ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, field)}
@@ -188,34 +273,9 @@ export class RetroGamePublicGoods extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Прочитайте вслух правила</b>
-                <span
-                  >«У каждого есть ${STAKE} фишек. Можно вложить любую часть в общий котёл —
-                  остальное останется себе. Сумма всех вкладов удвоится и разделится поровну между
-                  ВСЕМИ участниками, независимо от того, кто сколько вложил».</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Сыграйте два раунда подряд</b>
-                <span
-                  >В каждом раунде — заново ${STAKE} фишек и тот же общий котёл с теми же людьми.
-                  Решайте оба раза независимо, не оглядываясь на то, что писали в первый раз.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps, VARS)}
 
-          <p class="note">
-            Решение анонимное и ни на что не влияет по-настоящему — но отвечайте так, будто фишки
-            настоящие.
-          </p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -230,6 +290,8 @@ export class RetroGamePublicGoods extends LitElement {
           <p class="eyebrow">Раунд 1 из 2</p>
           <h2>Впишите вклад каждого участника</h2>
           <p class="lede">Сколько из ${STAKE} фишек каждый вложил в общий котёл.</p>
+
+          ${this._roundTimer(0)}
 
           <div class="entry-head two-col">
             <div>Участник</div>
@@ -252,7 +314,10 @@ export class RetroGamePublicGoods extends LitElement {
               class="primary"
               data-testid="next-btn-1"
               ?disabled=${!hasEnough(filled1)}
-              @click=${() => this.flow.advance(2)}
+              @click=${() => {
+                this.timers.reset();
+                this.flow.advance(2);
+              }}
             >
               Раунд 2 ${unsafeHTML(ICON_RIGHT)}
             </button>
@@ -266,6 +331,10 @@ export class RetroGamePublicGoods extends LitElement {
           <p class="eyebrow">Раунд 2 из 2</p>
           <h2>Снова ${STAKE} фишек, тот же котёл</h2>
           <p class="lede">Те же правила, новая попытка — с теми же людьми.</p>
+
+          ${this._round1Recap()}
+
+          ${this._roundTimer(1)}
 
           <div class="entry-head two-col">
             <div>Участник</div>
@@ -288,7 +357,10 @@ export class RetroGamePublicGoods extends LitElement {
               class="primary"
               data-testid="next-btn-2"
               ?disabled=${!hasEnough(filled2)}
-              @click=${() => this.flow.advance(3, () => this._showResults())}
+              @click=${() => {
+                this.timers.reset();
+                this.flow.advance(3, () => this._showResults());
+              }}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
@@ -324,6 +396,12 @@ export class RetroGamePublicGoods extends LitElement {
               <div class="n">${r ? r.s2.totalPayoff : '—'}</div>
               <div class="lab">общая выгода группы, раунд 2</div>
             </div>
+          </div>
+
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Кто сколько вложил — два раунда</div>
+            <svg id="pg-chart" class="d3-chart-svg" role="img" aria-label="Вклад каждого участника в раунде 1 и раунде 2, соединённые линией"></svg>
+            <p class="d3-chart-cap">Точка — один человек. Линия соединяет его вклады в двух раундах: видно, кто сдвинулся и куда. Пунктир — среднее по команде.</p>
           </div>
 
           <table class="results-table" id="results-table">
@@ -371,89 +449,12 @@ export class RetroGamePublicGoods extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Общественное благо</h1>
-          <p class="lede">
-            Группе выгоднее, если все вкладываются в общий котёл — но каждому по отдельности
-            выгоднее не вкладываться, а пользоваться вкладом остальных.
-          </p>
-
-          <p>
-            Это классическая иллюстрация «проблемы безбилетника» (free-rider problem). Ваш
-            собственный вклад приносит вам обратно лишь часть от удвоенной доли — то есть
-            вкладывать невыгодно лично вам, даже если это выгодно группе в целом. Рациональная с
-            точки зрения группы стратегия («вложить всё») и рациональная с точки зрения отдельного
-            игрока стратегия («вложить 0») прямо противоречат друг другу.
-          </p>
-
-          <p>
-            Один из первых систематических экспериментов — Marwell G., Ames R. E. (1979).
-            Experiments on the Provision of Public Goods. <i>American Journal of Sociology</i>. В
-            статье было ироничное подназвание «...does anyone else?» — единственной группой в их
-            выборке, которая вела себя близко к модели «рационального эгоиста», оказались
-            студенты экономических факультетов.
-          </p>
-
-          <p>
-            <b>Почему математика тянет в разные стороны.</b> Каждый рубль, который вы оставляете
-            себе, достаётся вам полностью. Каждый рубль, который вы вкладываете в котёл,
-            удваивается — но делится на всех поровну, а значит, лично вам от него возвращается
-            меньше рубля (если участников больше двух). Получается, что с точки зрения личной
-            выгоды вкладывать невыгодно <i>вообще всегда</i>, независимо от того, что делают
-            остальные. Но если разные люди задумываются об этом одинаково и все выбирают «не
-            вкладывать», проигрывают все сразу — общий пирог получается меньше, чем мог бы быть.
-          </p>
-
-          <p>
-            <b>Зачем нужен именно второй раунд.</b> В однораундовой версии легко списать щедрость
-            на растерянность или желание «сыграть по-честному с первого раза». Второй раунд с теми
-            же людьми убирает эту неопределённость: теперь у каждого уже есть опыт первого раунда
-            за плечами. Если вклад упал — это, скорее всего, разочарование или недоверие к чужой
-            щедрости. Если вклад вырос или остался прежним — это уже не случайность, а устойчивая
-            склонность к сотрудничеству именно в этой группе.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>При повторении игры вклады обычно падают</b
-            ><span
-              >Это именно то, что вы, возможно, только что проверили на своей команде: если
-              сыграть несколько раундов подряд с одной и той же группой, средний вклад со временем
-              снижается — даже у тех, кто начинал щедро, доверие постепенно иссякает.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Спор «яйца или курица» с экономическим образованием</b
-            ><span
-              >Устойчивый результат в литературе: студенты-экономисты вкладывают в общий котёл
-              заметно меньше, чем студенты других специальностей. Открытый вопрос — учат ли на
-              экономфаке эгоизму, или эгоистичные люди чаще выбирают экономику.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Наказание возвращает кооперацию</b
-            ><span
-              >Fehr и Gächter (2002) показали: если участникам дать возможность платить небольшую
-              сумму, чтобы штрафовать тех, кто вкладывает мало, средний вклад в группе резко и
-              устойчиво растёт — люди готовы наказывать «безбилетников» даже себе в убыток.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Это модель климата и рыболовства в миниатюре</b
-            ><span
-              >Экономисты используют ровно эту логику для описания «трагедии общин» — от
-              чрезмерного вылова рыбы в общих водах до выбросов CO₂: индивидуально выгодно
-              продолжать как прежде, а коллективно это разрушает ресурс для всех.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Прямая рабочая параллель</b
-            ><span
-              >Документация, код-ревью, помощь новичкам — тоже «общий котёл»: каждому по
-              отдельности выгоднее переложить это на других, но если так решат все — хуже будет
-              всей команде.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

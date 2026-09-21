@@ -28,9 +28,15 @@
    custom-question panel, so _roundTitles() below rebuilds it from
    `this.questions` each time instead.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { drawIntervals } from '../charts/intervals.js';
+import CONTENT from '../content/calibration.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { RoundTimers } from '../controllers/round-timers.js';
 import { clearQuestionSlots, readQuestionSlots } from '../custom-question-form.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -52,18 +58,36 @@ import {
   patchItem,
 } from '../logic/entries.js';
 import { formatPercent, outcomeMark } from '../logic/format.js';
-import { calibrationResults, calibrationRows } from '../logic/results.js';
+import { calibrationBars, calibrationResults, calibrationRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
 import { REVEAL_COPY } from '../reveal-copy.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
+// Deliberately HARD, specialist numbers — chemistry, history, biology, geography —
+// that nobody can work out from general knowledge. That is the point: with a
+// question you have no way to know, an honest "90% range" has to be enormous,
+// and people almost always name a range far too narrow (overconfidence).
 const DEFAULT_QUESTIONS = [
-  { q: 'В каком году была основана компания Google?', answer: 1998, unit: '' },
-  { q: 'Какова высота горы Килиманджаро, в метрах?', answer: 5895, unit: ' м' },
-  { q: 'Какова длина реки Волга, в километрах?', answer: 3530, unit: ' км' },
+  { q: 'Какова температура плавления вольфрама, в градусах Цельсия?', answer: 3422, unit: ' °C' },
+  {
+    q: 'В каком году состоялась битва при Манцикерте, в которой сельджуки разгромили армию Византии?',
+    answer: 1071,
+    unit: '',
+  },
+  {
+    q: 'Сколько хромосом в диплоидном наборе клеток домашней собаки?',
+    answer: 78,
+    unit: ' хромосом',
+  },
+  {
+    q: 'На какой высоте над уровнем моря находится озеро Титикака, в метрах?',
+    answer: 3812,
+    unit: ' м',
+  },
 ];
+const QUESTION_TIMER_SECONDS = 20;
 const TOTAL_SCREENS = 3 + DEFAULT_QUESTIONS.length; // instructions + Qn + results + context
 
 export class RetroGameCalibration extends LitElement {
@@ -86,9 +110,21 @@ export class RetroGameCalibration extends LitElement {
     this.questions = cloneQuestions(DEFAULT_QUESTIONS);
     this.entries = this._blankEntries();
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'cal-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
     this.isCustomQuestions = false;
     this.customPanelOpen = false;
     this.customQStatus = '';
+    // One 20s timer, live for one question at a time; each question keeps its own length.
+    this.timers = new RoundTimers(this, {
+      seconds: QUESTION_TIMER_SECONDS,
+      count: DEFAULT_QUESTIONS.length,
+    });
 
     this.draft = loadableDraft(Persist.load('calibration'), {
       key: 'entries',
@@ -175,6 +211,7 @@ export class RetroGameCalibration extends LitElement {
   }
 
   _next(qIdx) {
+    this.timers.reset();
     if (qIdx === this.questions.length - 1) {
       this.flow.advance(1 + this.questions.length, () => this._showResults());
     } else {
@@ -182,11 +219,28 @@ export class RetroGameCalibration extends LitElement {
     }
   }
 
+  // One lane per question: every person's range as a bar, the true answer as a line.
+  _drawChart(svg, theme) {
+    drawIntervals(svg, {
+      lanes: this.results.bars.map(({ question, bars }) => ({
+        title: question.q,
+        answer: question.answer,
+        unit: question.unit,
+        bars,
+      })),
+      theme,
+    });
+  }
+
   _showResults() {
     const answersReveal =
       'Правильные ответы: ' +
       this.questions.map((q, i) => `(${i + 1}) ${q.answer}${q.unit}`).join(' · ');
-    this.results = { ...calibrationResults(this.entries, this.questions), answersReveal };
+    this.results = {
+      ...calibrationResults(this.entries, this.questions),
+      bars: calibrationBars(this.entries, this.questions),
+      answersReveal,
+    };
 
     ReportExport.register(
       'calibration',
@@ -204,6 +258,7 @@ export class RetroGameCalibration extends LitElement {
     this.entries = this._blankEntries();
     this.results = null;
     Persist.clear('calibration');
+    this.timers.resetAll(this.questions.length);
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
@@ -246,6 +301,8 @@ export class RetroGameCalibration extends LitElement {
         <h2 id="q-heading-${qIdx}">${q.q}</h2>
         <p class="lede">Для каждого — диапазон, в который он уверен на 90%, что попадёт правильный ответ.</p>
 
+        ${this.timers.card(qIdx, { runningLabel: 'на ответ', compact: true })}
+
         <div class="entry-head">
           <div>Участник</div>
           <div>Нижняя граница</div>
@@ -260,6 +317,7 @@ export class RetroGameCalibration extends LitElement {
                 <input
                   type="number"
                   inputmode="numeric"
+                  aria-label="${e.name}: минимум, вопрос ${qIdx + 1}"
                   placeholder="мин."
                   .value=${r.low ?? ''}
                   @input=${(ev) => this._onEntryInput(ev, i, qIdx, 'low')}
@@ -267,6 +325,7 @@ export class RetroGameCalibration extends LitElement {
                 <input
                   type="number"
                   inputmode="numeric"
+                  aria-label="${e.name}: максимум, вопрос ${qIdx + 1}"
                   placeholder="макс."
                   .value=${r.high ?? ''}
                   @input=${(ev) => this._onEntryInput(ev, i, qIdx, 'high')}
@@ -340,28 +399,9 @@ export class RetroGameCalibration extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Задайте вопрос вслух</b>
-                <span>Каждый вопрос — про число: год, высоту, длину. Не гуглите.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Каждый называет диапазон, а не число</b>
-                <span
-                  >Нижнюю и верхнюю границу, внутри которых, по ощущению, находится правильный
-                  ответ с вероятностью 90%. Если не уверены — берите диапазон шире, а не
-                  угадывайте точное число.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">Задача — не угадать точно, а честно оценить границы своей уверенности.</p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="custom-q-toggle-row">
             <button type="button" class="secondary" id="custom-q-toggle" @click=${() => this._toggleCustomPanel()}>
@@ -370,7 +410,7 @@ export class RetroGameCalibration extends LitElement {
           </div>
           <div class="custom-q-panel" id="custom-q-panel" ?hidden=${!this.customPanelOpen}>
             <p class="note" style="margin:0 0 14px;">
-              Можно заменить любой из трёх вопросов — оставьте поле пустым, чтобы оставить
+              Можно заменить любой из вопросов — оставьте поле пустым, чтобы оставить
               стандартный.
             </p>
             ${DEFAULT_QUESTIONS.map((def, i) => this._customQuestionBlock(def, i))}
@@ -425,6 +465,12 @@ export class RetroGameCalibration extends LitElement {
 
           <p class="note" id="answers-reveal">${r ? r.answersReveal : ''}</p>
 
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Кто в какой диапазон уверен — и попал ли</div>
+            <svg id="cal-chart" class="d3-chart-svg" role="img" aria-label="Диапазоны участников по каждому вопросу и верный ответ"></svg>
+            <p class="d3-chart-cap">Каждая полоска — «90%-й» диапазон одного человека. Цветная — накрыла верный ответ (золотая линия), красная — мимо. Узкие красные полоски наверху — это самоуверенность.</p>
+          </div>
+
           <table class="results-table" id="results-table">
             <thead>
               <tr>
@@ -470,96 +516,12 @@ export class RetroGameCalibration extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Калибровка уверенности</h1>
-          <p class="lede">
-            Люди систематически переоценивают точность собственных знаний: когда просят дать 90%-й
-            диапазон, правильный ответ попадает в него куда реже, чем в 90% случаев.
-          </p>
-
-          <p>
-            Классическая работа — Alpert M., Raiffa H. (1982). A Progress Report on the Training
-            of Probability Assessors, глава в книге Kahneman D., Slovic P., Tversky A. (ред.)
-            <i>Judgment Under Uncertainty: Heuristics and Biases</i>. Cambridge University Press.
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">90%</div>
-              <div class="lab">заявленная уверенность</div>
-            </div>
-            <div class="stat">
-              <div class="n">~40–60%</div>
-              <div class="lab">реальное попадание у большинства людей в классических опытах</div>
-            </div>
-          </div>
-
-          <p>
-            Люди называют куда более узкие интервалы, чем оправдано их реальными знаниями —
-            «уверенность» и «точность» оказываются разными вещами.
-          </p>
-
-          <p>
-            <b>Что именно тут измеряется.</b> Калибровка — это не про то, знаете вы факт или нет,
-            а про то, насколько ваше <i>ощущение</i> уверенности соответствует <i>реальной</i>
-            вероятности быть правым. Идеально откалиброванный человек, называя диапазон «на
-            90%», должен угадывать примерно 9 раз из 10 — не больше и не меньше. Если реальное
-            попадание заметно ниже 90%, значит, интервалы были названы слишком узкими — человек
-            почувствовал больше уверенности, чем позволяли его фактические знания. Любопытно, что
-            решение — не «знать больше», а именно шире раскрывать границы неопределённости: если
-            сомневаетесь, разумнее взять запас с обеих сторон, чем угадывать точное число.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Калибровка — тренируемый навык</b
-            ><span
-              >Профессиональные прогнозисты и букмекеры откалиброваны заметно лучше среднего
-              человека — за счёт постоянной обратной связи между прогнозом и реальным исходом.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Более узкий диапазон ощущается как более компетентный</b
-            ><span
-              >Люди часто сужают интервал не потому, что действительно так уверены, а потому что
-              широкий диапазон подсознательно кажется признанием некомпетентности — хотя честная
-              широта тут и есть компетентность.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Эффект Даннинга — Крюгера здесь рядом, но не то же самое</b
-            ><span
-              >Плохая калибровка касается всех уровней знаний, а не только новичков — эксперты
-              тоже систематически называют слишком узкие интервалы в своей области, просто с виду
-              это не так заметно, как у новичка.</span
-            >
-          </div>
-          <div class="fact">
-            <b>В медицине это вопрос жизни и смерти</b
-            ><span
-              >Исследования показывают, что врачи, давая прогнозы («сколько времени осталось» или
-              «какова вероятность осложнения»), тоже подвержены плохой калибровке — что делает
-              обучение специалистов честной оценке неопределённости отдельной важной задачей в
-              медицинском образовании.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Суперпрогнозисты откалиброваны заметно лучше</b
-            ><span
-              >В проекте Филипа Тетлока «Good Judgment Project» отдельная небольшая группа
-              непрофессиональных прогнозистов систематически обгоняла даже аналитиков спецслужб по
-              точности вероятностных прогнозов — во многом благодаря именно привычке регулярно
-              проверять и пересматривать степень своей уверенности.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Прямая рабочая параллель</b
-            ><span
-              >Оценка сроков и рисков проекта «с вероятностью 90%» на практике почти никогда не
-              выполняется с такой частотой — те же узкие, самоуверенные интервалы, что и в этой
-              игре.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

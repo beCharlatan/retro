@@ -1,44 +1,120 @@
 name: verify
 
-# Runs the full build + regression suite (404 checks across 13 games)
-# on every push and pull request, so a broken build or a failing
-# game/test never lands on main unnoticed. This is the thorough gate —
-# the local pre-push hook (scripts/pre-push) only runs the fast smoke
-# suite so `git push` itself stays quick; this workflow is what
-# actually enforces the full suite before anything merges.
+# The full gate on every push and pull request. Three independent jobs so a
+# failure says WHAT broke without reading a long log:
+#
+#   static   Biome (errors only fail the job), the undeclared-variables lint that
+#            catches renamed/moved constants the bundler doesn't, and the unit +
+#            property tests (no browser, seconds).
+#   e2e      Builds dist/index.html and runs the whole Playwright regression
+#            suite (test/run-all.js) against it.
+#   visual   Screenshot comparison of the exported PNG reports. Baselines are
+#            per-platform (system fonts render differently on macOS and Linux), so
+#            this job runs only when baselines for the runner's platform are
+#            committed (test/visual/__snapshots__/linux) — otherwise it says so and
+#            passes. Record them on Linux once with the "record-visual-baselines"
+#            workflow_dispatch below and commit the result.
+#
+# The local pre-push hook (scripts/pre-push) only runs the quick smoke suite so
+# `git push` stays fast; this is what actually enforces everything.
 
 on:
   push:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      record-visual-baselines:
+        description: "Record Linux visual baselines and upload them as an artifact"
+        type: boolean
+        default: false
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.4.2"
 
 jobs:
-  build-and-test:
+  static:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.2"
-
+          bun-version: ${{ env.BUN_VERSION }}
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
+      - name: Lint (Biome — errors fail, warnings are reported)
+        run: bun run lint
+      - name: Lint (undeclared variables)
+        run: bun run lint:undeclared
+      - name: Unit + property tests
+        run: bun run test:unit
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - name: Install Playwright's Chromium (with OS deps)
         run: bunx playwright install --with-deps chromium
-
-      - name: Lint (Biome)
-        run: bun run lint
-
-      - name: Build + run the full regression suite
-        run: bun run verify
-
+      - name: Build dist/index.html
+        run: bun run build
+      - name: Run the full regression suite
+        run: bun run test
       - name: Upload the built dist/index.html
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/index.html
+          retention-days: 14
+
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - name: Install Playwright's Chromium (with OS deps)
+        run: bunx playwright install --with-deps chromium
+      - name: Build dist/index.html
+        run: bun run build
+      - name: Record Linux baselines (manual run only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.record-visual-baselines }}
+        run: bun run test:visual:update
+      - name: Compare exported reports with the baselines
+        run: bun scripts/visual-if-baselines.js
+      - name: Upload baselines / diffs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual
+          path: |
+            test/visual/__snapshots__/linux
+            test-results
+          if-no-files-found: ignore
           retention-days: 14

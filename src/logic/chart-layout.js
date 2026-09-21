@@ -17,8 +17,14 @@ export function swarmHeight(swarm, dotRadius) {
 // The value range a lane's axis should cover: zero (or slightly below the
 // smallest value) up to a little above the largest, so the extreme dots and
 // the "correct answer" marker never sit on the edge.
+//
+// Never zero-width: if every value (and the answer) is 0 the naive range is
+// [0, 0], which a d3 scale would collapse to one point — so the domain always
+// spans at least one unit.
 export function valueDomain(values, { headroom = 1.15, floor = 0.9 } = {}) {
-  return [Math.min(0, Math.min(...values) * floor), Math.max(...values) * headroom];
+  const min = Math.min(0, Math.min(...values) * floor);
+  const max = Math.max(Math.max(...values) * headroom, min + 1);
+  return [min, max];
 }
 
 // Stacks lanes top to bottom. `heights[i]` is lane i's content height;

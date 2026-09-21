@@ -23,6 +23,7 @@ export const state = {
     'Таня',
     'Денис',
     'Диана',
+    'Анатолий',
   ],
   // Home screen filters. Deliberately shared, persistent module state
   // (like `participants`) rather than a Lit reactive property local to
@@ -78,6 +79,8 @@ export const AVATAR_COLORS = [
   '#A16A2E',
   '#5B4B8A',
   '#8A4B6B',
+  '#4B7A8F',
+  '#8F6B3B',
 ];
 
 export function avatarColor(name) {
@@ -178,7 +181,7 @@ export const GAMES = [
     category: 'cognitive',
     teaser: 'Та же вещь внезапно дороже для того, кто ей уже владеет.',
     players: '4+ (чётное)',
-    time: '9 мин',
+    time: '12 мин',
     ready: true,
     structure: 'groups',
   },
@@ -212,7 +215,7 @@ export const GAMES = [
     teaser:
       'Один и тот же выбор выглядит разумным или рискованным — в зависимости от формулировки.',
     players: '6+ (чётное)',
-    time: '7 мин',
+    time: '11 мин',
     ready: true,
     structure: 'groups',
   },

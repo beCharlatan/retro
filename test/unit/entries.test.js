@@ -147,6 +147,22 @@ describe('loadableDraft', () => {
     expect(loadableDraft(null, { key: 'data', length: 3 })).toBeNull();
     expect(loadableDraft(undefined, { key: 'data' })).toBeNull();
   });
+  test('rowCheck rejects a draft saved by an older version with a different row shape', () => {
+    const rowCheck = (r) => Array.isArray(r.prices);
+    const old = draft({ entries: [{ r1Price: 1 }, { r1Price: 2 }] });
+    const fresh = draft({ entries: [{ prices: [1] }, { prices: [2] }] });
+    expect(loadableDraft(old, { key: 'entries', length: 2, rowCheck })).toBeNull();
+    expect(loadableDraft(fresh, { key: 'entries', length: 2, rowCheck })).toBe(fresh);
+  });
+  test('rowCheck also copes with null rows in a corrupted draft', () => {
+    expect(
+      loadableDraft(draft({ entries: [null] }), {
+        key: 'entries',
+        length: 1,
+        rowCheck: () => true,
+      }),
+    ).toBeNull();
+  });
   test('pair games: needs the saved assignment instead of a fixed length', () => {
     const ok = draft({ entries: [1], assignment: { pairs: [] } });
     expect(loadableDraft(ok, { key: 'entries', requires: 'assignment' })).toBe(ok);
@@ -165,27 +181,42 @@ describe('blank rows for the role-based games', () => {
     ],
   };
 
-  test('endowment: group A owns first and buys second; group B the reverse', () => {
-    const rows = buildEndowmentEntries(groups);
+  test('endowment: group A owns for the whole game, group B buys — roles never swap', () => {
+    const rows = buildEndowmentEntries(groups, 3);
     expect(rows.map((r) => r.name)).toEqual(['Аня', 'Боря', 'Вика']);
-    expect(rows[0]).toEqual({
-      name: 'Аня',
-      r1Role: 'owner',
-      r2Role: 'buyer',
-      r1Price: null,
-      r2Price: null,
-    });
-    expect(rows[2]).toMatchObject({ name: 'Вика', r1Role: 'buyer', r2Role: 'owner' });
+    expect(rows.map((r) => r.role)).toEqual(['owner', 'owner', 'buyer']);
+    expect(rows[0]).toEqual({ name: 'Аня', role: 'owner', prices: [null, null, null] });
   });
-  test('endowment: everyone plays each role exactly once', () => {
-    for (const r of buildEndowmentEntries(groups))
-      expect(new Set([r.r1Role, r.r2Role])).toEqual(new Set(['owner', 'buyer']));
+  test('endowment: one blank price per lot, however many lots there are', () => {
+    for (const lots of [1, 3, 5]) {
+      for (const r of buildEndowmentEntries(groups, lots)) {
+        expect(r.prices).toHaveLength(lots);
+        expect(r.prices.every((p) => p === null)).toBe(true);
+      }
+    }
+  });
+  test('endowment: three lots by default (mug, car, house)', () => {
+    expect(buildEndowmentEntries(groups)[0].prices).toHaveLength(3);
+  });
+  test('endowment: rows never share a prices array (editing one person must not touch another)', () => {
+    const rows = buildEndowmentEntries(groups, 3);
+    rows[0].prices[0] = 5;
+    expect(rows[1].prices[0]).toBeNull();
   });
 
   test('framing: group A rows first, then B, nobody has chosen yet', () => {
     const rows = buildFramingEntries(groups);
     expect(rows.map((r) => r.group)).toEqual(['A', 'A', 'B']);
-    expect(rows.every((r) => r.choice === null)).toBe(true);
+    expect(rows.every((r) => r.choices.every((c) => c === null))).toBe(true);
+  });
+  test('framing: one blank choice per scenario (two by default: project and release)', () => {
+    expect(buildFramingEntries(groups)[0].choices).toEqual([null, null]);
+    expect(buildFramingEntries(groups, 3)[0].choices).toHaveLength(3);
+  });
+  test('framing: rows never share a choices array', () => {
+    const rows = buildFramingEntries(groups);
+    rows[0].choices[0] = '2';
+    expect(rows[1].choices[0]).toBeNull();
   });
 
   test('ultimatum: one blank row per pair, trio flag carried over as a boolean', () => {
@@ -227,6 +258,6 @@ describe('blank rows for the role-based games', () => {
 
   test('empty assignments give empty lists', () => {
     expect(buildUltimatumEntries({ pairs: [] })).toEqual([]);
-    expect(buildEndowmentEntries({ groupA: [], groupB: [] })).toEqual([]);
+    expect(buildEndowmentEntries({ groupA: [], groupB: [] }, 3)).toEqual([]);
   });
 });

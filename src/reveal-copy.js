@@ -135,14 +135,17 @@ export const REVEAL_COPY = {
     return { what, read, verdict: head + tail };
   },
 
-  // r: { avgWTA, avgWTP, ratio } — sell price, buy price, and their ratio (number).
+  // r: { ratio, lots: [{ name, avgWTA, avgWTP, ratio }] } — `ratio` is the average
+  // of the per-lot ratios; a lot's ratio is null until both sides priced it.
   endowment(r) {
     const what =
-      'Во сколько раз средняя цена, за которую люди готовы ПРОДАТЬ вещь, выше средней цены, за которую они готовы такую же КУПИТЬ. Каждый побывал и владельцем, и покупателем.';
+      'Во сколько раз владельцы просили за вещь больше, чем покупатели были готовы заплатить: цену продажи делим на цену покупки для каждого лота (кружка, автомобиль, дом) и усредняем.';
     const read =
-      'По логике цены должны совпадать — это та же самая вещь: 1× значит, что эффекта нет. В классических экспериментах владельцы просили в 2–3 раза больше покупателей.';
+      'Вещь одна и та же, так что по логике цены должны совпадать — 1× значит, что эффекта нет. В классических экспериментах владельцы просили в 2–3 раза больше покупателей. Интереснее всего смотреть, как отношение меняется с ценой вещи.';
     if (!r || r.ratio === null) return { what, read, verdict: null };
-    const head = `Продавали в среднем за ${Math.round(r.avgWTA)} ₽, покупали за ${Math.round(r.avgWTP)} ₽.`;
+    const usable = r.lots.filter((l) => l.ratio !== null);
+    const perLot = usable.map((l) => `${l.name} ${l.ratio.toFixed(1)}×`).join(', ');
+    const head = `По лотам: ${perLot}.`;
     let tail;
     if (r.ratio >= 1.8)
       tail =
@@ -150,6 +153,14 @@ export const REVEAL_COPY = {
     else if (r.ratio >= 1.2)
       tail = ' Заметный эффект владения: владельцы оценивают вещь выше покупателей.';
     else tail = ' Эффект почти не проявился: цены продавца и покупателя близки.';
+    if (usable.length >= 2) {
+      const first = usable[0].ratio;
+      const last = usable.at(-1).ratio;
+      if (first - last >= 0.4)
+        tail += ` Чем дороже вещь, тем слабее разрыв (${usable[0].name} ${first.toFixed(1)}× → ${usable.at(-1).name} ${last.toFixed(1)}×): к крупным покупкам мы относимся расчётливее, чем к мелким.`;
+      else if (last - first >= 0.4)
+        tail += ` Чем дороже вещь, тем сильнее разрыв (${usable[0].name} ${first.toFixed(1)}× → ${usable.at(-1).name} ${last.toFixed(1)}×): чем больше ставка, тем сильнее привязанность к своему.`;
+    }
     return { what, read, verdict: head + tail };
   },
 
@@ -177,20 +188,36 @@ export const REVEAL_COPY = {
 
   // r: { aRisky, bRisky } — % choosing the risky Program 2 in group A (gain frame)
   // and group B (loss frame); null while a group is empty.
+  // r: { rounds: [{ name, gainRisky, lossRisky }], gainRisky, lossRisky } — % who took
+  // the gamble under the gain wording and under the loss wording, per scenario
+  // and pooled. Everyone hears both wordings (once each), so the two sides are
+  // the same people.
   framing(r) {
     const what =
-      'Одна и та же дилемма с одинаковыми числами, но группе А варианты описали через выигрыш («спасены»), а группе Б — через потерю («погибнут»). Считаем, кто как часто выбрал рискованную Программу 2.';
+      'Один и тот же выбор с одинаковыми числами подали двумя способами: как выигрыш («спасём», «исправим») и как потерю («погибнут», «пропустим»). Считаем, как часто выбирали рискованный вариант в каждой формулировке — сначала в истории про людей, потом в рабочей ситуации с багами.';
     const read =
-      'По логике выбор не должен зависеть от слов. На деле в «выигрыше» люди избегают риска, а в «потере» готовы рискнуть. Если Группа Б выбрала риск заметно чаще Группы А — формулировка переключила решение.';
-    if (!r || r.aRisky === null || r.bRisky === null) return { what, read, verdict: null };
-    const diff = r.bRisky - r.aRisky;
-    const head = `Риск выбрали ${r.aRisky}% группы А и ${r.bRisky}% группы Б — разница ${pp(diff)}.`;
+      'По логике выбор не должен зависеть от слов. На деле в формулировке выигрыша люди избегают риска, а в формулировке потери готовы рискнуть. Чем больше риска при «потере» по сравнению с «выигрышем», тем сильнее эффект. Смотрите и на рабочий пример: срабатывает ли то же самое на привычных задачах.';
+    if (!r || r.gainRisky === null || r.lossRisky === null) return { what, read, verdict: null };
+    const diff = r.lossRisky - r.gainRisky;
+    const lines = r.rounds
+      .filter((x) => x.gainRisky !== null && x.lossRisky !== null)
+      .map((x) => `${x.name}: ${x.gainRisky}% → ${x.lossRisky}%`)
+      .join('; ');
+    const head = `Риск при формулировке выигрыша — ${r.gainRisky}%, при формулировке потери — ${r.lossRisky}% (${pp(diff)}). По сценариям (выигрыш → потеря): ${lines}.`;
     let tail;
     if (diff >= 20) tail = ' Формулировка сработала: те же числа, а решения противоположные.';
     else if (diff > 0) tail = ' Сдвиг в нужную сторону есть, но небольшой.';
     else
       tail =
         ' В этот раз переворота нет — в малых группах так бывает, особенно если несколько человек знали эффект.';
+    const work = r.rounds.at(-1);
+    if (r.rounds.length > 1 && work.gainRisky !== null && work.lossRisky !== null) {
+      const workDiff = work.lossRisky - work.gainRisky;
+      if (workDiff >= 15)
+        tail += ` На рабочем примере («${work.name}») эффект тоже виден: «потеря» подтолкнула к риску на ${Math.abs(workDiff)} п.п. — те же слова управляют решениями и в проектах.`;
+      else if (workDiff <= 0)
+        tail += ` На рабочем примере («${work.name}») формулировка не сдвинула решения — профессиональный контекст мог сработать как защита.`;
+    }
     return { what, read, verdict: head + tail };
   },
 

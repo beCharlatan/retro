@@ -5,13 +5,20 @@
    same solo two-field-per-row pattern as anchoring.js, but without a
    chart. Keeps its original plain ids.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawScatter } from '../charts/scatter.js';
+import CONTENT from '../content/planning-fallacy.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
 import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
+import { sharedDomain } from '../logic/chart-data.js';
 import {
   countFilled,
   hasEnough,
@@ -19,6 +26,7 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
+import { escapeHtml } from '../logic/format.js';
 import { isUsablePlanningRow, planningFallacyResults, planningRatio } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -49,6 +57,13 @@ export class RetroGamePlanningFallacy extends LitElement {
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'pf-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
 
     this.draft = loadableDraft(Persist.load('planning-fallacy'), {
       key: 'data',
@@ -88,6 +103,43 @@ export class RetroGamePlanningFallacy extends LitElement {
     return countFilled(this.data, isUsablePlanningRow);
   }
 
+  // Plan (x) against what it really took (y): the dotted diagonal is "exactly on plan",
+  // the steeper line is +50%. Almost everyone lands above the diagonal.
+  _drawChart(svg, theme) {
+    const { filled } = this.results;
+    const domain = sharedDomain(filled.map((d) => [d.best, d.actual]));
+    const tone = (ratio) => (ratio < 1.3 ? theme.accent : ratio <= 1.5 ? theme.gold : theme.red);
+    drawScatter(svg, {
+      points: filled.map((d) => {
+        const ratio = planningRatio(d);
+        return {
+          x: d.best,
+          y: d.actual,
+          color: tone(ratio),
+          tip: tipHtml(escapeHtml(d.name), [
+            ['План (лучший случай)', `${d.best} ч`],
+            ['Фактически', `${d.actual} ч`],
+            ['Во сколько раз дольше', `${ratio.toFixed(2)}×`],
+          ]),
+        };
+      }),
+      xDomain: domain,
+      yDomain: domain,
+      xLabel: 'ПЛАН — ЛУЧШИЙ СЛУЧАЙ, Ч',
+      yLabel: 'ФАКТИЧЕСКИ, Ч',
+      guides: [
+        { slope: 1, label: 'ровно по плану', color: theme.inkSoft },
+        { slope: 1.5, label: '+50%', color: theme.red },
+      ],
+      legend: [
+        { label: 'уложились (до 1,3×)', color: theme.accent },
+        { label: 'сдвиг 1,3–1,5×', color: theme.gold },
+        { label: 'превысили в 1,5× и больше', color: theme.red },
+      ],
+      theme,
+    });
+  }
+
   _showResults() {
     this.results = planningFallacyResults(this.data);
     const { filled } = this.results;
@@ -122,6 +174,7 @@ export class RetroGamePlanningFallacy extends LitElement {
           min="0"
           step="0.5"
           inputmode="decimal"
+          aria-label="${row.name}: срок в лучшем случае"
           placeholder="напр. 4"
           .value=${row.best ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, 'best')}
@@ -131,6 +184,7 @@ export class RetroGamePlanningFallacy extends LitElement {
           min="0"
           step="0.5"
           inputmode="decimal"
+          aria-label="${row.name}: сколько заняло на самом деле"
           placeholder="напр. 9"
           .value=${row.actual ?? ''}
           @input=${(e) => this._onEntryInput(e, idx, 'actual')}
@@ -183,31 +237,9 @@ export class RetroGamePlanningFallacy extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Вспомните типичную рабочую задачу</b>
-                <span
-                  >Что-то на «примерно один день» по вашей же собственной оценке — тикет, фича,
-                  отчёт, что угодно рутинное.</span
-                >
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Назовите два числа в часах</b>
-                <span
-                  >Сколько эта задача занимает <b>в лучшем случае</b>, если всё идёт по плану — и
-                  сколько занимает <b>по факту в среднем</b>, если вспомнить последние похожие
-                  задачи.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">Первым называйте «лучший случай» — не подглядывайте вперёд на «по факту».</p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -265,6 +297,12 @@ export class RetroGamePlanningFallacy extends LitElement {
             </div>
           </div>
 
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">План против реальности</div>
+            <svg id="pf-chart" class="d3-chart-svg" role="img" aria-label="Плановое и фактическое время каждого участника"></svg>
+            <p class="d3-chart-cap">Точка — один человек. Всё, что выше пунктирной диагонали, заняло дольше «лучшего случая». Так работает почти у всех: мы планируем по лучшему сценарию.</p>
+          </div>
+
           <table class="results-table" id="results-table">
             <thead>
               <tr>
@@ -310,92 +348,12 @@ export class RetroGamePlanningFallacy extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Ошибка планирования</h1>
-          <p class="lede">
-            Люди систематически недооценивают, сколько времени займёт задача — даже прекрасно
-            помня, что прошлые похожие задачи тоже заняли больше, чем планировалось.
-          </p>
-
-          <p>
-            Термин ввели Дэниел Канеман и Амос Тверски в 1977–1979 годах. Классический
-            экспериментальный разбор — исследование Roger Buehler, Dale Griffin и Michael Ross
-            (1994): студентов, пишущих дипломную работу, попросили дать реалистичный прогноз
-            срока сдачи и отдельно — «наихудший сценарий, если вдруг всё пойдёт не так». У
-            большинства студентов фактическое время превысило даже их собственный наихудший
-            прогноз.
-          </p>
-
-          <p>
-            Работа опубликована как Buehler R., Griffin D., Ross M. (1994). Exploring the
-            "Planning Fallacy": Why People Underestimate Their Task Completion Times.
-            <i>Journal of Personality and Social Psychology</i>.
-          </p>
-
-          <p>
-            <b>Почему «лучший случай» обманывает даже опытных людей.</b> Когда мы планируем
-            задачу, мозг мысленно проигрывает сценарий «всё идёт по плану»: открыл задачу, сделал,
-            закрыл — без учёта того, что может пойти не так. Канеман называл это «внутренним
-            взглядом» (inside view) — мы фокусируемся на конкретном плане перед глазами, а не на
-            статистике всех похожих задач, которые нам приходилось делать раньше («внешний
-            взгляд», outside view). Проблема в том, что реальные задачи почти всегда включают
-            непредвиденные мелочи — не потому что мы плохо планируем именно этот случай, а потому
-            что «что-то пойдёт не так» в принципе статистически вероятно почти всегда, просто
-            каждый раз по-своему. Мозг учитывает конкретные препятствия, которые может представить
-            заранее, но не умеет заранее представить препятствие, о существовании которого пока не
-            знает.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Знание об ошибке не спасает от неё</b
-            ><span
-              >«Inside view» — попытка представить именно эту задачу заново — почти всегда
-              побеждает статистику прошлых похожих задач, даже когда сам человек прекрасно знает
-              об этом искажении.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Единственное, что реально помогает — reference class forecasting</b
-            ><span
-              >Сознательно смотреть не «сколько эта задача займёт», а «сколько в среднем занимали
-              похожие задачи раньше» — и планировать от этого числа, а не от воображаемого
-              идеального сценария.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Крупные проекты страдают систематически</b
-            ><span
-              >Исследования масштабных инфраструктурных проектов (авторства экономиста Бента
-              Фливбьорга) показывают, что реальные сроки и бюджеты крупных строек — от туннелей до
-              олимпийских объектов — систематически превышают первоначальные оценки, причём
-              разброс превышения десятилетиями остаётся примерно одинаковым.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Дробление задачи снижает искажение</b
-            ><span
-              >Если разбить крупную задачу на мелкие подзадачи и оценивать каждую отдельно,
-              суммарная оценка обычно получается точнее, чем одна общая оценка «на глаз» — мелкие
-              шаги труднее мысленно представить как безупречные.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Оптимизм и социальное давление усиливают эффект</b
-            ><span
-              >Люди дают более оптимистичные (то есть более неточные) прогнозы, когда знают, что
-              оценку увидят коллеги или начальство — называть большую цифру социально «неудобно»,
-              даже если она честнее.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Прямая параллель со спринтами</b
-            ><span
-              >Оценка в story points или часах на глаз почти всегда описывает «лучший случай» —
-              отсюда системное расхождение между оценкой в начале спринта и тем, что происходит на
-              самом деле.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

@@ -34,6 +34,7 @@ export const ChartTip = (() => {
     if (el) return el;
     el = document.createElement('div');
     el.className = 'chart-tooltip';
+    el.setAttribute('aria-hidden', 'true'); // the same numbers are in the results table
     document.body.appendChild(el);
     return el;
   }

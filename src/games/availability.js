@@ -15,16 +15,22 @@
    write-up of this layout and game-shell.js for the shared navigation
    helpers every game now uses.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
+import { drawBars } from '../charts/bars.js';
+import { tipHtml } from '../charts/kit.js';
+import CONTENT from '../content/availability.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
-import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
+import { RoundTimers } from '../controllers/round-timers.js';
+import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
 import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
 import { countFilled, hasEnough, loadableDraft, patchItem } from '../logic/entries.js';
-import { formatPercent, outcomeMark } from '../logic/format.js';
+import { escapeHtml, formatPercent, outcomeMark } from '../logic/format.js';
 import { availabilityResults, availabilityRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -93,7 +99,6 @@ export class RetroGameAvailability extends LitElement {
     entries: { state: true },
     draft: { state: true },
     results: { state: true },
-    timerQ: { state: true },
   };
 
   constructor() {
@@ -102,10 +107,18 @@ export class RetroGameAvailability extends LitElement {
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.entries = this._blankEntries();
     this.results = null;
-    // One 20s timer shared by all question rounds; `timerQ` is the
-    // question whose card is currently live (the rest show idle).
-    this.timer = new AnswerTimerController(this, QUESTION_TIMER_SECONDS);
-    this.timerQ = null;
+    // One 20s timer shared by all question rounds; the live question keeps its own length.
+    this.timers = new RoundTimers(this, {
+      seconds: QUESTION_TIMER_SECONDS,
+      count: QUESTIONS.length,
+    });
+    this.charts = new ChartController(this, [
+      {
+        id: 'av-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
 
     this.draft = loadableDraft(Persist.load('availability'), {
       key: 'entries',
@@ -143,18 +156,28 @@ export class RetroGameAvailability extends LitElement {
     return countFilled(this.entries, (e) => e.answers[qIdx] !== null);
   }
 
-  _startTimer(qIdx) {
-    this.timerQ = qIdx;
-    this.timer.start();
-  }
-
-  _resetTimer() {
-    this.timer.reset();
-    this.timerQ = null;
+  // Share of the team that got each question right, against the 50% you'd get by guessing.
+  _drawChart(svg, theme) {
+    drawBars(svg, {
+      bars: this.results.perQuestionStats.map((s, i) => ({
+        label: QUESTIONS[i].short,
+        value: s.pct,
+        color: s.pct < 50 ? theme.red : theme.accent,
+        tip: tipHtml(escapeHtml(QUESTIONS[i].short), [
+          ['Верно', `${s.correct} из ${s.answered} (${s.pct}%)`],
+          [
+            'Верный ответ',
+            escapeHtml(QUESTIONS[i][QUESTIONS[i].correct === 'a' ? 'optA' : 'optB']),
+          ],
+        ]),
+      })),
+      refs: [{ value: 50, label: 'наугад: 50%', color: theme.gold }],
+      theme,
+    });
   }
 
   _next(qIdx) {
-    this._resetTimer();
+    this.timers.reset();
     if (qIdx === QUESTIONS.length - 1) {
       this.flow.advance(1 + QUESTIONS.length, () => this._showResults());
     } else {
@@ -182,7 +205,7 @@ export class RetroGameAvailability extends LitElement {
     this.results = null;
     Persist.clear('availability');
     this.flow.reset();
-    this._resetTimer();
+    this.timers.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
   }
@@ -199,13 +222,7 @@ export class RetroGameAvailability extends LitElement {
         <h2>${q.text}</h2>
         <p class="lede">Интуитивный выбор — без подсчётов.</p>
 
-        ${renderAnswerTimer(this.timer, {
-          runningLabel: '20 секунд на ответ',
-          compact: true,
-          active: this.timerQ === qIdx,
-          onStart: () => this._startTimer(qIdx),
-          onReset: () => this._resetTimer(),
-        })}
+        ${this.timers.card(qIdx, { runningLabel: 'на ответ', compact: true })}
 
         <div class="entry-head toggle-only">
           <div>Участник</div>
@@ -304,24 +321,9 @@ export class RetroGameAvailability extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Задайте вопрос вслух</b>
-                <span>На каждом экране — новая пара причин смерти. Зачитывайте вопрос целиком: новостной контекст — часть эксперимента.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Каждый молча выбирает вариант</b>
-                <span>Первое, что приходит в голову — без подсчётов и споров с соседями.</span>
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">Отвечайте интуитивно — колебания и «а давайте подумаем логически» смазывают эффект.</p>
+          ${renderNote(CONTENT.intro.note)}
 
           <div class="nav-row">
             <span></span>
@@ -369,6 +371,12 @@ export class RetroGameAvailability extends LitElement {
             }
           </div>
 
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Сколько человек ответили верно</div>
+            <svg id="av-chart" class="d3-chart-svg" role="img" aria-label="Доля верных ответов по каждому вопросу"></svg>
+            <p class="d3-chart-cap">Красные столбцы — ниже 50%: интуиция подводила сильнее, чем подбрасывание монетки. Такие ошибки и создают эвристика доступности: громкое кажется частым.</p>
+          </div>
+
           <table class="results-table" id="results-table">
             <thead>
               <tr>
@@ -414,91 +422,12 @@ export class RetroGameAvailability extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эвристика доступности</h1>
-          <p class="lede">
-            Мы оцениваем вероятность события по тому, насколько легко вспоминаются примеры — а не
-            по реальной статистике.
-          </p>
-
-          <p>
-            Яркие, эмоциональные и часто освещаемые в новостях события кажутся более частыми, чем
-            есть на самом деле. Авиакатастрофы, убийства и теракты — редкие, но заметные и
-            подробно освещаемые трагедии, поэтому нам легко их «вспомнить» и представить. Туберкулёз,
-            холод, падения и автоаварии почти никогда не становятся сенсацией — хотя уносят
-            значительно больше жизней.
-          </p>
-
-          <p>
-            Эффект описан в статье Tversky A., Kahneman D. (1973). Availability: A Heuristic for
-            Judging Frequency and Probability. <i>Cognitive Psychology</i>, 5(2). В той же работе
-            показано, что люди систематически считают, будто смертей от убийств больше, чем от
-            диабета — хотя в реальности всё наоборот, и это же самое вы, возможно, только что
-            увидели на своей команде.
-          </p>
-
-          <p>
-            <b>Почему мозг так поступает.</b> Оценить точную статистику причин смерти — трудная
-            задача, требующая доступа к данным, которых у нас обычно нет. Вместо этого мозг
-            подменяет сложный вопрос («как часто это происходит на самом деле?») на простой и
-            быстрый («как легко мне вспомнить примеры?») — и отвечает на него, а не на исходный.
-            Это экономит усилия и в большинстве бытовых ситуаций работает неплохо: то, что
-            происходит часто, мы действительно чаще видим и слышим. Но механизм ломается, когда
-            частота упоминания и реальная частота события расходятся — а именно так работают
-            новости: они рассказывают не о типичном, а о редком и шокирующем, потому что типичное
-            неинтересно.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Тот же механизм — в страхе перед перелётами</b
-            ><span
-              >Статистически поездка на машине до аэропорта обычно опаснее самого перелёта, но
-              полёт вызывает у многих куда больше тревоги — потому что авиакатастрофы ярче
-              «доступны» в памяти.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Москиты — самое смертоносное животное на Земле</b
-            ><span
-              >Ни акулы, ни змеи, ни крокодилы не убивают столько людей в год, сколько
-              переносимые москитами болезни — но именно акулы вызывают у людей несоразмерно
-              больше страха.</span
-            >
-          </div>
-          <div class="fact">
-            <b>После крупных катастроф люди массово меняют поведение</b
-            ><span
-              >После резонансных терактов или крушений самолётов число людей, выбирающих машину
-              вместо самолёта, заметно растёт на несколько месяцев — статистически это делает
-              поездку опаснее, а не безопаснее, потому что автомобильные аварии убивают намного
-              больше людей на километр пути.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Эффект усиливают недавность и личный опыт</b
-            ><span
-              >Событие, свидетелем которого вы были лично или которое произошло совсем недавно,
-              «доступается» из памяти легче и заметнее искажает оценку вероятности, чем то же
-              событие, о котором вы просто где-то читали давно.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Влияет на страхование и здравоохранение</b
-            ><span
-              >Люди охотнее покупают страховку от оползней или наводнений сразу после катастрофы
-              в новостях, чем спустя год — хотя объективная вероятность бедствия за это время не
-              изменилась, просто пример стал не таким «доступным».</span
-            >
-          </div>
-          <div class="fact">
-            <b>Рабочее применение</b
-            ><span
-              >В проектах мы точно так же переоцениваем риски, о которых недавно громко говорили
-              (последний инцидент, свежий баг в проде), и недооцениваем тихие, скучные, но более
-              вероятные проблемы.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

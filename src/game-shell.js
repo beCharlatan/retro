@@ -21,15 +21,31 @@
      renderReveal({...})              — the results-screen headline
 ========================================================= */
 import { html, nothing } from 'lit';
-import { formatTimer } from './logic/timer.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { confirmDialog } from './confirm-dialog.js';
+import {
+  formatTimer,
+  MAX_DURATION,
+  MIN_DURATION,
+  nudgeDuration,
+  parseDuration,
+} from './logic/timer.js';
 
 // The × in the corner (replaces the old .game-crumb back-link) —
 // exiting mid-attempt clears the draft same as the old back-link did,
-// so it's worth a plain native confirm rather than a silent one-click
-// exit. No modal component exists in this app, and a native one is
-// the cheapest correct answer for a single yes/no with real stakes.
+// so it's worth a confirmation rather than a silent one-click exit.
+// A real <dialog> (confirm-dialog.js): styled like the rest of the app,
+// keyboard- and screen-reader-friendly, and it doesn't freeze the page.
+// Fire-and-forget: `onExit` runs only if the person confirms.
 export function confirmExit(onExit) {
-  if (window.confirm('Выйти из игры? Текущая попытка не сохранится.')) onExit();
+  confirmDialog({
+    title: 'Выйти из игры?',
+    message: 'Текущая попытка не сохранится.',
+    confirmLabel: 'Выйти',
+    cancelLabel: 'Остаться',
+  }).then((confirmed) => {
+    if (confirmed) onExit();
+  });
 }
 
 // `runningLabel` covers both the not-yet-started and running states
@@ -37,28 +53,82 @@ export function confirmExit(onExit) {
 // обсуждение и ответ") — only the done state gets its own message,
 // since it's the one state that actually changes what the card means.
 //
-// `timer` is an AnswerTimerController. A game with several timed rounds
-// (availability.js: one 20s timer per question) renders a card in each
-// round but only ONE of them is live at a time: pass `active: false` for
-// the others so they show an idle card, and `onStart`/`onReset` to route
-// the buttons to whatever marks that round as the live one. `compact`
-// shrinks the card to a single slim row so it fits above a full
-// participant table on one screen.
+// `timer` is an AnswerTimerController. Options:
+//   active / onStart / onReset   a game with several timed rounds
+//       (availability.js: one timer per question) renders a card in each
+//       round but only ONE is live at a time — pass `active: false` for
+//       the others (they show an idle card) and route the buttons to
+//       whatever marks that round as the live one.
+//   compact      one slim row, so it fits above a full participant table.
+//   duration     THIS card's length in seconds (defaults to the timer's
+//       own) — an idle card of a not-live round shows its own length.
+//   defaultDuration + onDurationChange   makes the length editable while
+//       the card is idle: − / + steps and a typeable m:ss field. When the
+//       length differs from the default, "вернуть 2:00" puts it back.
 export function renderAnswerTimer(
   timer,
-  { runningLabel, doneLabel = 'Время вышло', active = true, compact = false, onStart, onReset },
+  {
+    runningLabel,
+    doneLabel = 'Время вышло',
+    active = true,
+    compact = false,
+    onStart,
+    onReset,
+    duration: cardDuration,
+    defaultDuration,
+    onDurationChange,
+  },
 ) {
-  const { duration } = timer;
+  const duration = active ? timer.duration : (cardDuration ?? timer.duration);
   const running = active && timer.running;
   const seconds = active ? timer.seconds : duration;
   const done = active && timer.done;
+  const idle = !running && !done && seconds === duration;
   const start = onStart || (() => timer.start());
   const reset = onReset || (() => timer.reset());
+  const editable = idle && typeof onDurationChange === 'function';
+  const differsFromDefault = defaultDuration !== undefined && duration !== defaultDuration;
+
+  const commitTyped = (event) => {
+    const parsed = parseDuration(event.target.value);
+    // Not a time → put the old value back rather than silently ignoring.
+    event.target.value = formatTimer(parsed ?? duration);
+    if (parsed !== null && parsed !== duration) onDurationChange(parsed);
+  };
+
   return html`
-    <div class="round-timer ${compact ? 'compact' : ''} ${running ? 'running' : ''} ${done ? 'done' : ''}">
+    <div class="${classMap({ 'round-timer': true, compact, running, done })}">
       <div class="round-timer-info">
         <span class="round-timer-clock">⏱</span>
-        <span class="round-timer-time">${formatTimer(seconds)}</span>
+        ${
+          editable
+            ? html`<span class="round-timer-adjust">
+                <button
+                  type="button"
+                  class="timer-step"
+                  aria-label="Уменьшить время"
+                  ?disabled=${duration <= MIN_DURATION}
+                  @click=${() => onDurationChange(nudgeDuration(duration, -1))}
+                >−</button>
+                <input
+                  class="round-timer-time round-timer-input"
+                  type="text"
+                  inputmode="numeric"
+                  aria-label="Длительность таймера (м:сс или секунды)"
+                  .value=${formatTimer(duration)}
+                  @change=${commitTyped}
+                  @keydown=${(e) => e.key === 'Enter' && e.target.blur()}
+                />
+                <button
+                  type="button"
+                  class="timer-step"
+                  aria-label="Увеличить время"
+                  ?disabled=${duration >= MAX_DURATION}
+                  @click=${() => onDurationChange(nudgeDuration(duration, 1))}
+                >+</button>
+              </span>`
+            : html`<span class="round-timer-time">${formatTimer(seconds)}</span>`
+        }
         <span class="round-timer-label">${done ? doneLabel : runningLabel}</span>
       </div>
       <div class="round-timer-track">
@@ -66,10 +136,22 @@ export function renderAnswerTimer(
       </div>
       <div class="round-timer-actions">
         ${
-          !running
-            ? html`<button class="ghost" @click=${start}>
-                ${seconds === duration ? 'Запустить таймер' : 'Запустить снова'}
+          editable && differsFromDefault
+            ? html`<button type="button" class="secondary timer-default" @click=${() => onDurationChange(defaultDuration)}>
+                вернуть ${formatTimer(defaultDuration)}
               </button>`
+            : ''
+        }
+        ${
+          !running
+            ? html`${
+                done && typeof onDurationChange === 'function'
+                  ? html`<button type="button" class="secondary" @click=${reset}>Изменить время</button>`
+                  : ''
+              }
+                <button class="ghost" @click=${start}>
+                  ${idle ? 'Запустить таймер' : 'Запустить снова'}
+                </button>`
             : html`<button class="ghost" @click=${reset}>Сбросить</button>`
         }
       </div>

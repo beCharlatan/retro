@@ -10,10 +10,10 @@
 ```
 retro/
 ├── README.md                 — этот файл
-├── docs/
-│   └── modernization-plan.md     — план ESM+Bun-бандлер / Lit (Shadow DOM) /
-│                                    CSS Modules / data-testid миграции
+├── .github/workflows/verify.yml — CI: static (lint + unit), e2e (Playwright),
+│                                    visual (эталоны PNG-отчёта, если записаны)
 ├── package.json               — bun-скрипты для сборки, тестов, lint/format
+├── playwright.config.js        — конфиг Playwright Test (только визуальные тесты)
 ├── biome.json                  — конфиг Biome (форматирование + линт)
 ├── bunfig.toml                 — конфиг Bun (держит `bun test` в
 │                                  test/unit/, см. комментарий в файле)
@@ -30,6 +30,9 @@ retro/
 │   │                                чтобы резолвить `import ... from 'lit'`
 │   │                                (голый bare-специфайер, браузер его
 │   │                                не понимает без бандлера/import map)
+│   ├── build-icons.js            — `bun run icons`: PNG → WebP data-URI (sharp)
+│   ├── visual-if-baselines.js    — CI: гонять визуальные тесты, только если
+│   │                                для платформы есть эталоны
 │   ├── install-hooks.js          — ставит scripts/pre-push в .git/hooks/
 │   │                                (запускается сам через postinstall)
 │   └── pre-push                  — git-хук: build + smoke-набор перед push
@@ -55,49 +58,85 @@ retro/
 │   │                                entries.js — ввод данных (парсинг чисел,
 │   │                                правка строк, подсчёт заполненных,
 │   │                                совместимость черновика),
+│   │                                chart-data.js — данные для графиков,
+│   │                                chart-layout.js — высота полос графиков,
 │   │                                custom-questions.js — «свой вопрос»,
 │   │                                map-physics.js — дрейф/отскок иконок и
 │   │                                камера главной карты,
-│   │                                chart-layout.js — высота полос графиков,
 │   │                                trail-geometry.js — точки шагов тропы,
 │   │                                filters.js — фильтры и счётчики главной,
 │   │                                format.js — plural/дата/имя файла/timeAgo/
-│   │                                аватары, color.js — hex/HSL/darken,
-│   │                                round-flow.js — правила прохода по
-│   │                                раундам, timer.js — состояние таймера
-│   ├── controllers/             — Lit ReactiveController'ы поверх logic/:
+│   │                                аватары/escapeHtml, color.js — hex/HSL/
+│   │                                darken и контраст WCAG (readableText/
+│   │                                readableFill), round-flow.js — правила
+│   │                                прохода по раундам, timer.js — таймер
+│   ├── controllers/             — Lit ReactiveController'ы и помощники:
 │   │                                round-flow-controller.js (screenIdx/
-│   │                                activeRound, advance/scrollTo/reset,
-│   │                                трекинг скролла), answer-timer-controller.js
-│   │                                (таймер ответа); сами чистят таймеры и
-│   │                                слушатели при отключении компонента
+│   │                                activeRound, advance/scrollTo/reset),
+│   │                                answer-timer-controller.js (таймер ответа),
+│   │                                round-timers.js (один живой таймер и своя
+│   │                                длительность у каждого раунда — 5 игр),
+│   │                                spoiler-controller.js (какие тексты скрыты),
+│   │                                chart-controller.js (рисует D3-графики после
+│   │                                рендера, следит за размером и темой);
+│   │                                сами чистят таймеры/слушатели при отключении
+│   ├── charts/                  — D3-графики результатов: kit.js (тема, оси,
+│   │                                подсказки, анимация появления), swarm.js
+│   │                                (рой точек по полосам), bars.js, scatter.js,
+│   │                                intervals.js; данные — logic/chart-data.js
+│   ├── content/                 — тексты игр в JSON, по файлу на игру:
+│   │                                `intro` (шаги + примечание), `context`
+│   │                                (лид + абзацы/плашки со статистикой),
+│   │                                `facts`. Правятся без JS; разрешены
+│   │                                только <b>, <i>, <br>, плейсхолдеры
+│   │                                {pot}/{stake}/{question} (проверяет
+│   │                                test/unit/content.test.js)
+│   ├── content.js               — рендер этих текстов (renderSteps/
+│   │                                renderNote/renderContext/renderFacts)
+│   ├── spoiler-card.js          — карточка «спрятанный текст + показать/
+│   │                                скопировать» (Фрейминг, Барнум)
+│   ├── game-shell.js            — общий каркас игры: × с подтверждением выхода,
+│   │                                карточка таймера, главная цифра результатов
+│   ├── game-trail.js            — тропа шагов игры и акцентные CSS-переменные
+│   │                                (`--game-accent`, `--game-accent-deep` —
+│   │                                читаемый оттенок для текста, `-fill`/`-on` —
+│   │                                для залитых кнопок; контраст ≥ 4.5:1)
+│   ├── map-render.js            — главная-карта (canvas/DOM, камера, иконки)
+│   ├── confirm-dialog.js        — нативный <dialog> подтверждения
+│   ├── chart-tip.js             — подсказка графиков (aria-hidden)
+│   ├── perf.js                  — «lite»-режим для слабых машин (?perf=lite|full)
 │   ├── custom-question-form.js  — DOM-половина панели «свой вопрос» (чтение/очистка полей)
 │   ├── reveal-copy.js           — тексты под главной цифрой результатов
 │   ├── persist.js               — общий паттерн: черновики в sessionStorage
 │   │                                + timeAgo() для баннера восстановления
 │   ├── report-export.js         — общий паттерн: экспорт результатов в PNG-отчёт
-│   ├── icons.js                 — служебные SVG-глифы кита Airtable Apps UI
-│   │                                Kit (стрелки, шеврон, буфер обмена,
-│   │                                крестик, download/edit/surprise/shuffle) —
+│   │                                (`window.__reportData` — тестовый хук, создаётся
+│   │                                только при `window.__RETRO_TEST__`)
+│   ├── icons.js                 — служебные SVG-глифы (стрелки, шеврон, буфер
+│   │                                обмена, крестик, download/edit/shuffle) —
 │   │                                НЕ тематические иконки игр, см. ниже
 │   ├── icon-assets.js           — декоративные 3D-иконки карточек игр,
-│   │                                ключ → data:-URI (сгенерирован из
-│   │                                src/icons/*.png, см. docs/
-│   │                                modernization-plan.md)
+│   │                                ключ → data:-URI (WebP), СГЕНЕРИРОВАН
+│   │                                из src/icons/*.png командой
+│   │                                `bun run icons` (scripts/build-icons.js,
+│   │                                нужен sharp) — руками не править
 │   ├── icons/                    — исходные PNG для icon-assets.js
-│   │                                (160×160, уменьшены из оригиналов)
+│   ├── map-assets/               — картинки главной карты
 │   ├── styles/
-│   │   └── shared-styles.js        — весь styles.css как Lit `css` для
-│   │                                  Shadow DOM (import ... with {type:'text'})
+│   │   ├── shared-styles.js        — весь styles.css как Lit `css` для
+│   │   │                              Shadow DOM (import ... with {type:'text'})
+│   │   └── map-styles.css/.js      — стили главной карты
 │   └── games/                   — 13 файлов, по одному на игру; каждый —
 │                                   Lit-компонент (`<retro-game-...>`,
-│                                   Shadow DOM), см. docs/modernization-plan.md
+│                                   Shadow DOM)
 ├── test/                       — регрессионный набор (см. test/README.md)
 │   ├── lib.js, games.js           — общая инфраструктура и описание всех игр
-│   ├── unit/                      — bun:test юниты на чистую логику
-│   └── *.spec.js                  — smoke / home / persistence / export / swap / copy / trio
+│   ├── unit/                      — bun:test: юниты и property-тесты (fast-check)
+│   ├── visual/                    — Playwright Test: эталоны PNG-отчёта
+│   └── *.spec.js                  — E2E: smoke / home / persistence / export /
+│                                     графики / a11y (axe) / таймеры / ...
 ├── dist/
-    └── index.html               — СОБРАННЫЙ файл, единственное, что нужно
+│   └── index.html               — СОБРАННЫЙ файл, единственное, что нужно
                                     отдавать пользователю (двойной клик
                                     открывает в Chrome/Safari, доп. файлы
                                     не нужны)
@@ -123,12 +162,12 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
 каждый push/PR (`.github/workflows/verify.yml`). Пропустить хук разово:
 `git push --no-verify`.
 
-`src/*.js` — настоящие ES-модули (см. `docs/modernization-plan.md`, Фаза 1),
+`src/*.js` — настоящие ES-модули ,
 поэтому `src/index.html` **больше нельзя** просто открыть двойным кликом —
 браузеры блокируют `import` по `file://` (в отличие от классических
 `<script src>`, на которых всё держалось раньше). Для живой проверки в
 браузере во время разработки: `bun run dev` → http://localhost:5173.
-Дополнительно, начиная с Фазы 4+, `home.js` и все игры импортируют `lit`
+Кроме того, `home.js` и все игры импортируют `lit`
 голым bare-специфайером (`import { LitElement } from 'lit'`) — браузер не
 может зарезолвить такое сам ни при какой раздаче статики. Поэтому
 `scripts/dev-server.js` не просто отдаёт `src/app.js` как есть: запрос на
@@ -147,8 +186,7 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
 `static properties`), а не императивная сборка `innerHTML` строк. Общие
 модули ниже — то, что осталось переиспользуемым при таком подходе; часть
 старого API (императивная генерация HTML + делегированные слушатели)
-исчезла вместе с переходом на Lit — см. `docs/modernization-plan.md`
-для истории и обоснования.
+исчезла вместе с переходом на Lit.
 
 - **`roles.js`** — только чистые функции без DOM: `Roles.makePairs()` /
   `Roles.makeGroups()` случайно делят участников на пары или на 2 группы
@@ -175,9 +213,22 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
   было» — и растеризует его через `html-to-image` в PNG (@2x). Имя файла:
   `Эффект_якоря_10.09.2026.png`. `ReportExport.meta(count, extra)` — данные
   для чипа участников.
+- **`charts/` + `ChartController`** — графики результатов (D3): игра
+  описывает в `_drawChart(svg, theme)` данные (`logic/chart-data.js`) и
+  вызывает `drawSwarm/drawBars/drawScatter/drawIntervals`; контроллер
+  перерисовывает график после рендера и при смене размера. Высота SVG
+  следует за данными.
+- **`RoundTimers`** — для игр с таймером на каждый раунд/вопрос/лот:
+  `this.timers = new RoundTimers(this, { seconds, count })`,
+  `${this.timers.card(i, { runningLabel })}`, `this.timers.reset()` при
+  переходе, `resetAll()` при «Начать заново».
+- **`content/*.json` + `content.js`** — инструкция, контекст и факты игры
+  живут в JSON (см. выше); в шаблоне игры — `${renderSteps(CONTENT.intro.steps)}`,
+  `${renderContext(CONTENT.context)}`, `${renderFacts(CONTENT.facts)}`.
+- **`spoiler-card.js` + `SpoilerController`** — спрятанный текст с «Показать»
+  и «Скопировать».
 - **`chart-tip.js`** — `ChartTip.attachToPoint(svg, ns, cx, cy, content, hitRadius)`
-  вешает на точку графика (Эффект якоря, Мудрость толпы, Игра диктатора)
-  всплывающую подсказку по наведению: имя человека и его ответ. Добавляет
+  вешает на точку графика всплывающую подсказку по наведению: имя человека и его ответ. Добавляет
   свой увеличенный невидимый круг поверх маленькой видимой точки — 5–6px
   слишком мелкая мишень для мыши — и именно на него вешает обработчики.
   Сама подсказка живёт в `document.body` (общая на все графики), поэтому
@@ -200,7 +251,11 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
    (`copyToClipboard`). Проход по раундам — `this.flow = new
    RoundFlowController(this, { titles })` (`advance`/`scrollTo`/`reset`/
    `roundClass`/`lock`), таймер ответа — `new AnswerTimerController(this,
-   секунды)`. Подсчёт результатов — функцией в `../logic/results.js` (с
+   секунды)` (или `RoundTimers`, если таймер нужен на каждый раунд).
+   Тексты инструкции/контекста/фактов — в `src/content/<id>.json` (добавьте
+   файл: тест `content.test.js` требует по одному на игру).
+   Поля ввода получают `aria-label` с именем участника — так проходит
+   проверка `a11y.spec.js`. Подсчёт результатов — функцией в `../logic/results.js` (с
    юнит-тестом в `test/unit/results.test.js`), а не внутри компонента.
    Заканчивается
    `customElements.define('retro-game-xxx', RetroGameXxx)`.
@@ -212,9 +267,8 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
    подхватят её автоматически. Обычные `id`-селекторы работают
    как есть (Shadow DOM изолирует id по компонентам, Playwright пронизывает
    shadow root для `page.click`/`$eval`/`$$eval` автоматически) — см.
-   `docs/modernization-plan.md` за развилками, где вместо `id`
-   стоит `data-testid`.
-6. `bun run verify` — собрать и прогнать весь набор.
+   игровых компонентов, где вместо `id` стоит `data-testid`.
+6. `bun run verify` — собрать и прогнать весь набор (lint, сборка, E2E, юниты).
 
 ## Технические принципы (не менять без причины)
 
@@ -241,9 +295,13 @@ smoke-набор (~15–20с, все 13 игр целиком, без остал
 Подробности — в `test/README.md`. Коротко:
 
 ```bash
-bun run verify
+bun run verify        # lint + проверка необъявленных переменных + сборка + E2E + юниты
+bun run test:unit     # только юниты и property-тесты (~1 с)
+bun run test:a11y     # только доступность (axe на всех экранах)
+bun run test:visual   # эталоны PNG-отчёта (см. test/README.md)
 ```
 
-404 проверки (~3 минуты): полный прогон каждой из 13 игр, главный экран,
-восстановление черновиков (включая гонку состояний при двойной
-перезагрузке без явного восстановления), экспорт PNG-отчёта, подсказки графиков и свои вопросы в играх-викторинах.
+~710 E2E-проверок (~6 минут: каждая из 13 игр целиком, карта, черновики,
+экспорт PNG, графики, таймеры, доступность), ~600 юнит- и property-тестов.
+В CI (`.github/workflows/verify.yml`) три параллельных задания: `static`
+(lint + юниты), `e2e` и `visual`.

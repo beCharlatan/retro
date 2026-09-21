@@ -8,9 +8,16 @@
    shadow-root-awareness of its own). Keeps its original plain id
    (#copy-profile), same reasoning as crowd-wisdom's header comment.
 ========================================================= */
+
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import { tipHtml } from '../charts/kit.js';
+import { drawSwarm } from '../charts/swarm.js';
+import CONTENT from '../content/barnum.json';
+import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { SpoilerController } from '../controllers/spoiler-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
@@ -23,16 +30,31 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
+import { escapeHtml } from '../logic/format.js';
 import { barnumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
 import { REVEAL_COPY } from '../reveal-copy.js';
+import { renderSpoilerCard } from '../spoiler-card.js';
 import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
-import { copyToClipboard } from '../toast.js';
 
 const PROFILE_TEXT =
   'Иногда вы сомневаетесь, правильно ли поступили или приняли верное решение. Вы цените, когда вас окружают доказательства того, что вас любят и уважают, но при этом умеете быть требовательны к себе. У вас есть значительный неиспользуемый потенциал, который вы не всегда обращаете себе на пользу. Внешне вы дисциплинированы и держите себя в руках, но внутри нередко испытываете тревогу и неуверенность. Порой вы всерьёз сомневаетесь, правильный ли выбор сделали в жизни или в карьере. Вам нравится определённая доля перемен и разнообразия, а жёсткие рамки и ограничения вызывают недовольство.';
+// The three "warm-up" questions the facilitator asks each person the DAY BEFORE
+// the game, supposedly to prepare a personal portrait from their answers. They
+// are deliberately innocuous and open-ended — they sound like small talk, not a
+// personality test — so people genuinely believe their answers fed the text they
+// later receive (which is in fact the same for everyone and ignores them).
+const QUESTIONS = [
+  'Опишите, как обычно выглядит ваше идеальное утро: что вы делаете в первые полчаса после пробуждения и почему именно это?',
+  'Вспомните недавнюю ситуацию на работе, в которой вы поступили не так, как от вас ожидали. Что произошло и как вы к этому пришли?',
+  'Представьте свободный день без обязательств и без планов. Чем бы вы его занялись — и что подсказывает вам, что это именно ваше?',
+];
+const QUESTIONS_INTRO =
+  'Для подготовки к завтрашней встрече ответьте, пожалуйста, на три вопроса — парой предложений, своими словами, как первым придёт в голову:';
+const QUESTIONS_TEXT = `${QUESTIONS_INTRO}\n\n${QUESTIONS.map((q, i) => `${i + 1}. ${q}`).join('\n\n')}`;
+
 const TOTAL_SCREENS = 4;
 const ROUND_TITLES = [
   'Персональный психологический портрет команды',
@@ -56,6 +78,15 @@ export class RetroGameBarnum extends LitElement {
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
     this.data = this._blankData();
     this.results = null;
+    this.charts = new ChartController(this, [
+      {
+        id: 'barnum-chart',
+        when: () => this.results,
+        draw: (svg, theme) => this._drawChart(svg, theme),
+      },
+    ]);
+    // Both spoilers (the questions, the portrait text) start hidden.
+    this.spoilers = new SpoilerController(this, ['questions', 'profile']);
 
     this.draft = loadableDraft(Persist.load('barnum'), {
       key: 'data',
@@ -84,8 +115,45 @@ export class RetroGameBarnum extends LitElement {
     renderHome();
   }
 
-  _copyProfile(e) {
-    copyToClipboard(PROFILE_TEXT, e.currentTarget);
+  // Every rating stacked on its number 0–5, with the team average and Forer's 1949 result.
+  _drawChart(svg, theme) {
+    const { filled, avg } = this.results;
+    drawSwarm(svg, {
+      lanes: [
+        {
+          label: 'Насколько портрет «про меня»: 0 — совсем нет, 5 — точно в точку',
+          color: theme.accent,
+          domain: [-0.5, 5.5],
+          ticks: [0, 1, 2, 3, 4, 5],
+          refs: [
+            { value: avg, label: `у вас: ${avg.toFixed(2)}`, color: theme.accentDeep },
+            { value: 4.26, label: 'Форер, 1949: 4,26', color: theme.gold },
+          ],
+          points: filled.map((d) => ({
+            id: d.name,
+            value: d.rating,
+            tip: tipHtml(escapeHtml(d.name), [['Оценка', `${d.rating} из 5`]]),
+          })),
+        },
+      ],
+      theme,
+    });
+  }
+
+  // The three questions as a numbered list (used on the intro card and again in the results).
+  _questionList() {
+    return html`
+      <ol class="question-list">
+        ${QUESTIONS.map(
+          (q, i) => html`
+            <li class="question-list-item">
+              <span class="question-list-num">${i + 1}</span>
+              <span>${q}</span>
+            </li>
+          `,
+        )}
+      </ol>
+    `;
   }
 
   _onEntryInput(e, idx) {
@@ -107,9 +175,9 @@ export class RetroGameBarnum extends LitElement {
       'barnum',
       {
         subtitle: 'Расплывчатое описание личности кажется удивительно «прямо про меня».',
-        meta: ReportExport.meta(filled.length),
+        meta: ReportExport.meta(filled.length, '3 вопроса накануне'),
         explanation:
-          'Расплывчатое, общее для всех описание личности воспринимается как удивительно точное и «прямо про меня» — потому что читающий сам додумывает подходящие примеры из своей жизни. Эффект впервые продемонстрировал психолог Бертрам Форер в 1949 году: все 39 студентов получили один и тот же текст и в среднем оценили его точность на 4.26 из 5.',
+          'Расплывчатое, общее для всех описание личности воспринимается как удивительно точное и «прямо про меня» — потому что читающий сам додумывает подходящие примеры из своей жизни. Эффект впервые продемонстрировал психолог Бертрам Форер в 1949 году: все 39 студентов получили один и тот же текст и в среднем оценили его точность на 4.26 из 5. В нашем варианте накануне каждому задали три вопроса «для подготовки», но «личный портрет» от ответов не зависел — у всех он был один и тот же.',
       },
       this.renderRoot,
     );
@@ -134,6 +202,7 @@ export class RetroGameBarnum extends LitElement {
           max="5"
           step="1"
           inputmode="numeric"
+          aria-label="${row.name}: оценка точности от 0 до 5"
           placeholder="0–5"
           .value=${row.rating ?? ''}
           @input=${(e) => this._onEntryInput(e, idx)}
@@ -159,8 +228,8 @@ export class RetroGameBarnum extends LitElement {
           <p class="eyebrow">Командное упражнение · 6 минут</p>
           <h1>Персональный психологический портрет команды</h1>
           <p class="lede">
-            Перед игрой команда заполнила короткий опросник о себе (реально не нужно ничего
-            заполнять — просто скажите это вслух для атмосферы). Ниже — их индивидуальный разбор.
+            Эксперимент растянут на два дня: накануне вы задаёте каждому три вопроса, а в день игры
+            каждый получает «личный портрет», якобы составленный по его ответам.
           </p>
 
           <div class="draft-mount">
@@ -186,45 +255,25 @@ export class RetroGameBarnum extends LitElement {
             }
           </div>
 
-          <ol class="step-list">
-            <li>
-              <div class="step-num">1</div>
-              <div class="step-body">
-                <b>Прочитайте вслух текст на следующем экране</b>
-                <span>Как «результат психологического анализа», подготовленный лично для команды.</span>
-              </div>
-            </li>
-            <li>
-              <div class="step-num">2</div>
-              <div class="step-body">
-                <b>Каждый оценивает точность про себя</b>
-                <span
-                  >От 0 (совсем не про меня) до 5 (прямо в точку) — насколько описание похоже
-                  лично на вас.</span
-                >
-              </div>
-            </li>
-          </ol>
+          ${renderSteps(CONTENT.intro.steps)}
 
-          <p class="note">Не подглядывайте вперёд — оценивайте по первому впечатлению.</p>
+          ${renderNote(CONTENT.intro.note)}
 
-          <div class="quote-card">
-            <div class="spoiler-head">
-              <b>Текст для команды</b>
-              <div class="spoiler-actions">
-                <!-- Plain emoji here on purpose, not the kit's clipboard
-                     icon: copyToClipboard() (toast.js) overwrites this
-                     button's textContent imperatively for the "✓
-                     Скопировано" feedback, which would eject the icon's
-                     Lit-managed ChildPart marker nodes and throw on the
-                     next render ("ChildPart has no parentNode"). -->
-                <button type="button" class="ghost" id="copy-profile" @click=${(e) => this._copyProfile(e)}>
-                  📋 Скопировать
-                </button>
-              </div>
-            </div>
-            <p>«${PROFILE_TEXT}»</p>
-          </div>
+          ${renderSpoilerCard(this.spoilers, {
+            key: 'questions',
+            title: 'Три вопроса для команды',
+            hint: 'Вопросы скрыты — нажмите «Показать», чтобы прочитать самому, или сразу скопируйте и отправьте команде.',
+            body: this._questionList(),
+            copyText: QUESTIONS_TEXT,
+          })}
+
+          ${renderSpoilerCard(this.spoilers, {
+            key: 'profile',
+            title: 'Текст для команды',
+            hint: 'Текст скрыт — нажмите «Показать», чтобы прочитать самому, или сразу скопируйте и отправьте каждому лично.',
+            body: html`«${PROFILE_TEXT}»`,
+            copyText: PROFILE_TEXT,
+          })}
 
           <div class="nav-row">
             <span></span>
@@ -270,13 +319,22 @@ export class RetroGameBarnum extends LitElement {
 
           ${renderReveal({ value: r ? `${r.avg.toFixed(2)} / 5` : '—', ...REVEAL_COPY.barnum(r ? { avg: r.avg } : null) })}
 
-          <div class="quote-card">
+          <h3 class="scenario-result-title">Три вопроса, на которые отвечал каждый</h3>
+          <div class="quote-card questions-recap" id="questions-recap">
+            <p class="note">${QUESTIONS_INTRO}</p>
+            ${this._questionList()}
+          </div>
+
+          <h3 class="scenario-result-title">«Личный портрет», который получил каждый</h3>
+          <div class="quote-card" id="profile-recap">
             <p>«${PROFILE_TEXT}»</p>
           </div>
-          <p>
-            <b>Сюрприз:</b> это тот же самый текст, что был на первом экране — и каждый участник
-            получил ровно его, слово в слово. Никакого «индивидуального анализа» не было.
-          </p>
+
+          <div class="d3-chart-card">
+            <div class="d3-chart-title">Как команда оценила «свой» портрет</div>
+            <svg id="barnum-chart" class="d3-chart-svg" role="img" aria-label="Оценки точности портрета от 0 до 5, по одной точке на человека"></svg>
+            <p class="d3-chart-cap">Все получили один и тот же текст. Чем правее точки, тем сильнее сработал эффект Барнума; золотая линия — результат студентов Форера.</p>
+          </div>
 
           <table class="results-table" id="results-table">
             <thead>
@@ -319,99 +377,12 @@ export class RetroGameBarnum extends LitElement {
           <div class="round-body">
           <p class="eyebrow">А теперь — контекст</p>
           <h1>Эффект Барнума / Форера</h1>
-          <p class="lede">
-            Расплывчатое, «универсальное» описание личности воспринимается как удивительно точное
-            — если человек верит, что оно составлено именно для него.
-          </p>
-
-          <p>
-            В 1949 году психолог Бертрам Форер дал 39 студентам тест личности, а через неделю
-            раздал каждому «индивидуальный» разбор — якобы составленный по результатам их теста.
-            На деле все получили один и тот же текст, собранный из газетного гороскопа, а сам тест
-            никак не обрабатывался.
-          </p>
-
-          <div class="stat-row">
-            <div class="stat">
-              <div class="n">4.26 / 5</div>
-              <div class="lab">средняя оценка точности в оригинальном опыте Форера</div>
-            </div>
-            <div class="stat">
-              <div class="n">39</div>
-              <div class="lab">студентов получили один и тот же текст</div>
-            </div>
-          </div>
-
-          <p>
-            Опубликовано как Forer B. R. (1949). The Fallacy of Personal Validation: A Classroom
-            Demonstration of Gullibility. <i>Journal of Abnormal and Social Psychology</i>, 44(1),
-            118–123. Термин «эффект Барнума» ввёл психолог Пол Мил в 1956 году — в честь шоумена
-            Ф. Т. Барнума, чей девиз был «у нас для каждого найдётся что-нибудь».
-          </p>
-
-          <p>
-            <b>Почему расплывчатость работает лучше точности.</b> Фразы вроде «иногда вы
-            сомневаетесь в своих решениях» технически верны для почти любого живого человека — но
-            воспринимаются они не как общие, а как личные, потому что читающий сам додумывает
-            конкретный случай из своей жизни, который под них подходит. Мозг охотно ищет
-            подтверждения («да, точно, было на прошлой неделе!») и почти не ищет опровержений —
-            это отдельное, тоже хорошо изученное искажение, склонность к подтверждению
-            (confirmation bias). Плюс формулировки часто строятся как «двусторонние»: «вы бываете
-            общительны, но иногда любите одиночество» — подходит буквально всем, потому что
-            покрывает оба варианта сразу.
-          </p>
+          ${renderContext(CONTENT.context)}
 
           <hr />
           <h2>Ещё немного фактов</h2>
 
-          <div class="fact">
-            <b>Этим держатся гороскопы и многие онлайн-тесты личности</b
-            ><span
-              >Формулировки специально делают расплывчатыми и «двусторонними»
-              («дисциплинированы снаружи, но тревожны внутри») — какой бы стороной вы ни были,
-              фраза всё равно попадёт.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Позитивная формулировка усиливает эффект</b
-            ><span
-              >Люди охотнее соглашаются с лестными расплывчатыми описаниями, чем с нейтральными
-              или негативными — общая благосклонность к себе подыгрывает искажению.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Авторитет источника тоже усиливает эффект</b
-            ><span
-              >Тот же самый текст, поданный как «результат теста от психолога», воспринимается
-              точнее, чем поданный как шутка или случайный текст — доверие к источнику подкрепляет
-              доверие к содержанию.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Работает даже на профессионалов</b
-            ><span
-              >В повторных опытах студенты психологических факультетов, знавшие об эффекте
-              Барнума и специально предупреждённые, всё равно оценивали общий текст как «довольно
-              точный» — интеллектуальное знание о ловушке не отменяет автоматической реакции.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Основа целой индустрии «холодного чтения»</b
-            ><span
-              >Экстрасенсы и гадалки используют тот же приём вживую: начинают с общих
-              утверждений, наблюдают за реакцией собеседника и постепенно уточняют формулировки в
-              сторону того, что вызывает у него отклик — сам «дар предвидения» тут не нужен.</span
-            >
-          </div>
-          <div class="fact">
-            <b>Обратная сторона — эффект хорошо продаваемой обратной связи</b
-            ><span
-              >Расплывчатые комментарии о работе сотрудника («у вас большой потенциал, которым вы
-              не всегда пользуетесь») звучат вдумчиво, но малополезны на практике именно потому,
-              что подходят почти любому человеку — конкретная обратная связь работает лучше именно
-              из-за своей конкретности.</span
-            >
-          </div>
+          ${renderFacts(CONTENT.facts)}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this._reset()}>↺ Начать заново</button>

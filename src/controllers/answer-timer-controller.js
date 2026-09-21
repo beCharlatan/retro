@@ -15,6 +15,7 @@ import {
   createTimer,
   isTimerDone,
   resetTimer,
+  setTimerDuration,
   startTimer,
   tickTimer,
   timerProgress,
@@ -50,10 +51,18 @@ export class AnswerTimerController {
     return timerProgress(this.state);
   }
 
-  start() {
+  // `duration` (seconds) starts this run at a different length than the
+  // timer currently has — and keeps it.
+  start(duration) {
     this._stopClock();
-    this._set(startTimer(this.state));
+    this._set(startTimer(this.state, duration));
     this._interval = this.clock.setInterval(() => this._tick(), 1000);
+  }
+
+  // Change the length; the timer goes back to idle at the new value. No-op
+  // while it is counting down.
+  setDuration(seconds) {
+    this._set(setTimerDuration(this.state, seconds));
   }
 
   reset() {

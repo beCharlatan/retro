@@ -9,8 +9,10 @@
      seeded randomness        hashString, mulberry32
      camera                   applyTransform, interpolateTransform,
                               focusTransform
-     layout                   computeSafeBounds, initialNodes
+     layout                   computeSafeBounds, computeIconScale,
+                              initialNodes
      per-frame simulation     moveNodes, separateNodes
+     motion wake (the tail)   smoothHeading, wakeDots
 
    A node is { x, y, vx, vy, frozen, ...game }. The simulation functions
    MUTATE the nodes they are given, on purpose: map-render.js binds each
@@ -85,18 +87,47 @@ export function focusTransform(node, width, height, fallback = IDENTITY) {
 
 // ---------- layout ----------
 
+// The smallest playable area per axis; below this the icons are simply
+// shrunk (computeIconScale) rather than pushed off-screen.
+export const MIN_SPAN = 120;
+// Vertical HUD insets shrink on short windows (browser zoomed in, small
+// laptop) — the masthead/roster/hint bars are one line tall whatever the
+// window is, so they don't need 130px of reserve when only 400px exist.
+const SHORT_WINDOW_HEIGHT = 700;
+const MIN_VERTICAL_FACTOR = 0.55;
+
 // The rectangle icons drift inside for a container of width × height:
-// the container minus the HUD insets, never smaller than 200px per axis
-// (a tiny window still gets a playable area).
+// the container minus the HUD insets. Horizontal insets are the physical
+// width of the side HUD cards, so they stay fixed; vertical ones ease off on
+// short windows. Never smaller than MIN_SPAN per axis, and always inside the
+// container.
 export function computeSafeBounds(width, height, inset = SAFE_INSET) {
   const fullW = width || 900;
   const fullH = height || 600;
+  const vk = Math.min(1, Math.max(MIN_VERTICAL_FACTOR, fullH / SHORT_WINDOW_HEIGHT));
+  const top = inset.top * vk;
+  const bottom = inset.bottom * vk;
+  const minX = Math.min(inset.left, Math.max(0, fullW - MIN_SPAN));
+  const minY = Math.min(top, Math.max(0, fullH - MIN_SPAN));
   return {
-    minX: inset.left,
-    maxX: Math.max(fullW - inset.right, inset.left + 200),
-    minY: inset.top,
-    maxY: Math.max(fullH - inset.bottom, inset.top + 200),
+    minX,
+    maxX: Math.min(fullW, Math.max(fullW - inset.right, minX + MIN_SPAN)),
+    minY,
+    maxY: Math.min(fullH, Math.max(fullH - bottom, minY + MIN_SPAN)),
   };
+}
+
+// How much to shrink the icons (0.4..1) so `count` of them, each wanting
+// about MIN_SEPARATION of room, fit in `bounds` without overlapping or
+// spilling out. 1 whenever there's room — on a normal screen nothing changes.
+export const MIN_ICON_SCALE = 0.4;
+const PACKING_EFFICIENCY = 0.7; // circles don't tile a rectangle perfectly
+
+export function computeIconScale(bounds, count, separation = MIN_SEPARATION) {
+  if (count <= 0) return 1;
+  const area = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
+  const wanted = count * separation * separation * PACKING_EFFICIENCY;
+  return Math.min(1, Math.max(MIN_ICON_SCALE, Math.sqrt(area / wanted)));
 }
 
 // Scatters every game inside `bounds`, each on its own heading. Rejection
@@ -179,7 +210,9 @@ export function separateNodes(nodes, dt, minSeparation = MIN_SEPARATION) {
       if (nodes[j].frozen) continue;
       const dx = nodes[j].x - nodes[i].x;
       const dy = nodes[j].y - nodes[i].y;
-      const dist = Math.hypot(dx, dy) || 1;
+      // Floor, not `|| 1`: two icons a denormal-float apart would make
+      // (minSeparation - dist) / dist overflow to Infinity and fling both off.
+      const dist = Math.max(Math.hypot(dx, dy), 1e-6);
       if (dist < minSeparation) {
         const push = ((minSeparation - dist) / dist) * 0.5;
         const ox = dx * push;
@@ -191,4 +224,62 @@ export function separateNodes(nodes, dt, minSeparation = MIN_SEPARATION) {
       }
     }
   }
+}
+
+// ---------- the wake (the fading tail behind a drifting icon) ----------
+//
+// The tail used to be the icon's last 10 positions. The icons drift at
+// 6–15 px/s, so 10 frames back is about 2 px — the whole "trail" sat under
+// the icon and was invisible. It is now drawn as a comet tail: dots laid out
+// BEHIND the icon, starting just past its edge and reaching a fixed distance
+// away, regardless of how slowly the icon drifts.
+
+export const ICON_SIZE = 75; // px, the game icon's own size at scale 1
+export const WAKE = {
+  count: 9, // dots in the tail
+  startGap: 8, // px between the icon's edge and the first dot
+  gap: 11, // px between neighbouring dots
+  maxRadius: 10, // the dot nearest the icon
+  minRadius: 3, // the dot at the far end
+  maxAlpha: 0.38,
+  fade: 1.25, // >1 fades faster than linearly toward the tip
+};
+
+// Which way the icon is heading, smoothed: a bounce off an edge flips its
+// velocity instantly, and an instantly flipping tail would snap across the
+// icon. `prev` is a unit vector; the result is too. Time constant `tau` (s).
+//
+// Turns by ANGLE, along the shorter way round. (Blending the two vectors and
+// re-normalising looks equivalent but is stuck on a head-on 180° reversal:
+// the blend of (1,0) and (-1,0) is still along the x axis, so after
+// normalising it never leaves (1,0).)
+export function smoothHeading(prev, vx, vy, dt, tau = 0.45) {
+  const speed = Math.hypot(vx, vy);
+  if (speed < 1e-6) return prev;
+  const from = Math.atan2(prev.y, prev.x);
+  let turn = Math.atan2(vy, vx) - from;
+  if (turn > Math.PI) turn -= 2 * Math.PI;
+  else if (turn < -Math.PI) turn += 2 * Math.PI;
+  const angle = from + turn * (1 - Math.exp(-dt / tau));
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+// The tail's dots relative to the icon's centre, for an icon heading `heading`
+// (unit vector) and shrunk by `iconScale`. Every offset points BACKWARD, and
+// starts outside the icon's own radius so the tail is actually visible.
+// Returns [{ dx, dy, radius, alpha }] nearest-to-the-icon first.
+export function wakeDots(heading, iconScale = 1, wake = WAKE) {
+  const edge = (ICON_SIZE / 2) * iconScale;
+  const dots = [];
+  for (let i = 0; i < wake.count; i++) {
+    const t = wake.count > 1 ? i / (wake.count - 1) : 0;
+    const distance = edge + (wake.startGap + i * wake.gap) * iconScale;
+    dots.push({
+      dx: -heading.x * distance,
+      dy: -heading.y * distance,
+      radius: (wake.maxRadius + (wake.minRadius - wake.maxRadius) * t) * iconScale,
+      alpha: wake.maxAlpha * (1 - t) ** wake.fade,
+    });
+  }
+  return dots;
 }

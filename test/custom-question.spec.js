@@ -135,14 +135,14 @@ async function run() {
       await page.waitForTimeout(100);
       const h2 = await page.textContent('#q-heading-0');
       report.check(
-        'calibration: default question 1 is still the Google one',
-        h2.includes('Google'),
+        'calibration: default question 1 is the tungsten one',
+        h2.includes('вольфрама'),
         h2.trim(),
       );
       await page.close();
     }
 
-    // --- calibration: replace only ONE of three questions, leave the other two default ---
+    // --- calibration: replace only ONE of the four questions, leave the others default ---
     {
       const page = await openPage(browser, report);
       await openGameFromHome(page, 'calibration');
@@ -159,9 +159,10 @@ async function run() {
       const h0 = await page.textContent('#q-heading-0');
       const h1 = await page.textContent('#q-heading-1');
       const h2 = await page.textContent('#q-heading-2');
+      const h3 = await page.textContent('#q-heading-3');
       report.check(
         'calibration: question 1 stays default when only Q2 is customized',
-        h0.includes('Google'),
+        h0.includes('вольфрама'),
       );
       report.check(
         'calibration: question 2 shows the custom text',
@@ -169,12 +170,12 @@ async function run() {
       );
       report.check(
         'calibration: question 3 stays default when only Q2 is customized',
-        h2.includes('Волга'),
+        h2.includes('хромосом') && h3.includes('Титикака'),
       );
 
       await page.click('button:has-text("Начать вопросы")');
       await page.waitForTimeout(100);
-      for (let q = 0; q < 3; q++) {
+      for (let q = 0; q < 4; q++) {
         // #entry-body-N directly (N = question index) — ".screen.active"
         // matches nothing now that every round is always in the DOM
         // (src/game-shell.js).
@@ -188,8 +189,11 @@ async function run() {
       }
       const reveal = await page.textContent('#answers-reveal');
       report.check(
-        'calibration: revealed answers mix custom Q2 with default Q1/Q3',
-        reveal.includes('1998') && reveal.includes('85 человек') && reveal.includes('3530 км'),
+        'calibration: revealed answers mix custom Q2 with the default questions',
+        reveal.includes('3422 °C') &&
+          reveal.includes('85 человек') &&
+          reveal.includes('78 хромосом') &&
+          reveal.includes('3812 м'),
         reveal.trim(),
       );
       await page.close();
@@ -208,7 +212,7 @@ async function run() {
       const h0 = await page.textContent('#q-heading-0');
       report.check(
         'calibration: half-filled question slot shows a validation message, not applied',
-        status.length > 0 && h0.includes('Google'),
+        status.length > 0 && h0.includes('вольфрама'),
         status.trim(),
       );
       await page.close();

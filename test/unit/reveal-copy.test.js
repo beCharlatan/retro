@@ -39,16 +39,44 @@ const SAMPLES = {
     { avgR1: 300, avgR2: 305, delta: 5, pot: 1000 },
   ],
   endowment: [
-    { avgWTA: 300, avgWTP: 120, ratio: 2.5 },
-    { avgWTA: 105, avgWTP: 100, ratio: 1.05 },
+    {
+      ratio: 2.5,
+      lots: [
+        { name: 'Кружка', ratio: 3 },
+        { name: 'Автомобиль', ratio: 2.5 },
+        { name: 'Дом', ratio: 2 },
+      ],
+    },
+    {
+      ratio: 1.05,
+      lots: [
+        { name: 'Кружка', ratio: 1 },
+        { name: 'Автомобиль', ratio: 1.1 },
+        { name: 'Дом', ratio: 1.05 },
+      ],
+    },
   ],
   falseConsensus: [
     { realYesPct: 60, yesAvg: 75, noAvg: 40 },
     { realYesPct: 60, yesAvg: 55, noAvg: 54 },
   ],
   framing: [
-    { aRisky: 20, bRisky: 70 },
-    { aRisky: 50, bRisky: 40 },
+    {
+      gainRisky: 25,
+      lossRisky: 75,
+      rounds: [
+        { name: 'Проект', gainRisky: 20, lossRisky: 70 },
+        { name: 'Релиз', gainRisky: 30, lossRisky: 80 },
+      ],
+    },
+    {
+      gainRisky: 50,
+      lossRisky: 40,
+      rounds: [
+        { name: 'Проект', gainRisky: 50, lossRisky: 40 },
+        { name: 'Релиз', gainRisky: 50, lossRisky: 40 },
+      ],
+    },
   ],
   planningFallacy: [
     { avgRatio: 2.1, accurateCount: 1, overrunCount: 9, total: 12 },
@@ -93,4 +121,69 @@ describe('REVEAL_COPY', () => {
       });
     });
   }
+});
+
+describe('endowment copy across lots', () => {
+  const lots = (a, b, c) => [
+    { name: 'Кружка', ratio: a },
+    { name: 'Автомобиль', ratio: b },
+    { name: 'Дом', ratio: c },
+  ];
+  test('names every lot with its own ratio', () => {
+    const { verdict } = REVEAL_COPY.endowment({ ratio: 1.7, lots: lots(2, 1.7, 1.4) });
+    expect(verdict).toContain('Кружка 2.0×');
+    expect(verdict).toContain('Автомобиль 1.7×');
+    expect(verdict).toContain('Дом 1.4×');
+  });
+  test('says when the gap fades as the stakes rise', () => {
+    expect(REVEAL_COPY.endowment({ ratio: 1.8, lots: lots(2.6, 1.8, 1.1) }).verdict).toContain(
+      'тем слабее',
+    );
+  });
+  test('says when the gap grows as the stakes rise', () => {
+    expect(REVEAL_COPY.endowment({ ratio: 1.5, lots: lots(1.1, 1.5, 2.1) }).verdict).toContain(
+      'тем сильнее',
+    );
+  });
+  test('stays quiet about a trend when the ratios are flat', () => {
+    const v = REVEAL_COPY.endowment({ ratio: 1.7, lots: lots(1.7, 1.75, 1.65) }).verdict;
+    expect(v).not.toContain('тем слабее');
+    expect(v).not.toContain('тем сильнее');
+  });
+  test('skips lots that could not be compared', () => {
+    const v = REVEAL_COPY.endowment({ ratio: 2, lots: lots(2, null, null) }).verdict;
+    expect(v).toContain('Кружка 2.0×');
+    expect(v).not.toContain('Автомобиль');
+  });
+});
+
+describe('framing copy across scenarios', () => {
+  const r = (project, release) => ({
+    gainRisky: 30,
+    lossRisky: 60,
+    rounds: [
+      { name: 'Проект', gainRisky: project[0], lossRisky: project[1] },
+      { name: 'Релиз', gainRisky: release[0], lossRisky: release[1] },
+    ],
+  });
+  test('reports each scenario, gain → loss', () => {
+    const v = REVEAL_COPY.framing(r([20, 70], [30, 80])).verdict;
+    expect(v).toContain('Проект: 20% → 70%');
+    expect(v).toContain('Релиз: 30% → 80%');
+  });
+  test('calls out the work example when the effect shows there too', () => {
+    expect(REVEAL_COPY.framing(r([20, 70], [30, 80])).verdict).toContain(
+      'На рабочем примере («Релиз») эффект тоже виден',
+    );
+  });
+  test('says so when professional context seems to protect against it', () => {
+    expect(REVEAL_COPY.framing(r([20, 70], [50, 40])).verdict).toContain('не сдвинула решения');
+  });
+  test('stays quiet about the work example when the shift there is small but positive', () => {
+    const v = REVEAL_COPY.framing(r([20, 70], [40, 45])).verdict;
+    expect(v).not.toContain('На рабочем примере');
+  });
+  test('no data on one side → no verdict', () => {
+    expect(REVEAL_COPY.framing({ gainRisky: null, lossRisky: 50, rounds: [] }).verdict).toBeNull();
+  });
 });

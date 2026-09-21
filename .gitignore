@@ -3,3 +3,5 @@ dist/
 *.log
 .claude/
 .DS_Store
+test-results/
+playwright-report/

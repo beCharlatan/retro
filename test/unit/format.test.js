@@ -4,6 +4,7 @@ import {
   avatarInitial,
   buildExportFilename,
   escapeHtml,
+  formatCompact,
   formatPercent,
   formatRuDate,
   formatSigned,
@@ -85,23 +86,24 @@ describe('timeAgo', () => {
   const MIN = 60_000;
   test('under a minute', () => {
     expect(ago(20_000)).toBe('только что');
+    expect(ago(0)).toBe('только что');
   });
-  test('one minute has no number', () => {
-    expect(ago(MIN)).toBe('минуту назад');
-  });
-  test('2–4 minutes vs 5+', () => {
+  test('minutes are declined by the browser’s Russian rules', () => {
+    expect(ago(MIN)).toBe('1 минуту назад');
     expect(ago(2 * MIN)).toBe('2 минуты назад');
     expect(ago(4 * MIN)).toBe('4 минуты назад');
     expect(ago(5 * MIN)).toBe('5 минут назад');
+    expect(ago(11 * MIN)).toBe('11 минут назад');
   });
   test('regression: 21 and 22 minutes decline like "one" and "few", not "many"', () => {
     expect(ago(21 * MIN)).toBe('21 минуту назад');
     expect(ago(22 * MIN)).toBe('22 минуты назад');
     expect(ago(30 * MIN)).toBe('30 минут назад');
   });
-  test('hours', () => {
-    expect(ago(60 * MIN)).toBe('час назад');
-    expect(ago(3 * 60 * MIN)).toBe('3 ч. назад');
+  test('an hour or more switches to hours', () => {
+    expect(ago(60 * MIN)).toBe('1 час назад');
+    expect(ago(2 * 60 * MIN)).toBe('2 часа назад');
+    expect(ago(5 * 60 * MIN)).toBe('5 часов назад');
   });
 });
 
@@ -143,5 +145,23 @@ describe('table cells', () => {
     expect(formatPercent(67)).toBe('67%');
     expect(formatPercent(0)).toBe('0%');
     expect(formatPercent(null)).toBe('—');
+  });
+});
+
+describe('formatCompact (axis labels)', () => {
+  test('small numbers stay as they are', () => {
+    expect(formatCompact(0)).toBe('0');
+    expect(formatCompact(950)).toBe('950');
+    expect(formatCompact(2500)).toBe('2500');
+  });
+  test('thousands, millions, billions get a short suffix with a decimal comma', () => {
+    expect(formatCompact(12500)).toBe('12,5 тыс');
+    expect(formatCompact(1_500_000)).toBe('1,5 млн');
+    expect(formatCompact(10_000_000)).toBe('10 млн');
+    expect(formatCompact(2_400_000_000)).toBe('2,4 млрд');
+  });
+  test('negatives and decimals', () => {
+    expect(formatCompact(-1_500_000)).toBe('-1,5 млн');
+    expect(formatCompact(1.25)).toBe('1,3');
   });
 });

@@ -27,6 +27,10 @@ describe('valueDomain', () => {
   test('extends below zero for negative values', () => {
     expect(valueDomain([-100, 50])[0]).toBeCloseTo(-90, 9);
   });
+  test('regression: all-zero data (custom question with answer 0) still gets a real axis', () => {
+    const [min, max] = valueDomain([0, 0, 0]);
+    expect(max).toBeGreaterThan(min);
+  });
   test('the extremes always fall strictly inside the domain', () => {
     const values = [10, 60, 400];
     const [min, max] = valueDomain(values);

@@ -78,7 +78,7 @@
 import * as d3 from 'd3';
 import { html, svg } from 'lit';
 import { ICONS } from './icon-assets.js';
-import { darken } from './logic/color.js';
+import { darken, readableFill, readableText } from './logic/color.js';
 import { checkMarkPath, stepAnchors } from './logic/trail-geometry.js';
 import { ICON_COLORS } from './map-render.js';
 import { GAMES } from './state.js';
@@ -108,12 +108,24 @@ function gameVisuals(gameId) {
 
 export function gameAccentStyle(gameId) {
   const { color } = gameVisuals(gameId);
-  return color ? `--game-accent:${color};--game-accent-deep:${darken(color)}` : '';
+  if (!color) return '';
+  // The icon's own colour is decorative (trail, glow, chart marks). For TEXT and for
+  // filled buttons the colour has to pass WCAG AA, and several icons are light
+  // (yellow, lime, cyan): --game-accent-deep is the text shade (≥ 4.5:1 on white and
+  // on the accent tint), --game-accent-fill / --game-accent-on a button background
+  // with its label colour.
+  const deep = readableText(color, darken(color));
+  const { fill, on } = readableFill(color);
+  return `--game-accent:${color};--game-accent-deep:${deep};--game-accent-fill:${fill};--game-accent-on:${on}`;
 }
 
 export function renderTrail({ current, total, gameId, stepLabels }) {
   const { icon, color: sampledColor } = gameVisuals(gameId);
   const color = sampledColor || 'var(--blue)';
+  // the step label is TEXT on a pale tint of the trail colour — needs its own readable shade
+  const trailText = sampledColor
+    ? readableText(sampledColor, darken(sampledColor))
+    : 'var(--blue-deep)';
   const clamped = Math.min(Math.max(current, 0), total - 1);
   const anchors = stepAnchors(total);
   const [tx, ty] = anchors[clamped];
@@ -123,7 +135,7 @@ export function renderTrail({ current, total, gameId, stepLabels }) {
   const travelerSize = TRAVELER_SIZE;
 
   return html`
-    <div class="game-trail vertical" style="--trail-color:${color}">
+    <div class="game-trail vertical" style="--trail-color:${color};--trail-text:${trailText}">
       <div class="trail-svg-wrap">
         <svg viewBox="0 0 ${VB_W} ${MAX_TRAIL_HEIGHT}" preserveAspectRatio="xMidYMin meet" aria-hidden="true">
           <path class="trail-path" d=${pathD}></path>

@@ -38,11 +38,11 @@ async function run() {
       await openGameFromHome(page, 'anchoring');
       await page.click('button:has-text("Вносить данные")');
       const inputs = await page.$$('[data-testid="entry-body"] input');
-      const vals = [
-        12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29, 60, 40, 25,
-        30, 33, 33,
-      ];
-      for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(vals[i]));
+      // The first person's pair (12 → 20) is asserted on below; everyone else just
+      // needs plausible, varied values — however many people the roster has.
+      const first = [12, 20, 88, 50, 45, 35, 30, 25, 67, 42, 19, 22, 5, 15, 72, 48, 55, 38, 40, 29];
+      const val = (i) => (i < first.length ? first[i] : (i * 37 + 11) % 97);
+      for (let i = 0; i < inputs.length; i++) await inputs[i].fill(String(val(i)));
       await page.click('button:has-text("Показать результаты")');
 
       const noTooltipYet = await page.isVisible('.chart-tooltip.visible').catch(() => false);
