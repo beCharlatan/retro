@@ -11,8 +11,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawScatter } from '../charts/scatter.js';
 import CONTENT from '../content/planning-fallacy.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -27,6 +28,7 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { escapeHtml } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { isUsablePlanningRow, planningFallacyResults, planningRatio } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -65,6 +67,10 @@ export class RetroGamePlanningFallacy extends LitElement {
       },
     ]);
 
+    this.projector = new ProjectorController(this, 'planning-fallacy', {
+      entries: (round) => this._projectorEntries(round),
+    });
+
     this.draft = loadableDraft(Persist.load('planning-fallacy'), {
       key: 'data',
       length: this.names.length,
@@ -97,6 +103,22 @@ export class RetroGamePlanningFallacy extends LitElement {
       [field]: parseNumberInput(e.target.value, { min: 0 }),
     });
     Persist.save('planning-fallacy', { data: this.data });
+  }
+
+  _projectorEntries(round) {
+    if (round !== 1) return null;
+    return projectorEntries({
+      title: 'Оценки команды',
+      total: this.data.length,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        complete: d.best !== null && d.actual !== null,
+        cells: [
+          { label: 'В лучшем случае', value: d.best === null ? null : `${d.best} ч` },
+          { label: 'По факту', value: d.actual === null ? null : `${d.actual} ч` },
+        ],
+      })),
+    });
   }
 
   _filledCount() {
@@ -199,6 +221,7 @@ export class RetroGamePlanningFallacy extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('planning-fallacy')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -207,12 +230,14 @@ export class RetroGamePlanningFallacy extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 6 минут</p>
-          <h1>Сколько времени это на самом деле занимает?</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 6 минут</p>
+          <h1 data-projector="title">Сколько времени это на самом деле занимает?</h1>
+          <p class="lede" data-projector="lede">
             Два числа на человека. Отвечайте по-честному, вспоминая реальные задачи, а не
             идеальный сценарий.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -251,7 +276,7 @@ export class RetroGamePlanningFallacy extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите оценки каждого участника</h2>
           <p class="lede">В часах: «лучший случай» и «по факту в среднем».</p>
 
@@ -281,8 +306,8 @@ export class RetroGamePlanningFallacy extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r && r.avgRatio !== null ? `${r.avgRatio.toFixed(2)}×` : '—', ...REVEAL_COPY.planningFallacy(r && r.avgRatio !== null ? { avgRatio: r.avgRatio, accurateCount: r.accurateCount, overrunCount: r.overrunCount, total: r.filled.length } : null) })}
 
@@ -297,7 +322,7 @@ export class RetroGamePlanningFallacy extends LitElement {
             </div>
           </div>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">План против реальности</div>
             <svg id="pf-chart" class="d3-chart-svg" role="img" aria-label="Плановое и фактическое время каждого участника"></svg>
             <p class="d3-chart-cap">Точка — один человек. Всё, что выше пунктирной диагонали, заняло дольше «лучшего случая». Так работает почти у всех: мы планируем по лучшему сценарию.</p>
@@ -346,8 +371,8 @@ export class RetroGamePlanningFallacy extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Ошибка планирования</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Ошибка планирования</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

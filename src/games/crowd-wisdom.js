@@ -32,7 +32,9 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
 import CONTENT from '../content/crowd-wisdom.json';
-import { renderContext, renderFacts, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderRules, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { clearQuestionSlots, readQuestionSlots } from '../custom-question-form.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
@@ -61,6 +63,7 @@ import {
   parseNumberInput,
   patchItem,
 } from '../logic/entries.js';
+import { projectorEntries, spaced } from '../logic/projector-entries.js';
 import { crowdWisdomResults } from '../logic/results.js';
 import { dodge } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
@@ -99,12 +102,23 @@ export class RetroGameCrowdWisdom extends LitElement {
     super();
     this.names = state.participants.slice();
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
+    this.charts = new ChartController(this, [
+      {
+        id: 'cw-chart',
+        when: () => this.results,
+        draw: () => this._drawChart(this.results.perQuestion),
+      },
+    ]);
     this.questions = cloneQuestions(DEFAULT_QUESTIONS);
     this.data = this._blankData();
     this.results = null;
     this.isCustomQuestions = false;
     this.customPanelOpen = false;
     this.customQStatus = '';
+
+    this.projector = new ProjectorController(this, 'crowd-wisdom', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('crowd-wisdom'), {
       key: 'data',
@@ -201,6 +215,22 @@ export class RetroGameCrowdWisdom extends LitElement {
     });
   }
 
+  _projectorEntries(round) {
+    if (round !== 1) return null;
+    return projectorEntries({
+      title: 'Оценки команды',
+      total: this.data.length,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        complete: d.guesses.every((g) => g !== null),
+        cells: d.guesses.map((g, qi) => ({
+          label: `Вопрос ${qi + 1}`,
+          value: g === null ? null : spaced(g),
+        })),
+      })),
+    });
+  }
+
   _filledCountFor(qIdx) {
     return countFilled(this.data, (d) => d.guesses[qIdx] !== null);
   }
@@ -244,15 +274,6 @@ export class RetroGameCrowdWisdom extends LitElement {
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
-  }
-
-  updated() {
-    // No longer gated on screenIdx===2 — every round (including this
-    // one) is always in the DOM now, so "do we have results yet" is
-    // the only thing that matters for whether the chart should draw.
-    if (this.results) {
-      this._drawChart(this.results.perQuestion);
-    }
   }
 
   // Three independent lanes, one per question — each with its OWN
@@ -467,6 +488,7 @@ export class RetroGameCrowdWisdom extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('crowd-wisdom')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -475,9 +497,11 @@ export class RetroGameCrowdWisdom extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 5 минут</p>
-          <h1>Проверим, кто точнее — один человек или вся команда</h1>
-          <p class="lede">Три коротких вопроса. Не гуглите — это оценка «на глаз», в этом весь смысл.</p>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 5 минут</p>
+          <h1 data-projector="title">Проверим, кто точнее — один человек или вся команда</h1>
+          <p class="lede" data-projector="lede">Три коротких вопроса. Не гуглите — это оценка «на глаз», в этом весь смысл.</p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -558,7 +582,7 @@ export class RetroGameCrowdWisdom extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите оценку каждого участника</h2>
           <p class="lede">Целым числом на каждый из трёх вопросов — не страшно, если совсем «на глаз».</p>
 
@@ -591,8 +615,8 @@ export class RetroGameCrowdWisdom extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r && r.hitRate !== null ? `${r.hitRate}%` : '—', valueId: 'hit-rate-display', ...REVEAL_COPY.crowdWisdom(r ? { pct: r.hitRate, worse: r.totalWorseThanAvg, total: r.totalAnswered } : null) })}
 
@@ -615,7 +639,7 @@ export class RetroGameCrowdWisdom extends LitElement {
             }
           </div>
 
-          <div class="chart-wrap">
+          <div class="chart-wrap" data-projector="chart">
             <svg id="cw-chart" class="d3-chart-svg" viewBox="0 0 640 260"></svg>
             <div class="cap">
               Каждая точка — оценка одного человека на один вопрос. Пунктир — правильный ответ,
@@ -666,8 +690,8 @@ export class RetroGameCrowdWisdom extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Мудрость толпы</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Мудрость толпы</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

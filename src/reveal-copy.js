@@ -13,7 +13,7 @@
 
    The copy lives here, not in the game files, because it is pure
    text-from-numbers (unit-testable in test/unit/reveal-copy.test.js)
-   and because all 13 games need the same three-part shape. Every
+   and because every game needs the same three-part shape. Every
    function takes a plain object of numbers and returns
    { what, read, verdict } — `verdict` is null until there is data.
 ========================================================= */
@@ -286,6 +286,192 @@ export const REVEAL_COPY = {
       tail = ' Отвергнутых предложений нет: команда предлагала достаточно честно.';
     else
       tail = ` Отвергнуто ${rejected} ${plural(rejected, ['предложение', 'предложения', 'предложений'])} — люди отказывались от денег ради справедливости.`;
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { minByRound, share7ByRound, talkEffect, talkRound }
+  weakestLink(r) {
+    const what =
+      'Как менялся минимум в команде от раунда к раунду и помог ли разговор перед раундом 4.';
+    const read =
+      'Минимум 7 — идеальная координация: все получили максимум. Минимум, сползающий к 1, — классическая ловушка: одного осторожного хватает, чтобы остальные перестали стараться. Если после разговора минимум вырос, слова сработали.';
+    if (!r) return { what, read, verdict: null };
+    const mins = r.minByRound.filter((m) => m !== null);
+    const shares = r.share7ByRound.filter((s) => s !== null);
+    const head = `Минимум по раундам: ${mins.join(' → ')}. Выбрали 7 в первом раунде: ${shares[0]}%, в последнем: ${shares[shares.length - 1]}%.`;
+    const first = mins[0];
+    const last = mins[mins.length - 1];
+    const beforeTalk = r.minByRound[r.talkRound - 2]; // round 3, 0-based
+    let tail;
+    if (mins.every((m) => m === 7))
+      tail = ' Идеальная координация: команда ни разу не усомнилась друг в друге.';
+    else if (r.talkEffect !== null && r.talkEffect >= 2)
+      tail = ` Разговор сработал: после минуты обсуждения минимум вырос на ${r.talkEffect}.`;
+    else if (last < first)
+      tail = ' Команда скатилась в ловушку: доверие иссякло быстрее, чем появилось.';
+    else if (r.talkEffect !== null && r.talkEffect <= 0 && beforeTalk !== null && beforeTalk < 7)
+      tail = ' Даже разговор не помог: обещания не превратились в доверие.';
+    else if (last > first)
+      tail = ` Команда разогналась: минимум вырос с ${first} до ${last} — доверие росло от раунда к раунду.`;
+    else tail = ' Минимум почти не изменился.';
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { rounds: [{ avgSize, volunteerRate, nobodyRate }] } — pairs, fours, the whole team
+  volunteer(r) {
+    const what =
+      'Какая доля участников вызвалась и в какой доле групп не вызвался никто: в парах, в четвёрках и всей командой.';
+    const read =
+      'Эффект свидетеля: чем больше группа, тем реже вызывается каждый. Если доля «сгоревших» групп растёт вместе с размером группы, ответственность размывается ровно так, как предсказывает теория.';
+    if (!r) return { what, read, verdict: null };
+    const [pairs, fours, team] = r.rounds;
+    const rate = (x) => (x ? `${x.volunteerRate}%` : '—');
+    const head = `Вызвались: ${rate(pairs)} в парах, ${rate(fours)} в четвёрках, ${rate(team)} всей командой.`;
+    const rates = r.rounds.filter(Boolean).map((x) => x.volunteerRate);
+    let tail;
+    if (team && team.nobodyRate === 100)
+      tail = ` Прод так и лежит: в группе из ${Math.round(team.avgSize)} человек не взялся никто.`;
+    else if (
+      rates.length > 1 &&
+      rates.every((v, i) => i === 0 || v <= rates[i - 1]) &&
+      rates[0] > rates[rates.length - 1]
+    )
+      tail =
+        ' Классическая картина: чем больше людей видят проблему, тем меньше каждый считает её своей.';
+    else
+      tail =
+        ' Ваша команда не поддалась эффекту свидетеля: с ростом группы люди не стали прятаться.';
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { soloVotes: { sasha, zhenya, valya }, total, groupChoice, groupName, surfaced }
+  hiddenProfile(r) {
+    const what =
+      'Кого выбрали участники поодиночке (до обсуждения) и кого выбрала команда вместе. Объективно лучший по всем фактам кандидат — Женя.';
+    const read =
+      'Поодиночке выбрать Женю почти невозможно: по каждому отдельному досье Женя — самый слабый кандидат. Выбрать Женю вместе можно, только если в обсуждении прозвучали уникальные факты. Если команда выбрала Сашу, обсуждение вращалось вокруг того, что и так знали все.';
+    if (!r) return { what, read, verdict: null };
+    const head = `До обсуждения за Женю было ${r.soloVotes.zhenya} из ${r.total}, за Сашу — ${r.soloVotes.sasha}. Команда выбрала: ${r.groupName ?? '—'}.`;
+    let tail = '';
+    if (r.groupChoice === 'zhenya')
+      tail = ' Команда вскрыла скрытый профиль: знания отдельных людей сложились в общую картину.';
+    else if (r.groupChoice === 'sasha')
+      tail = ' Классическая ловушка: общие факты победили, уникальные так и остались в головах.';
+    else if (r.groupChoice === 'valya')
+      tail = ' Компромиссный выбор: команда не нашла лучшего и не согласилась на явного фаворита.';
+    if (r.surfaced !== null && r.surfaced !== undefined)
+      tail += ` В обсуждении прозвучало ${r.surfaced} из 8 скрытых плюсов Жени.`;
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { final, second, prize, bidsAfterAbsurd }
+  dollarAuction(r) {
+    const prize = r?.prize ?? 100;
+    const what =
+      'Сколько в итоге заплатили победитель и второй участник и сколько «заработал» аукционист по сравнению с ценой приза.';
+    const read = `Если сумма двух ставок больше ${prize}, аукцион выгоден только организатору. Если сама финальная ставка больше ${prize}, победитель тоже в минусе. Каждая ставка после этой отметки была попыткой не проиграть, а не выиграть.`;
+    if (!r) return { what, read, verdict: null };
+    const revenue = r.final + r.second;
+    const head =
+      revenue > prize
+        ? `Приз ${prize}. Финальная ставка ${r.final}, второе место заплатило ${r.second}. Вместе ${revenue} — аукционист в плюсе на ${revenue - prize}.`
+        : `Приз ${prize}. Финальная ставка ${r.final}, второе место заплатило ${r.second}. Вместе ${revenue}.`;
+    let tail;
+    if (r.final > prize)
+      tail = ` Точка абсурда пройдена: после неё сделано ещё ${r.bidsAfterAbsurd} ${plural(r.bidsAfterAbsurd, ['ставка', 'ставки', 'ставок'])}, и победитель тоже заплатил больше, чем стоит приз.`;
+    else if (revenue > prize)
+      tail = ' Сам приз не переплачен, но вдвоём участники отдали больше, чем он стоит.';
+    else
+      tail = ' Команда вовремя остановилась: торги закончились раньше, чем ловушка захлопнулась.';
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { goodSoldByRound: [%|null ×4], avgPriceByRound, surplusPct }
+  lemons(r) {
+    const what =
+      'Какая доля проданных машин была хорошей в каждом раунде и сколько выгоды рынок недополучил по сравнению с полной информацией.';
+    const read =
+      'Если доля хороших среди проданных падает от раунда к раунду, это эффект Акерлофа: хорошие машины уходят с рынка. Если в раунде 4 доля выросла, проверка вернула доверие.';
+    if (!r) return { what, read, verdict: null };
+    const pct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+    const [r1, , r3, r4] = r.goodSoldByRound;
+    const prices = r.avgPriceByRound.filter((p) => p !== null);
+    const head = `Хороших среди проданных: ${r.goodSoldByRound.map(pct).join(' → ')} (последний — с проверкой).${prices.length > 1 ? ` Средняя цена: ${prices[0]} → ${prices[prices.length - 1]}.` : ''}`;
+    let tail = '';
+    if (r1 !== null && r3 !== null) {
+      if (r3 < r1 && r4 !== null && r4 > r3)
+        tail = ' Рынок скатился к лимонам, а проверка его вернула.';
+      else if (r3 < r1)
+        tail = ' Рынок скатился к лимонам, и даже проверка не восстановила доверие.';
+      else
+        tail =
+          ' Ваш рынок устоял: покупатели продолжали платить за хорошие машины. Возможно, продавцы вели себя честнее, чем ожидали.';
+    }
+    if (r.surplusPct !== null) tail += ` Рынок получил ${r.surplusPct}% возможной выгоды.`;
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { targetByRound, levelsR1: { l1, l2, zero, impossible } }
+  beautyContest(r) {
+    const what =
+      'Как менялось ⅔ от среднего от раунда к раунду и на каком шаге рассуждения остановилась команда в первом раунде.';
+    const read =
+      'Уровень 1 — около 33, уровень 2 — около 22, дальше к нулю. Чем быстрее число сползает к нулю, тем быстрее команда учится предсказывать друг друга. Числа больше 67 выиграть не могут в принципе.';
+    if (!r) return { what, read, verdict: null };
+    const targets = r.targetByRound.filter((t) => t !== null);
+    const { l1, l2, zero, impossible } = r.levelsR1;
+    const head = `⅔ от среднего: ${targets.join(' → ')}. В первом раунде на уровне 1 было ${l1} чел., на уровне 2 — ${l2}, назвали 0 — ${zero}.`;
+    const first = targets[0];
+    const last = targets[targets.length - 1];
+    let tail;
+    if (first <= 15) tail = ' Команда с первого раунда мыслила глубоко — почти как теоретики игр.';
+    else if (targets.length > 1 && last < first / 2)
+      tail =
+        ' Классическое сползание: за несколько раундов команда научилась думать на несколько шагов вперёд.';
+    else tail = ' Числа почти не сползали: команда держалась своего уровня рассуждений.';
+    if (impossible > 0)
+      tail += ` ${impossible} чел. назвали число больше 67 — его нельзя выиграть ни при каком раскладе.`;
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { attendance, capacity, goodSilent, goodTalk, silentCount, talkCount, spreadSilent, spreadTalk }
+  elFarol(r) {
+    const what =
+      'Сколько вечеров прошли «уютно» (пришло не больше, чем мест) без договорённостей и с ними, и насколько сильно посещаемость отклонялась от числа мест.';
+    const read =
+      'Без разговоров посещаемость обычно колеблется вокруг порога: после уютного вечера приходят все, после толпы все сидят дома. Если с договорённостями отклонение уменьшилось, команда заменила угадывание координацией.';
+    if (!r) return { what, read, verdict: null };
+    const head = `Посещаемость: ${r.attendance.join(' · ')} при ${r.capacity} местах. Уютных вечеров: ${r.goodSilent} из ${r.silentCount} молча и ${r.goodTalk} из ${r.talkCount} с договорённостями.`;
+    let tail = '';
+    if (r.spreadSilent !== null && r.spreadTalk !== null) {
+      if (r.spreadTalk < r.spreadSilent - 0.5)
+        tail = ' Договорённость сработала: посещаемость стала ровнее.';
+      else if (r.spreadTalk >= r.spreadSilent)
+        tail =
+          ' Даже договорившись, команда не смогла выровнять посещаемость: обещания нарушались или расписания не было.';
+      else tail = ' Разница между половинами игры небольшая.';
+    }
+    return { what, read, verdict: head + tail };
+  },
+
+  // r: { maxOrderByRole: [shop, wholesale, distributor, brewery], teamCost, benchmarkCost, ratio, wavesShare, avgGuessMax }
+  beerGame(r) {
+    const what =
+      'Как сильно колебались заказы на каждом звене по сравнению со спросом покупателей и во сколько раз затраты цепочки превысили эталон.';
+    const read =
+      'Спрос покупателей вырос один раз, с 4 до 8. Если максимальный заказ растёт от Магазина к Пивоварне, это эффект хлыста: каждое звено усиливает колебания нижнего. Если большинство решило, что спрос скакал, виноватой показалась внешняя причина, хотя колебания создала сама цепочка.';
+    if (!r) return { what, read, verdict: null };
+    const [s, w, d, b] = r.maxOrderByRole;
+    const fmt = (n) => String(n).replace('.', ',');
+    const head = `Максимальные заказы: Магазин ${s}, Оптовик ${w}, Дистрибьютор ${d}, Пивоварня ${b} при спросе 8. Затраты цепочки ${fmt(r.teamCost)} — в ${fmt(r.ratio)} раза больше эталона (${fmt(r.benchmarkCost)}).`;
+    let tail =
+      b >= 16
+        ? ` Классический хлыст: к Пивоварне колебания выросли в ${fmt(Math.round((b / 8) * 10) / 10)} раза.`
+        : ' Хлыст почти не проявился: цепочка держалась удивительно спокойно.';
+    if (r.wavesShare !== null)
+      tail += ` ${r.wavesShare}% игроков решили, что спрос шёл волнами или рос и падал.`;
+    if (r.avgGuessMax !== null)
+      tail += ` В среднем максимум спроса угадали как ${fmt(r.avgGuessMax)}, а на деле он был 8.`;
     return { what, read, verdict: head + tail };
   },
 };

@@ -26,8 +26,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawScatter } from '../charts/scatter.js';
 import CONTENT from '../content/ultimatum.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -41,6 +42,7 @@ import {
   ICON_TRIO,
   ICON_X,
 } from '../icons.js';
+import { renderLeaderboard } from '../leaderboard.js';
 import { sharedDomain } from '../logic/chart-data.js';
 import {
   buildUltimatumEntries,
@@ -53,6 +55,8 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { escapeHtml } from '../logic/format.js';
+import { rankScores, ultimatumScores } from '../logic/leaderboard.js';
+import { projectorEntries, spaced } from '../logic/projector-entries.js';
 import { isDeal, ultimatumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -100,6 +104,11 @@ export class RetroGameUltimatum extends LitElement {
     ]);
     this.selectedSwap = null;
     this.shuffleSpin = false;
+
+    this.projector = new ProjectorController(this, 'ultimatum', {
+      roster: (round) => this._projectorRoster(round),
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('ultimatum'), {
       key: 'entries',
@@ -227,6 +236,41 @@ export class RetroGameUltimatum extends LitElement {
     this.flow.scrollTo(0);
   }
 
+  // The pairs and who proposes in the current round (they swap in round 2, on screen 3).
+  _projectorRoster(round) {
+    if (round < 1 || round > 3) return null;
+    const swapped = round === 3;
+    const [tagA, tagB] = swapped ? ['Отвечающий', 'Предлагающий'] : ['Предлагающий', 'Отвечающий'];
+    return {
+      kind: 'pairs',
+      title: swapped ? 'Те же пары — роли поменялись' : 'Кто с кем в паре',
+      pairs: this.assignment.pairs.map((p) => ({ a: p.a, b: p.b, tagA, tagB, trio: !!p.trio })),
+    };
+  }
+
+  // Screens 2 and 3 are the two rounds; the proposer is `a` in round 1 and `b` in round 2.
+  _projectorEntries(screen) {
+    if (screen !== 2 && screen !== 3) return null;
+    const round = screen - 1;
+    return projectorEntries({
+      title: 'Что решили пары',
+      unit: 'пар',
+      total: this.entries.length,
+      rows: this.entries.map((e) => {
+        const offer = e[`r${round}_offer`];
+        const min = e[`r${round}_min`];
+        return {
+          who: round === 1 ? [e.a, e.b] : [e.b, e.a],
+          complete: offer !== null && min !== null,
+          cells: [
+            { label: 'Предложил(а)', value: offer === null ? null : `${spaced(offer)} ₽` },
+            { label: 'Минимум', value: min === null ? null : `${spaced(min)} ₽` },
+          ],
+        };
+      }),
+    });
+  }
+
   _pairCard(p, i) {
     const selectedA = this.selectedSwap?.i === i && this.selectedSwap?.side === 'a';
     const selectedB = this.selectedSwap?.i === i && this.selectedSwap?.side === 'b';
@@ -325,6 +369,7 @@ export class RetroGameUltimatum extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('ultimatum')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -333,12 +378,14 @@ export class RetroGameUltimatum extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 10 минут</p>
-          <h1>Разделите деньги на двоих — дважды</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 10 минут</p>
+          <h1 data-projector="title">Разделите деньги на двоих — дважды</h1>
+          <p class="lede" data-projector="lede">
             Мы разобьём вас на пары. Каждая пара играет два раунда, и во втором роли меняются
             местами — так оба партнёра успеют побыть в обеих ролях.
           </p>
+
+          ${renderRules(CONTENT.rules, VARS)}
 
           <div class="draft-mount">
             ${
@@ -377,7 +424,7 @@ export class RetroGameUltimatum extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Распределение ролей</p>
+          <p class="eyebrow" data-projector="eyebrow">Распределение ролей</p>
           <h2>Кто с кем в паре</h2>
           <p class="lede">
             Роли на этом экране — только для раунда 1, во втором раунде они поменяются местами.
@@ -402,7 +449,7 @@ export class RetroGameUltimatum extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Раунд 1 из 2 · Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 1 из 2 · Сбор данных</p>
           <h2>Впишите решения каждой пары</h2>
           <p class="lede">
             Сколько предложил Предлагающий, и какой минимум назвал Отвечающий — оба из ${STAKE} ₽.
@@ -436,8 +483,8 @@ export class RetroGameUltimatum extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">Раунд 2 из 2 · Роли поменялись</p>
-          <h2>Те же пары, наоборот</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 2 из 2 · Роли поменялись</p>
+          <h2 data-projector="title">Те же пары, наоборот</h2>
           <p class="lede">Кто в раунде 1 отвечал — теперь предлагает, и наоборот.</p>
 
           <div class="pair-entry-list" id="entry-body-2">
@@ -468,8 +515,8 @@ export class RetroGameUltimatum extends LitElement {
 
         <section class="${this.flow.roundClass(4)}" id="round-4">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? r.dealRate : '—', ...REVEAL_COPY.ultimatum(r ? { deals: r.deals, total: r.instances.length, avgOffer: r.avgOffer, avgMin: r.avgMin } : null) })}
 
@@ -484,7 +531,9 @@ export class RetroGameUltimatum extends LitElement {
             </div>
           </div>
 
-          <div class="d3-chart-card">
+          ${r ? renderLeaderboard({ title: 'Кто сколько получил', rows: rankScores(ultimatumScores(r.instances, STAKE)), unit: '₽' }) : ''}
+
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Предложения и пороги согласия</div>
             <svg id="ult-chart" class="d3-chart-svg" role="img" aria-label="Каждое предложение и минимальная сумма, за которую партнёр был согласен"></svg>
             <p class="d3-chart-cap">Ниже диагонали — предложение хватило, сделка. Выше — партнёр отказался, хотя ему предлагали деньги: он предпочёл остаться ни с чем, лишь бы не соглашаться на «нечестно».</p>
@@ -537,8 +586,8 @@ export class RetroGameUltimatum extends LitElement {
 
         <section class="${this.flow.roundClass(5)}" id="round-5">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Ультиматум</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Ультиматум</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

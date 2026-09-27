@@ -10,6 +10,14 @@
 
 import { renderHome } from './home.js';
 import { initPerf } from './perf.js';
+import { isProjectorView } from './projector/index.js';
+import './projector/button.js';
+import './projector/view.js';
 
 initPerf();
-renderHome();
+if (isProjectorView()) {
+  // The "show only" window: no map, no games — just what the game window sends it.
+  document.getElementById('app').replaceChildren(document.createElement('retro-projector'));
+} else {
+  renderHome();
+}

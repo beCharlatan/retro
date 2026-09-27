@@ -14,8 +14,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawSwarm } from '../charts/swarm.js';
 import CONTENT from '../content/barnum.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { SpoilerController } from '../controllers/spoiler-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
@@ -31,6 +32,7 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { escapeHtml } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { barnumResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -87,6 +89,10 @@ export class RetroGameBarnum extends LitElement {
     ]);
     // Both spoilers (the questions, the portrait text) start hidden.
     this.spoilers = new SpoilerController(this, ['questions', 'profile']);
+
+    this.projector = new ProjectorController(this, 'barnum', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('barnum'), {
       key: 'data',
@@ -163,6 +169,19 @@ export class RetroGameBarnum extends LitElement {
     Persist.save('barnum', { data: this.data });
   }
 
+  _projectorEntries(round) {
+    if (round !== 1) return null;
+    return projectorEntries({
+      title: 'Оценки точности',
+      total: this.data.length,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        complete: d.rating !== null,
+        cells: [{ label: 'Оценка', value: d.rating === null ? null : `${d.rating} из 5` }],
+      })),
+    });
+  }
+
   _filledCount() {
     return countFilled(this.data, hasFields('rating'));
   }
@@ -217,6 +236,7 @@ export class RetroGameBarnum extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('barnum')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -225,12 +245,15 @@ export class RetroGameBarnum extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 6 минут</p>
-          <h1>Персональный психологический портрет команды</h1>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 6 минут</p>
+          <h1 data-projector="title">Персональный психологический портрет команды</h1>
+          <!-- not projected: it explains the trick to the facilitator -->
           <p class="lede">
             Эксперимент растянут на два дня: накануне вы задаёте каждому три вопроса, а в день игры
             каждый получает «личный портрет», якобы составленный по его ответам.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -285,7 +308,7 @@ export class RetroGameBarnum extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите оценку каждого участника</h2>
           <p class="lede">От 0 (совсем не про меня) до 5 (прямо в точку).</p>
 
@@ -314,8 +337,8 @@ export class RetroGameBarnum extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? `${r.avg.toFixed(2)} / 5` : '—', ...REVEAL_COPY.barnum(r ? { avg: r.avg } : null) })}
 
@@ -330,7 +353,7 @@ export class RetroGameBarnum extends LitElement {
             <p>«${PROFILE_TEXT}»</p>
           </div>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Как команда оценила «свой» портрет</div>
             <svg id="barnum-chart" class="d3-chart-svg" role="img" aria-label="Оценки точности портрета от 0 до 5, по одной точке на человека"></svg>
             <p class="d3-chart-cap">Все получили один и тот же текст. Чем правее точки, тем сильнее сработал эффект Барнума; золотая линия — результат студентов Форера.</p>
@@ -375,8 +398,8 @@ export class RetroGameBarnum extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эффект Барнума / Форера</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эффект Барнума / Форера</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

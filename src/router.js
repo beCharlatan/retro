@@ -3,7 +3,7 @@
    the "🎲 Случайная игра" button, etc.) to that game's custom
    element, mounting its tag into #app.
 
-   All 13 games are now Lit/Shadow DOM custom elements (see
+   Every game is a Lit/Shadow DOM custom element (see
    docs/modernization-plan.md Phase 2/3) — this file used to also
    carry render*Game() function calls for the still-legacy games
    during the incremental migration; that's done now.
@@ -11,16 +11,24 @@
 import './games/anchoring.js';
 import './games/availability.js';
 import './games/barnum.js';
+import './games/beauty-contest.js';
+import './games/beer-game.js';
 import './games/calibration.js';
 import './games/crowd-wisdom.js';
 import './games/dictator.js';
+import './games/dollar-auction.js';
+import './games/el-farol.js';
 import './games/endowment.js';
 import './games/false-consensus.js';
 import './games/framing.js';
+import './games/hidden-profile.js';
+import './games/lemons.js';
 import './games/planning-fallacy.js';
 import './games/prisoners-dilemma.js';
 import './games/public-goods.js';
 import './games/ultimatum.js';
+import './games/volunteer.js';
+import './games/weakest-link.js';
 import { app } from './state.js';
 
 // Mounts a custom element by tag name into #app, replacing whatever
@@ -44,6 +52,14 @@ const GAME_TAGS = {
   endowment: 'retro-game-endowment',
   framing: 'retro-game-framing',
   calibration: 'retro-game-calibration',
+  'weakest-link': 'retro-game-weakest-link',
+  volunteer: 'retro-game-volunteer',
+  'hidden-profile': 'retro-game-hidden-profile',
+  'dollar-auction': 'retro-game-dollar-auction',
+  lemons: 'retro-game-lemons',
+  'beauty-contest': 'retro-game-beauty-contest',
+  'el-farol': 'retro-game-el-farol',
+  'beer-game': 'retro-game-beer-game',
 };
 
 export function openGame(id) {

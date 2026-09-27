@@ -13,9 +13,10 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawSwarm } from '../charts/swarm.js';
 import CONTENT from '../content/false-consensus.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { AnswerTimerController } from '../controllers/answer-timer-controller.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderAnswerTimer, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -38,6 +39,7 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { escapeHtml } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { falseConsensusResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -88,6 +90,10 @@ export class RetroGameFalseConsensus extends LitElement {
     this.isCustomQuestion = false;
     this.customPanelOpen = false;
     this.customQStatus = '';
+
+    this.projector = new ProjectorController(this, 'false-consensus', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('false-consensus'), {
       key: 'data',
@@ -159,6 +165,22 @@ export class RetroGameFalseConsensus extends LitElement {
       estimate: parseNumberInput(e.target.value, { min: 0, max: 100 }),
     });
     this._persist();
+  }
+
+  _projectorEntries(round) {
+    if (round !== 1) return null;
+    return projectorEntries({
+      title: 'Ответы команды',
+      total: this.data.length,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        complete: d.own !== null && d.estimate !== null,
+        cells: [
+          { label: 'Ответ', value: d.own === null ? null : d.own === 'yes' ? 'Да' : 'Нет' },
+          { label: 'Ждёт «да»', value: d.estimate === null ? null : `${d.estimate}%` },
+        ],
+      })),
+    });
   }
 
   _filledCount() {
@@ -268,6 +290,7 @@ export class RetroGameFalseConsensus extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('false-consensus')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -276,11 +299,13 @@ export class RetroGameFalseConsensus extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 6 минут</p>
-          <h1>Один вопрос про вас — и про всех остальных</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 6 минут</p>
+          <h1 data-projector="title">Один вопрос про вас — и про всех остальных</h1>
+          <p class="lede" data-projector="lede">
             Два быстрых ответа на человека. Отвечайте честно, не подглядывая на соседей.
           </p>
+
+          ${renderRules(CONTENT.rules, { question: this.question })}
 
           <div class="draft-mount">
             ${
@@ -350,8 +375,8 @@ export class RetroGameFalseConsensus extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
-          <h2>Впишите ответы каждого участника</h2>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
+          <h2 data-projector="title" data-projector-text=${`«${this.question}» — да или нет? Какой процент команды тоже скажет «да»?`}>Впишите ответы каждого участника</h2>
           <p class="lede">Свой ответ (да/нет) и оценку, какой % команды тоже скажет «да».</p>
 
           ${renderAnswerTimer(this.timer, {
@@ -391,8 +416,8 @@ export class RetroGameFalseConsensus extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? `${r.realYesPct}%` : '—', valueId: 'real-yes', ...REVEAL_COPY.falseConsensus(r ? { realYesPct: r.realYesPct, yesAvg: r.yesAvg, noAvg: r.noAvg } : null) })}
 
@@ -409,7 +434,7 @@ export class RetroGameFalseConsensus extends LitElement {
 
           <p id="fc-compare-text">${r ? r.compareText : ''}</p>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Кого сколько ждали «да» — по ответам</div>
             <svg id="fc-chart" class="d3-chart-svg" role="img" aria-label="Прогнозы доли «да» у тех, кто ответил «да», и у тех, кто ответил «нет»"></svg>
             <p class="d3-chart-cap">Точка — прогноз одного человека. Золотая линия — реальная доля «да» в команде. Если каждая сторона сгруппировалась вокруг собственного ответа, а не вокруг линии, — это и есть ложный консенсус.</p>
@@ -456,8 +481,8 @@ export class RetroGameFalseConsensus extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эффект ложного консенсуса</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эффект ложного консенсуса</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

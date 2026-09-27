@@ -65,7 +65,7 @@
   /* 12px, not the kit's original 3px — a small flat radius is exactly
        what made every game read as enterprise-kit documentation
        instead of something built for a team game; settled on framing.js
-       before promoting here for all 13 games (карточки, кнопки, инпуты,
+       before promoting here for every game (карточки, кнопки, инпуты,
        свитчи). */
   --radius: 12px;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
@@ -138,7 +138,7 @@ a {
   color: inherit;
 }
 
-/* ---------- Деталка как единый скролл (все 13 игр) ----------
+/* ---------- Деталка как единый скролл (все игры) ----------
      Вместо постраничного визарда (один экран виден, остальные
      display:none) — все раунды разом, друг под другом, .game-main
      просто скроллится; .game-rail — большая липкая тропа сбоку, всегда
@@ -888,7 +888,7 @@ button.shuffle-btn.spin .dice {
      Экраны игр
   ===================================================== */
 /* ---------- Раунды в один скролл ----------
-     Все 13 игр: ВСЕ раунды в DOM и
+     Все игры: ВСЕ раунды в DOM и
      видимы разом (никакого display:none), пользователь идёт по ним
      скроллом сверху вниз; game-shell.js's observeRounds() следит,
      какой раунд сейчас "читается", и двигает тропу в .game-rail —
@@ -2787,4 +2787,558 @@ table.results-table td.name {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* Игра диктатора: «ситуация» одной картинкой — сумма, два варианта, правило раунда.
+   Её видят и ведущий, и зал (окно-проектор), поэтому здесь нет ни слова о том, что проверяется. */
+.dictator-scene {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px 20px;
+  margin: 8px 0 22px;
+  padding: 22px 24px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
+}
+.dictator-pot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 12%, white);
+  border: 2px solid var(--game-accent, var(--blue));
+}
+.dictator-pot span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.dictator-pot b {
+  font-size: 34px;
+  line-height: 1.1;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.dictator-arrow {
+  font-size: 30px;
+  color: var(--ink-faint);
+}
+.dictator-choices {
+  display: grid;
+  gap: 10px;
+}
+.dictator-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 16px;
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: var(--panel);
+}
+.dictator-choice b {
+  font-size: 17px;
+}
+.dictator-choice span {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.dictator-choice.give {
+  border-color: var(--game-accent, var(--blue));
+}
+.dictator-rule {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 700;
+}
+.dictator-rule.anon {
+  background: var(--purple-soft);
+  color: var(--purple-on-light2);
+}
+.dictator-rule.named {
+  background: var(--gold-soft);
+  color: var(--gold-on, #6b4500);
+}
+
+/* ---------- Раздача: private messages the facilitator copies (src/dispatch.js) ---------- */
+.dispatch {
+  margin: 8px 0 20px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px dashed color-mix(in srgb, var(--game-accent, var(--blue)) 45%, var(--line));
+  background: var(--panel);
+}
+.dispatch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.dispatch-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.dispatch-count {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.dispatch-hint {
+  margin: 6px 0 10px;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+.dispatch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.dispatch-row.sent .dispatch-who {
+  opacity: 0.55;
+}
+.dispatch-row.empty {
+  grid-template-columns: minmax(0, 220px) 1fr;
+  color: var(--ink-faint);
+}
+.dispatch-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 500;
+}
+.dispatch-tag {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.dispatch-none {
+  font-size: 13px;
+  padding-top: 2px;
+}
+.dispatch-text summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dispatch-text pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  font: 13px / 1.5 inherit;
+  white-space: pre-wrap;
+}
+.dispatch-copy {
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .dispatch-row,
+  .dispatch-row.empty {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- shared bits of the second batch of games ---------- */
+.payoff-table {
+  width: 100%;
+  margin: 6px 0 18px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  text-align: center;
+}
+.payoff-table th,
+.payoff-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.payoff-table th {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.payoff-table td.hi {
+  font-weight: 800;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.payoff-table td.na {
+  color: var(--ink-faint);
+}
+.toggle-pair.multi button {
+  padding: 6px 10px;
+}
+.entry-row.choice-col,
+.entry-head.choice-col {
+  grid-template-columns: 1fr minmax(0, 360px);
+}
+.entry-row.number-choice,
+.entry-head.number-choice {
+  grid-template-columns: 1fr 120px minmax(0, 220px);
+}
+.mini-note {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+.board {
+  margin: 8px 0 18px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 2px solid var(--game-accent, var(--blue));
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 7%, white);
+}
+.board-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  align-items: baseline;
+}
+.board-cell .n {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.board-cell .lab {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.board-cell.alert .n {
+  color: var(--red);
+}
+.bid-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+.bid-buttons button.leader {
+  outline: 2px solid var(--game-accent, var(--blue));
+}
+.lots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 8px 0 18px;
+}
+.lot {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 2px solid var(--line);
+  background: var(--white);
+}
+.lot .lot-no {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.lot .lot-price {
+  font-size: 26px;
+  font-weight: 700;
+}
+.lot .lot-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--surface);
+}
+/* a sold lot is marked by its background, not by fading it (faded text fails contrast) */
+.lot.sold {
+  background: var(--surface);
+  border-style: dashed;
+}
+.lot.good {
+  border-color: var(--game-accent, var(--blue));
+}
+.lot.lemon {
+  border-color: var(--gold);
+}
+.lot .lot-status {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.dossier-table td:first-child {
+  white-space: nowrap;
+  font-weight: 700;
+}
+.dossier-table .unique {
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 10%, white);
+}
+.history-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 16px;
+}
+.history-strip span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface);
+}
+.history-strip span.ok {
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 18%, white);
+}
+.history-strip span.crowd {
+  background: color-mix(in srgb, var(--red) 16%, white);
+}
+.dossier-table td {
+  text-align: left;
+}
+.check-list {
+  margin: 18px 0;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.check-list summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.check-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0;
+  font-size: 14px;
+}
+/* one entry table per group (Кто возьмёт на себя): air between the groups */
+.entry-group + .entry-group {
+  margin-top: 32px;
+}
+
+/* ---------- the game at a glance, for the players (content.js renderRules) ---------- */
+.rules-card {
+  display: grid;
+  gap: 16px;
+  margin: 8px 0 22px;
+  padding: 20px 22px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
+}
+.rules-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.rules-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 8%, white);
+  border-left: 3px solid var(--game-accent, var(--blue));
+}
+.rules-item b {
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.rules-item span {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.rules-flow {
+  display: grid;
+  gap: 8px;
+}
+.rules-flow-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.rules-flow ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rules-step;
+}
+.rules-flow li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 5px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--ink);
+  counter-increment: rules-step;
+}
+.rules-flow li::before {
+  content: counter(rules-step);
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--game-accent-fill, var(--blue));
+  color: var(--game-accent-on, #fff);
+  font-size: 11px;
+  font-weight: 800;
+}
+.rules-flow li:not(:last-child)::after {
+  content: "→";
+  margin-left: 8px;
+  margin-right: -4px;
+  color: var(--ink-faint);
+}
+
+/* Долларовый аукцион: the last bids under the board */
+.bid-history {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--game-accent, var(--blue)) 30%, var(--line));
+}
+.bid-history-title {
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.bid-history ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bid-history li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.bid-history li b {
+  font-size: 16px;
+  color: var(--ink);
+}
+.bid-history li i {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+  /* the plain --red is too light for small text on the tinted pill (WCAG AA) */
+  color: color-mix(in srgb, var(--red) 62%, black);
+}
+.bid-history li.latest {
+  border-color: var(--game-accent, var(--blue));
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 16%, white);
+  color: var(--ink);
+}
+
+/* ---------- end-of-game standings (src/leaderboard.js) ---------- */
+.leaderboard {
+  margin: 8px 0 22px;
+  padding: 18px 20px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow:
+    0 3px 14px -6px rgba(43, 37, 64, 0.18),
+    0 1px 2px rgba(43, 37, 64, 0.05);
+}
+.leaderboard-title {
+  margin-bottom: 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--game-accent-deep, var(--blue-deep));
+}
+.leaderboard ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.leaderboard li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.leaderboard-place {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+.leaderboard-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.leaderboard-score {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.leaderboard-score small {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.leaderboard li.place-1,
+.leaderboard li.place-2,
+.leaderboard li.place-3 {
+  background: color-mix(in srgb, var(--game-accent, var(--blue)) 10%, white);
+}
+.leaderboard li.place-1 .leaderboard-place {
+  background: var(--game-accent-fill, var(--blue));
+  color: var(--game-accent-on, #fff);
 }

@@ -1,6 +1,6 @@
 /* =========================================================
    RoundFlowController — Lit ReactiveController for the
-   one-continuous-scroll деталка layout (all 13 games)
+   one-continuous-scroll деталка layout (every game)
    =========================================================
    Replaces what every game used to declare by hand: three reactive
    properties (screenIdx / activeRound / justCompletedIdx), a
@@ -95,6 +95,17 @@ export class RoundFlowController {
     return this.state.justCompletedIdx;
   }
 
+  // Step names (calibration's depend on its current questions, hence the function form).
+  get titles() {
+    return typeof this._titles === 'function' ? this._titles() : this._titles;
+  }
+  titleOf(i) {
+    return this.titles[i] ?? '';
+  }
+  isLocked(i) {
+    return isRoundLocked(this.state, i);
+  }
+
   // ---- lifecycle ----
 
   // First render is done: the rounds exist, so scroll tracking can attach.
@@ -155,10 +166,9 @@ export class RoundFlowController {
   // the way back to an earlier round does not, on purpose.
   lock(i) {
     if (!isRoundLocked(this.state, i)) return '';
-    const titles = typeof this._titles === 'function' ? this._titles() : this._titles;
     return html`
       <div class="round-lock">
-        <span class="round-lock-title">${titles[i]}</span>
+        <span class="round-lock-title">${this.titleOf(i)}</span>
       </div>
     `;
   }

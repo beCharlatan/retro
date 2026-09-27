@@ -27,9 +27,9 @@
    on a child layer for a lazy in-plane 2D spin (a Y-axis "3D" turntable
    spin was tried and dropped — a flat PNG just squishes sideways, it
    never read as an actual object turning). A canvas behind the buttons
-   draws two more purely decorative per-frame things: a short fading
-   motion trail behind each drifting icon (colored via ICON_COLORS) and
-   a handful of slow ambient background bubbles unrelated to the games.
+   draws a handful of slow ambient background bubbles unrelated to the
+   games. (The icons themselves leave no trail — that was removed on
+   purpose.)
    All of this — physics loop, canvas redraw, CSS spin — is skipped (or
    drawn once, statically, for the canvas) entirely when the browser
    prefers reduced motion: both the right accessibility call, and what
@@ -55,7 +55,6 @@
 ========================================================= */
 import * as d3 from 'd3';
 import { ICONS } from './icon-assets.js';
-import { hexToRgb } from './logic/color.js';
 import {
   applyTransform,
   focusTransform as computeFocusTransform,
@@ -69,8 +68,6 @@ import {
   moveNodes,
   mulberry32,
   separateNodes,
-  smoothHeading,
-  wakeDots,
 } from './logic/map-physics.js';
 import { isLite } from './perf.js';
 import { GAMES } from './state.js';
@@ -101,16 +98,24 @@ export const PALETTE = {
 export const ICON_COLORS = {
   'cube-1': '#2dc6f1',
   'cube-2': '#c84ef9',
+  'cube-3': '#46da92',
   'cylinder-1': '#fe9999',
   'cylinder-2': '#86e63b',
+  'cylinder-3': '#e6c53b',
+  'cylinder-4': '#7758f2',
   'flat-cylinder': '#f1d20f',
+  'flat-cylinder-1': '#febdff',
+  'flat-cylinder-3': '#59d8fd',
   helix: '#f48d4e',
   icosahedron: '#587aeb',
   pill: '#edbb00',
+  'pill-1': '#42deb9',
   'pyramid-1': '#feb8ff',
   'pyramid-2': '#b3eb45',
+  'pyramid-3': '#f5b932',
   sphere: '#b046f6',
   spheres: '#ff8458',
+  'spheres-2': '#04dae3',
   'torus-1': '#f7a203',
   'torus-2': '#8976f7',
   'torus-knot': '#1bd29d',
@@ -124,8 +129,8 @@ const LOCATION_SIZE = 140; // mirrors .location's width/height in map-styles.css
 export function createMap(container, { onOpenGame, onSelect }) {
   const overlay = d3.select(container).append('div').attr('class', 'loc-overlay');
 
-  // Canvas for the two purely decorative per-frame effects (ambient
-  // background bubbles, each icon's motion trail) — appended before
+  // Canvas for the purely decorative per-frame effect (the ambient
+  // background bubbles) — appended before
   // the location buttons so it paints behind them (see its CSS
   // comment). Sized in device pixels so it isn't itself the blurry
   // part after everything else just got de-pixelated.
@@ -141,8 +146,8 @@ export function createMap(container, { onOpenGame, onSelect }) {
     // The backing store is in device pixels, but the element's on-screen size
     // must stay the container's size in CSS pixels. Without this an absolutely
     // positioned <canvas> is laid out at its INTRINSIC size — i.e. `dpr` times
-    // too big — so on a Retina screen every trail dot was drawn twice as far
-    // from its icon as it should be (and, toward the bottom-right, off-screen).
+    // too big — so on a Retina screen every bubble was drawn twice as far
+    // from where it should be (and, toward the bottom-right, off-screen).
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -338,43 +343,6 @@ export function createMap(container, { onOpenGame, onSelect }) {
     ctx.restore();
   }
 
-  // The wake: a fading comet tail of dots behind each freely-drifting icon, in
-  // the icon's own sampled colour (ICON_COLORS). Laid out from the icon's
-  // heading (logic/map-physics.js's wakeDots) rather than from its recent
-  // positions — those are ~2px apart at the drift speeds we use, which put
-  // the whole tail underneath the icon where it couldn't be seen. Frozen
-  // (selected) icons don't get one: they're not moving.
-  for (const n of nodes) {
-    const speed = Math.hypot(n.vx, n.vy) || 1;
-    n.heading = { x: n.vx / speed, y: n.vy / speed };
-  }
-
-  function drawTrails(transform) {
-    // The camera zooming in on a selected icon (k up to 4.6) fades the wake
-    // out — the other icons dim, and their tails shouldn't stay bright.
-    const zoomFade = Math.max(0, 1 - (transform.k - 1) / 0.5);
-    if (zoomFade <= 0) return;
-    ctx.save();
-    for (const n of nodes) {
-      if (n.frozen) continue;
-      const [r, g, b] = hexToRgb(ICON_COLORS[n.icon] || '#8a81a8');
-      const [sx, sy] = applyTransform(transform, [n.x, n.y]);
-      for (const dot of wakeDots(n.heading, iconScale)) {
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(${r},${g},${b},${(dot.alpha * zoomFade).toFixed(3)})`;
-        ctx.arc(
-          sx + dot.dx * transform.k,
-          sy + dot.dy * transform.k,
-          dot.radius * transform.k,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-
   let elapsed = 0;
   function tick(t) {
     rafId = requestAnimationFrame(tick);
@@ -392,21 +360,18 @@ export function createMap(container, { onOpenGame, onSelect }) {
     const b = syncLayout();
 
     moveNodes(nodes, dt, b, mouseWorld);
-    for (const n of nodes) n.heading = smoothHeading(n.heading, n.vx, n.vy, dt);
     separateNodes(nodes, dt, MIN_SEPARATION * iconScale);
 
     const rect = canvasRect;
     ctx.clearRect(0, 0, rect.width, rect.height);
     drawParticles(rect, dt, elapsed);
-    if (!isLite()) drawTrails(currentTransform);
     positionAll();
   }
   if (!REDUCED_MOTION) {
     rafId = requestAnimationFrame(tick);
   } else {
-    // Reduced motion: still paint the static particle dots once (no
-    // trails — nothing moves to trail behind) rather than leaving the
-    // canvas blank.
+    // Reduced motion: still paint the static particle dots once rather
+    // than leaving the canvas blank.
     ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
     drawParticles(canvasRect, 0, 0);
     positionAll();

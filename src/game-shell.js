@@ -1,6 +1,6 @@
 /* =========================================================
    GAME SHELL — shared template pieces for the "one continuous scroll
-   past the map" деталка layout, used by all 13 games (see framing.js —
+   past the map" деталка layout, used by every game (see framing.js —
    the original prototype — for the fullest write-up of *why* this
    shape: every round always in the DOM as a plain <section
    class="round">, forward movement gated to a round's own button, a big
@@ -62,6 +62,8 @@ export function confirmExit(onExit) {
 //   compact      one slim row, so it fits above a full participant table.
 //   duration     THIS card's length in seconds (defaults to the timer's
 //       own) — an idle card of a not-live round shows its own length.
+//   projectorLabel   what the projector window says next to the clock (defaults to
+//       runningLabel — set it when that one is written for the facilitator).
 //   defaultDuration + onDurationChange   makes the length editable while
 //       the card is idle: − / + steps and a typeable m:ss field. When the
 //       length differs from the default, "вернуть 2:00" puts it back.
@@ -77,6 +79,7 @@ export function renderAnswerTimer(
     duration: cardDuration,
     defaultDuration,
     onDurationChange,
+    projectorLabel,
   },
 ) {
   const duration = active ? timer.duration : (cardDuration ?? timer.duration);
@@ -97,7 +100,14 @@ export function renderAnswerTimer(
   };
 
   return html`
-    <div class="${classMap({ 'round-timer': true, compact, running, done })}">
+    <div
+      class="${classMap({ 'round-timer': true, compact, running, done })}"
+      data-projector-timer
+      data-seconds=${seconds}
+      data-duration=${duration}
+      data-state=${done ? 'done' : running ? 'running' : 'idle'}
+      data-label=${done ? doneLabel : (projectorLabel ?? runningLabel ?? '')}
+    >
       <div class="round-timer-info">
         <span class="round-timer-clock">⏱</span>
         ${
@@ -164,14 +174,14 @@ export function renderAnswerTimer(
 // game's existing id on the number (tests and print hooks look it up).
 export function renderReveal({ value, valueId, what, read, verdict }) {
   return html`
-    <div class="reveal">
+    <div class="reveal" data-projector="reveal">
       <div class="n" id=${valueId ?? nothing}>${value}</div>
       <dl class="reveal-lines">
-        <div class="reveal-line">
+        <div class="reveal-line" data-no-projector>
           <dt>Что это</dt>
           <dd>${what}</dd>
         </div>
-        <div class="reveal-line">
+        <div class="reveal-line" data-no-projector>
           <dt>Как читать</dt>
           <dd>${read}</dd>
         </div>

@@ -16,7 +16,7 @@
    reactive property that re-renders the whole game component on
    every step change, so the trail can just be plain declarative
    markup recomputed each time — no separate mount/update/destroy
-   lifecycle to wire into all 13 games. The "glide to the next
+   lifecycle to wire into every game. The "glide to the next
    node" motion needs no JS animation loop either — Lit keeps the
    same `.trail-traveler` element across re-renders (it's a fixed
    position in the template, not conditionally created or keyed),

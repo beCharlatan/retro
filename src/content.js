@@ -6,12 +6,15 @@
 
      {
        "intro":   { "steps": [{ "title", "text" }], "note"? },
+       "rules":   { "items": [{ "title", "text" }], "flow": ["шаг", …], "flowTitle"? },
        "context": { "lede", "blocks": [{ "p" } | { "stats": [{ "n", "label" }] }] },
        "facts":   [{ "title", "text" }]
      }
 
    Strings are trusted, repo-authored HTML — only <b>, <i>, <br> are expected
-   (test/unit/content.test.js enforces it). `{name}` is replaced from the
+   (test/unit/content.test.js enforces it). Intro steps and notes are written for the
+   facilitator ("Задайте вопрос вслух", "не подглядывайте вперёд") and are NOT sent to the
+   projector; the context screen's lede and stats are (they come after the results). `{name}` is replaced from the
    `vars` a game passes (e.g. { pot: 1000 }); values are HTML-escaped, so a
    person-typed question can go in safely. A step may carry an `id` for its text.
 ========================================================= */
@@ -47,6 +50,35 @@ export function renderSteps(steps, vars) {
   `;
 }
 
+// The game at a glance, FOR THE PLAYERS: a few short rules and the order of play.
+// Unlike the intro steps (the facilitator's script) this is projected, so the room
+// can read what they are about to play instead of relying on the facilitator's voice.
+// It must never give away what the experiment is testing.
+export function renderRules(rules, vars) {
+  if (!rules) return '';
+  return html`
+    <div class="rules-card" data-projector="body" data-testid="rules">
+      ${
+        rules.items?.length
+          ? html`<div class="rules-items">
+              ${rules.items.map(
+                (item) => html`<div class="rules-item">
+                  <b>${rich(item.title, vars)}</b><span>${rich(item.text, vars)}</span>
+                </div>`,
+              )}
+            </div>`
+          : ''
+      }
+      <div class="rules-flow">
+        <span class="rules-flow-title">${rules.flowTitle ?? 'Ход игры'}</span>
+        <ol>
+          ${rules.flow.map((step) => html`<li>${rich(step, vars)}</li>`)}
+        </ol>
+      </div>
+    </div>
+  `;
+}
+
 export function renderNote(text, vars) {
   return html`<p class="note">${rich(text, vars)}</p>`;
 }
@@ -54,11 +86,11 @@ export function renderNote(text, vars) {
 // The context screen's lede and body, up to (not including) the facts.
 export function renderContext({ lede, blocks }, vars) {
   return html`
-    <p class="lede">${rich(lede, vars)}</p>
+    <p class="lede" data-projector="lede">${rich(lede, vars)}</p>
     ${blocks.map((block) =>
       block.stats
         ? html`
-            <div class="stat-row">
+            <div class="stat-row" data-projector="body">
               ${block.stats.map(
                 (s) => html`
                   <div class="stat">

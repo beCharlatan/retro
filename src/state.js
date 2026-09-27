@@ -6,25 +6,14 @@
    keep a person's color consistent everywhere: home screen, every
    game's forms and results tables, and the exported PNG report).
 ========================================================= */
-import { avatarInitial, pickAvatarColor } from './logic/format.js';
+import { avatarInitial, escapeHtml, pickAvatarColor } from './logic/format.js';
 
 export const state = {
-  participants: [
-    'Михаил',
-    'Виктория',
-    'Ирина',
-    'Айшат',
-    'Екатерина',
-    'Олег',
-    'Мухамед',
-    'Артём',
-    'Марат',
-    'Арина',
-    'Таня',
-    'Денис',
-    'Диана',
-    'Анатолий',
-  ],
+  // Who is playing today — filled from the team list the facilitator manages in the app
+  // (players-store.js, kept in localStorage); nothing is written in the code. `participants`
+  // is the active ones in order and is updated in place; `players` is everyone: [{ name, active }].
+  participants: [],
+  players: [],
   // Home screen filters. Deliberately shared, persistent module state
   // (like `participants`) rather than a Lit reactive property local to
   // `<retro-home>` — a facilitator filtering to one category, opening
@@ -61,6 +50,7 @@ export const STRUCTURE = {
   solo: { label: 'Каждый сам за себя' },
   pairs: { label: 'По парам' },
   groups: { label: '2 команды' },
+  team: { label: 'Всей командой' },
 };
 
 // A cheerful, distinct color per participant — looked up by each
@@ -84,7 +74,9 @@ export const AVATAR_COLORS = [
 ];
 
 export function avatarColor(name) {
-  return pickAvatarColor(name, state.participants, AVATAR_COLORS);
+  // by position in the WHOLE list, so a colour doesn't move when someone is switched off for the day
+  const order = state.players.length ? state.players.map((p) => p.name) : state.participants;
+  return pickAvatarColor(name, order, AVATAR_COLORS);
 }
 
 // Renders a small colored avatar for `name`. Pass size:'sm' for the
@@ -94,14 +86,15 @@ export function avatarColor(name) {
 export function avatarHTML(name, size) {
   const color = avatarColor(name);
   const cls = size === 'sm' ? 'avatar avatar-sm' : 'avatar';
-  return `<span class="${cls}" style="background:${color}">${avatarInitial(name)}</span>`;
+  return `<span class="${cls}" style="background:${color}">${escapeHtml(avatarInitial(name))}</span>`;
 }
 
 // Wraps a name with its (small) avatar as one inline unit — the form
 // used almost everywhere outside the home screen's own chip markup:
 // entry rows, pair/team cards, role screens and results tables.
 export function avatarName(name) {
-  return `<span class="name-with-avatar">${avatarHTML(name, 'sm')}${name}</span>`;
+  // names are typed in by the facilitator, so they are escaped like any other text
+  return `<span class="name-with-avatar">${avatarHTML(name, 'sm')}${escapeHtml(name)}</span>`;
 }
 
 // `icon` — a key into ICONS (src/icon-assets.js): decorative 3D-render
@@ -252,9 +245,99 @@ export const GAMES = [
     ready: true,
     structure: 'solo',
   },
+  {
+    id: 'weakest-link',
+    icon: 'cylinder-2',
+    name: 'Слабое звено',
+    category: 'social',
+    teaser:
+      'Результат команды определяет тот, кто вложился меньше всех, — и доверие рушится быстрее, чем строится.',
+    players: '4+',
+    time: '12 мин',
+    ready: true,
+    structure: 'solo',
+  },
+  {
+    id: 'volunteer',
+    icon: 'torus-2',
+    name: 'Кто возьмёт на себя',
+    category: 'social',
+    teaser: 'Чем больше людей видят проблему, тем меньше шанс, что её кто-то возьмёт.',
+    players: '4+',
+    time: '10 мин',
+    ready: true,
+    structure: 'solo',
+  },
+  {
+    id: 'hidden-profile',
+    icon: 'cube-3',
+    name: 'Скрытый профиль',
+    category: 'social',
+    teaser: 'Группы обсуждают то, что и так знают все, и не узнают то, что знает кто-то один.',
+    players: '3–8',
+    time: '20 мин',
+    ready: true,
+    structure: 'team',
+  },
+  {
+    id: 'dollar-auction',
+    icon: 'pyramid-3',
+    name: 'Долларовый аукцион',
+    category: 'econ',
+    teaser: 'Люди платят больше цены приза — лишь бы не остаться проигравшим.',
+    players: '3+',
+    time: '8 мин',
+    ready: true,
+    structure: 'solo',
+  },
+  {
+    id: 'lemons',
+    icon: 'cylinder-3',
+    name: 'Рынок «лимонов»',
+    category: 'econ',
+    teaser: 'Когда покупатель не может отличить хорошее от плохого, хорошее уходит с рынка.',
+    players: '6+',
+    time: '20 мин',
+    ready: true,
+    structure: 'groups',
+  },
+  {
+    id: 'beauty-contest',
+    icon: 'flat-cylinder-3',
+    name: 'Угадай ⅔ от среднего',
+    category: 'cognitive',
+    teaser: 'Чтобы выиграть, надо угадать не ответ, а то, насколько глубоко думают остальные.',
+    players: '4+',
+    time: '10 мин',
+    ready: true,
+    structure: 'solo',
+  },
+  {
+    id: 'el-farol',
+    icon: 'spheres-2',
+    name: 'Бар «Эль Фароль»',
+    category: 'econ',
+    teaser: 'Если все принимают решение по одним и тем же данным, эти данные перестают работать.',
+    players: '5+',
+    time: '12 мин',
+    ready: true,
+    structure: 'solo',
+  },
+  {
+    id: 'beer-game',
+    icon: 'pill-1',
+    name: 'Пивная игра',
+    category: 'econ',
+    teaser:
+      'Спрос изменился один раз, а цепочку поставок трясёт двадцать недель. И никто не виноват.',
+    players: '4–8',
+    time: '40 мин',
+    ready: true,
+    structure: 'team',
+  },
 ];
 
-// The single mount point every screen (home + all 13 games) renders
+// The single mount point every screen (home + every game) renders
 // into via `app.innerHTML = ...`. Looked up once, at module load —
 // safe because the built page's <div id="app"> exists before this
 // module (a `type="module"` script, implicitly deferred) ever runs.

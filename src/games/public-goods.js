@@ -19,8 +19,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawSwarm } from '../charts/swarm.js';
 import CONTENT from '../content/public-goods.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
@@ -36,6 +37,7 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { escapeHtml, formatSigned } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { publicGoodsResults, publicGoodsSummary } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -79,6 +81,10 @@ export class RetroGamePublicGoods extends LitElement {
     ]);
     // One 20s timer, live for one round at a time; each round keeps its own length.
     this.timers = new RoundTimers(this, { seconds: ROUND_TIMER_SECONDS, count: 2 });
+
+    this.projector = new ProjectorController(this, 'public-goods', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('public-goods'), {
       key: 'data',
@@ -155,7 +161,7 @@ export class RetroGamePublicGoods extends LitElement {
     if (!s) return '';
     const r = (v) => Math.round(v * 10) / 10;
     return html`
-      <div class="round-recap" id="round1-recap">
+      <div class="round-recap" id="round1-recap" data-projector="body">
         <div class="round-recap-title">Как прошёл раунд 1</div>
         <div class="round-recap-stats">
           <div class="round-recap-stat">
@@ -177,6 +183,22 @@ export class RetroGamePublicGoods extends LitElement {
         </p>
       </div>
     `;
+  }
+
+  // The decisions are anonymous: amounts only, sorted, no names.
+  _projectorEntries(round) {
+    if (round !== 1 && round !== 2) return null;
+    const field = round === 1 ? 'r1' : 'r2';
+    return projectorEntries({
+      title: 'Вклады в котёл (без имён)',
+      total: this.data.length,
+      anonymous: true,
+      rows: this.data.map((d) => ({
+        key: d[field],
+        complete: d[field] !== null,
+        cells: [{ label: 'Вложил(а)', value: d[field] === null ? null : d[field] }],
+      })),
+    });
   }
 
   _filledCount(field) {
@@ -235,6 +257,7 @@ export class RetroGamePublicGoods extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('public-goods')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -243,12 +266,15 @@ export class RetroGamePublicGoods extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 10 минут</p>
-          <h1>Общий котёл — дважды подряд</h1>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 10 минут</p>
+          <h1 data-projector="title">Общий котёл — дважды подряд</h1>
+          <!-- not projected: hints at what the experiment tests -->
           <p class="lede">
             Два раунда с одной и той же группой. Правила не меняются — интересно как раз то,
             изменится ли поведение.
           </p>
+
+          ${renderRules(CONTENT.rules, VARS)}
 
           <div class="draft-mount">
             ${
@@ -287,8 +313,8 @@ export class RetroGamePublicGoods extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Раунд 1 из 2</p>
-          <h2>Впишите вклад каждого участника</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 1 из 2</p>
+          <h2 data-projector="title" data-projector-text="Сколько фишек вы вкладываете в общий котёл?">Впишите вклад каждого участника</h2>
           <p class="lede">Сколько из ${STAKE} фишек каждый вложил в общий котёл.</p>
 
           ${this._roundTimer(0)}
@@ -328,8 +354,8 @@ export class RetroGamePublicGoods extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Раунд 2 из 2</p>
-          <h2>Снова ${STAKE} фишек, тот же котёл</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 2 из 2</p>
+          <h2 data-projector="title">Снова ${STAKE} фишек, тот же котёл</h2>
           <p class="lede">Те же правила, новая попытка — с теми же людьми.</p>
 
           ${this._round1Recap()}
@@ -371,8 +397,8 @@ export class RetroGamePublicGoods extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? (r.delta >= 0 ? '+' : '') + r.delta.toFixed(1) : '—', ...REVEAL_COPY.publicGoods(r ? { avgR1: r.s1.avg, avgR2: r.s2.avg, delta: r.delta, stake: STAKE } : null) })}
 
@@ -398,7 +424,7 @@ export class RetroGamePublicGoods extends LitElement {
             </div>
           </div>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Кто сколько вложил — два раунда</div>
             <svg id="pg-chart" class="d3-chart-svg" role="img" aria-label="Вклад каждого участника в раунде 1 и раунде 2, соединённые линией"></svg>
             <p class="d3-chart-cap">Точка — один человек. Линия соединяет его вклады в двух раундах: видно, кто сдвинулся и куда. Пунктир — среднее по команде.</p>
@@ -447,8 +473,8 @@ export class RetroGamePublicGoods extends LitElement {
 
         <section class="${this.flow.roundClass(4)}" id="round-4">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Общественное благо</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Общественное благо</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

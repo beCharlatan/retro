@@ -16,7 +16,7 @@
 const fs = require('node:fs');
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
-const { DIST_URL, openGameFromHome } = require('../lib');
+const { DIST_URL, enableTestHooks, openGameFromHome } = require('../lib');
 const { GAMES } = require('../games');
 
 const FIXED_DATE = new Date('2026-01-15T10:00:00');
@@ -36,6 +36,7 @@ const seedRandom = () => {
 
 for (const game of GAMES) {
   test(`${game.name}: exported PNG report looks the same`, async ({ page }) => {
+    await enableTestHooks(page.context()); // the team is not in the code: put it in localStorage
     await page.clock.setFixedTime(FIXED_DATE);
     await page.addInitScript(seedRandom);
     await page.goto(DIST_URL);

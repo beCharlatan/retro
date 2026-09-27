@@ -58,11 +58,38 @@ const CHARTS = [
     hitTag: 'rect',
   },
   { game: 'ultimatum', svg: 'ult-chart', mark: '.answer-dot', expect: null, tip: 'Итог' },
+  // the second batch (docs/new-games/)
+  { game: 'weakest-link', svg: 'wl-chart', mark: '.line-dot', expect: () => 10, tip: 'Раунд' },
+  { game: 'volunteer', svg: 'vd-chart', mark: '.line-dot', expect: () => 12, tip: 'Пары' },
+  {
+    game: 'hidden-profile',
+    svg: 'hp-chart',
+    mark: '.chart-bar',
+    expect: () => 3,
+    tip: 'личных голосов',
+    hitTag: 'rect',
+  },
+  {
+    game: 'dollar-auction',
+    svg: 'da-chart',
+    mark: '.line-dot',
+    expect: (n) => 2 * n,
+    tip: 'ставк',
+  },
+  { game: 'lemons', svg: 'lm-chart', mark: '.line-dot', expect: null, tip: 'Раунд' },
+  {
+    game: 'beauty-contest',
+    svg: 'bc-chart',
+    mark: '.answer-dot',
+    expect: (n) => 4 * n,
+    tip: 'Цель раунда',
+  },
+  { game: 'el-farol', svg: 'ef-chart', mark: '.line-dot', expect: () => 8, tip: 'Вечер' },
 ];
 
 async function run() {
   const report = new Report();
-  report.section('Results charts — the nine games added in the charts pass');
+  report.section('Results charts — every game with a chart-kit results chart');
 
   await withBrowser(async (browser) => {
     for (const c of CHARTS) {

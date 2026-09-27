@@ -35,8 +35,11 @@ async function currentCount(page) {
     await page.click('.roster-toggle');
     await page.waitForTimeout(400);
   }
-  const text = await page.textContent('.panel-head .count');
-  return parseInt(text, 10);
+  // (the counter can read "играют 12 из 14"; this is how many are playing)
+  return page.$$eval(
+    '.player-row',
+    (rows) => rows.filter((r) => r.querySelector('.player-active').checked).length,
+  );
 }
 
 // Removes participants one at a time until the count's parity matches
@@ -44,7 +47,7 @@ async function currentCount(page) {
 async function ensureParity(page, wantOdd) {
   let count = await currentCount(page);
   while ((count % 2 === 1) !== wantOdd) {
-    await page.click('.chip-x');
+    await page.click('.player-row .player-x >> nth=0');
     await page.waitForTimeout(80);
     count = await currentCount(page);
   }

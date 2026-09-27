@@ -29,6 +29,8 @@ const ALL_SUITES = [
   'chart-tip',
   'charts',
   'a11y',
+  'players',
+  'projector',
 ];
 
 function parseOnly() {

@@ -20,8 +20,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { tipHtml } from '../charts/kit.js';
 import { drawSwarm } from '../charts/swarm.js';
 import CONTENT from '../content/endowment.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
@@ -43,6 +44,7 @@ import {
   patchItem,
 } from '../logic/entries.js';
 import { escapeHtml, formatCompact } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { endowmentReady, endowmentResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -127,6 +129,11 @@ export class RetroGameEndowment extends LitElement {
     this.shuffleSpin = false;
     // One timer, live for one lot at a time; each lot keeps its own length.
     this.timers = new RoundTimers(this, { seconds: LOT_TIMER_SECONDS, count: LOTS.length });
+
+    this.projector = new ProjectorController(this, 'endowment', {
+      roster: (round) => this._projectorRoster(round),
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('endowment'), {
       key: 'entries',
@@ -277,6 +284,37 @@ export class RetroGameEndowment extends LitElement {
     this.flow.scrollTo(0);
   }
 
+  // Who sells and who buys — the roles stay the same for all three lots.
+  _projectorRoster(round) {
+    if (round < 1 || round > ENTRY_ROUND) return null;
+    const { groupA, groupB } = this.groups;
+    return {
+      kind: 'groups',
+      title: 'Кто продаёт, кто покупает',
+      groups: [
+        { label: 'Владельцы — продают', tone: 'a', names: groupA },
+        { label: 'Покупатели — покупают', tone: 'b', names: groupB },
+      ],
+    };
+  }
+
+  _projectorEntries(round) {
+    if (round !== ENTRY_ROUND) return null;
+    return projectorEntries({
+      title: 'Какие цены назвали',
+      total: this.entries.length,
+      rows: this.entries.map((e) => ({
+        who: [e.name],
+        tag: e.role === 'owner' ? 'Владелец' : 'Покупатель',
+        complete: e.prices.every((p) => p !== null),
+        cells: e.prices.map((p, lot) => ({
+          label: LOTS[lot].name,
+          value: p === null ? null : `${formatCompact(p)} ₽`,
+        })),
+      })),
+    });
+  }
+
   _groupsHolder() {
     const { groupA, groupB } = this.groups;
     const chip = (n) => html`
@@ -318,9 +356,9 @@ export class RetroGameEndowment extends LitElement {
     return html`
       <section class="${this.flow.roundClass(round)}" id="round-${round}">
         <div class="round-body">
-          <p class="eyebrow">Лот ${lot + 1} из ${LOTS.length}</p>
-          <h2>${item.title}</h2>
-          <p class="lede">${item.description}</p>
+          <p class="eyebrow" data-projector="eyebrow">Лот ${lot + 1} из ${LOTS.length}</p>
+          <h2 data-projector="title">${item.title}</h2>
+          <p class="lede" data-projector="lede">${item.description}</p>
           <p class="note">${item.hint}</p>
 
           <div class="group-compare lot-roles">
@@ -400,6 +438,7 @@ export class RetroGameEndowment extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('endowment')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -408,12 +447,14 @@ export class RetroGameEndowment extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 12 минут</p>
-          <h1>Одна вещь, две роли — три масштаба</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 12 минут</p>
+          <h1 data-projector="title">Одна вещь, две роли — три масштаба</h1>
+          <p class="lede" data-projector="lede">
             Одна половина команды продаёт, другая покупает — и так все три лота: от кружки до
             дома. Роли не меняются.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -452,7 +493,7 @@ export class RetroGameEndowment extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Распределение ролей</p>
+          <p class="eyebrow" data-projector="eyebrow">Распределение ролей</p>
           <h2>Кто продаёт, кто покупает</h2>
           <p class="lede">Эти роли — на все три лота. Не нравится расклад — перемешайте.</p>
 
@@ -476,7 +517,7 @@ export class RetroGameEndowment extends LitElement {
 
         <section class="${this.flow.roundClass(ENTRY_ROUND)}" id="round-${ENTRY_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите цены по всем лотам</h2>
           <p class="lede">Владельцы вписывают цену продажи, покупатели — цену покупки. По одной цене на каждый лот.</p>
 
@@ -510,8 +551,8 @@ export class RetroGameEndowment extends LitElement {
 
         <section class="${this.flow.roundClass(RESULTS_ROUND)}" id="round-${RESULTS_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({
             value: r && r.ratio !== null ? `${r.ratio}×` : '—',
@@ -540,7 +581,7 @@ export class RetroGameEndowment extends LitElement {
             }
           </div>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Что просят владельцы и что дают покупатели</div>
             <svg id="end-chart" class="d3-chart-svg" role="img" aria-label="Цены владельцев и покупателей по каждому из трёх лотов"></svg>
             <p class="d3-chart-cap">У каждого лота своя шкала цен. Чем правее «просят» относительно «дают» внутри одного лота, тем сильнее эффект владения.</p>
@@ -614,8 +655,8 @@ export class RetroGameEndowment extends LitElement {
 
         <section class="${this.flow.roundClass(CONTEXT_ROUND)}" id="round-${CONTEXT_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эффект владения</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эффект владения</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

@@ -17,6 +17,11 @@
 // appears) instead of checking for zero cards.
 
 const { Report, openPage, withBrowser, exitToHome } = require('./lib');
+const { GAMES } = require('./games');
+
+// Социальная психология: Ложный консенсус, Эффект Барнума, Слабое звено,
+// Кто возьмёт на себя, Скрытый профиль
+const SOCIAL_GAMES = 5;
 
 async function run() {
   const report = new Report();
@@ -32,19 +37,19 @@ async function run() {
       els.map((e) => e.textContent),
     );
     report.check(
-      'category filter "Социальная психология" -> exactly 2 locations lit up',
-      matched.length === 2,
+      `category filter "Социальная психология" -> exactly ${SOCIAL_GAMES} locations lit up`,
+      matched.length === SOCIAL_GAMES,
       JSON.stringify(matched),
     );
     const dimmedCount = await page.$$eval('.location[data-match="false"]', (els) => els.length);
     report.check(
-      'the other 11 locations are dimmed, not removed from the DOM',
-      dimmedCount === 11,
+      `the other ${GAMES.length - SOCIAL_GAMES} locations are dimmed, not removed from the DOM`,
+      dimmedCount === GAMES.length - SOCIAL_GAMES,
       dimmedCount,
     );
 
     // --- combine with structure filter -> empty intersection dims everything + shows a note ---
-    await page.click('text=Все'); // reset category
+    await page.click('.filter-pill:has-text("Все") >> nth=0'); // reset category
     await page.waitForTimeout(60);
     await page.click('text=Когнитивные искажения');
     await page.click('text=По парам');
@@ -59,7 +64,7 @@ async function run() {
     );
 
     // --- structure filter alone ---
-    await page.click('text=Все'); // reset category again
+    await page.click('.filter-pill:has-text("Все") >> nth=0'); // reset category again
     await page.waitForTimeout(60);
     matched = await page.$$eval('.location[data-match="true"] .loc-name-tip', (els) =>
       els.map((e) => e.textContent),
@@ -69,7 +74,7 @@ async function run() {
       matched.length === 2,
       JSON.stringify(matched),
     );
-    await page.click('text=Все'); // reset structure filter back to all
+    await page.click('.filter-pill:has-text("Все") >> nth=1'); // reset structure filter back to all
     await page.waitForTimeout(80);
 
     // --- hover: name reveals (opacity, not a native tooltip), no navigation ---
@@ -129,23 +134,23 @@ async function run() {
     // --- participants: expand the (collapsed-by-default) roster, add, avatar renders, count updates ---
     await page.click('.roster-toggle');
     await page.waitForTimeout(80);
-    const countBefore = await page.textContent('.panel-head .count');
+    const countBefore = await page.textContent('[data-testid="players-count"]');
     await page.fill('#new-participant', 'Богдан');
     await page.click('#add-participant-btn');
     await page.waitForTimeout(80);
-    const countAfter = await page.textContent('.panel-head .count');
+    const countAfter = await page.textContent('[data-testid="players-count"]');
     report.check(
       'adding a participant increments the count',
       countBefore !== countAfter,
       `${countBefore} -> ${countAfter}`,
     );
-    const newAvatarExists = await page.isVisible('.chip:has-text("Богдан") .avatar');
+    const newAvatarExists = await page.isVisible('.player-row:has-text("Богдан") .avatar');
     report.check('new participant gets an avatar', newAvatarExists);
 
     // --- remove participant ---
-    await page.click('.chip:has-text("Богдан") .chip-x');
+    await page.click('.player-row:has-text("Богдан") .player-x');
     await page.waitForTimeout(80);
-    const countRestored = await page.textContent('.panel-head .count');
+    const countRestored = await page.textContent('[data-testid="players-count"]');
     report.check(
       'removing a participant decrements the count back',
       countRestored === countBefore,

@@ -12,7 +12,6 @@ import {
   FOCUS_Y_FRAC,
   focusTransform,
   hashString,
-  ICON_SIZE,
   IDENTITY,
   initialNodes,
   interpolateTransform,
@@ -24,9 +23,6 @@ import {
   mulberry32,
   SAFE_INSET,
   separateNodes,
-  smoothHeading,
-  WAKE,
-  wakeDots,
 } from '../../src/logic/map-physics.js';
 
 const GAMES = Array.from({ length: 13 }, (_, i) => ({ id: `game-${i}`, name: `Game ${i}` }));
@@ -142,6 +138,20 @@ describe('computeSafeBounds', () => {
 describe('initialNodes', () => {
   const bounds = computeSafeBounds(1400, 900);
   const nodes = initialNodes(GAMES, bounds);
+  // 21 icons in the narrow strip a 1000px-wide window leaves: under "reduce motion"
+  // nothing ever moves them apart, so the starting spread alone must keep them clear.
+  test('many icons on a narrow screen start without sitting on each other', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ id: `game-${i}` }));
+    const placed = initialNodes(many, computeSafeBounds(1000, 1300));
+    let closest = Infinity;
+    for (let i = 0; i < placed.length; i++)
+      for (let j = i + 1; j < placed.length; j++)
+        closest = Math.min(
+          closest,
+          Math.hypot(placed[i].x - placed[j].x, placed[i].y - placed[j].y),
+        );
+    expect(closest).toBeGreaterThan(MIN_SEPARATION * 0.7);
+  });
   test('one node per game, keeping the game’s own fields', () => {
     expect(nodes).toHaveLength(GAMES.length);
     expect(nodes.map((n) => n.id)).toEqual(GAMES.map((g) => g.id));
@@ -328,72 +338,5 @@ describe('computeIconScale', () => {
       expect(n.y - half).toBeGreaterThanOrEqual(0);
       expect(n.y + half).toBeLessThanOrEqual(h);
     }
-  });
-});
-
-describe('the wake (tail behind an icon)', () => {
-  const east = { x: 1, y: 0 };
-
-  test('has the configured number of dots, all BEHIND the icon', () => {
-    const dots = wakeDots(east);
-    expect(dots).toHaveLength(WAKE.count);
-    for (const d of dots) {
-      expect(d.dx).toBeLessThan(0); // heading east → tail to the west
-      expect(d.dy).toBeCloseTo(0, 9);
-    }
-  });
-  test('regression: the whole tail lies outside the icon itself (it used to hide underneath it)', () => {
-    for (const scale of [1, 0.6, 0.4]) {
-      const edge = (ICON_SIZE / 2) * scale;
-      for (const d of wakeDots(east, scale))
-        expect(Math.hypot(d.dx, d.dy) - d.radius).toBeGreaterThan(edge * 0.6);
-    }
-  });
-  test('the dots move away from the icon in order, shrinking and fading toward the tip', () => {
-    const dots = wakeDots(east);
-    for (let i = 1; i < dots.length; i++) {
-      expect(Math.hypot(dots[i].dx, dots[i].dy)).toBeGreaterThan(
-        Math.hypot(dots[i - 1].dx, dots[i - 1].dy),
-      );
-      expect(dots[i].radius).toBeLessThan(dots[i - 1].radius);
-      expect(dots[i].alpha).toBeLessThan(dots[i - 1].alpha);
-    }
-    expect(dots[0].alpha).toBeCloseTo(WAKE.maxAlpha, 9);
-    expect(dots.at(-1).alpha).toBeCloseTo(0, 9);
-  });
-  test('follows the heading in any direction', () => {
-    const south = wakeDots({ x: 0, y: 1 });
-    expect(south.every((d) => d.dy < 0 && Math.abs(d.dx) < 1e-9)).toBe(true);
-    const diag = wakeDots({ x: Math.SQRT1_2, y: Math.SQRT1_2 });
-    expect(diag.every((d) => d.dx < 0 && d.dy < 0)).toBe(true);
-  });
-  test('shrinks with the icon scale', () => {
-    const full = wakeDots(east, 1).at(-1);
-    const small = wakeDots(east, 0.5).at(-1);
-    expect(Math.abs(small.dx)).toBeCloseTo(Math.abs(full.dx) / 2, 9);
-    expect(small.radius).toBeCloseTo(full.radius / 2, 9);
-  });
-
-  test('smoothHeading: unit length, and moves toward the new direction without snapping', () => {
-    let h = { x: 1, y: 0 };
-    h = smoothHeading(h, 0, 10, 1 / 60); // the icon now heads south
-    expect(Math.hypot(h.x, h.y)).toBeCloseTo(1, 9);
-    expect(h.y).toBeGreaterThan(0);
-    expect(h.y).toBeLessThan(0.2); // one frame later: barely turned
-    for (let i = 0; i < 300; i++) h = smoothHeading(h, 0, 10, 1 / 60);
-    expect(h.y).toBeGreaterThan(0.99); // eventually fully turned
-  });
-  test('smoothHeading: a head-on 180° bounce completes the turn (regression: it used to stay stuck)', () => {
-    let h = { x: 1, y: 0 };
-    for (let i = 0; i < 200; i++) {
-      h = smoothHeading(h, -10, 0, 1 / 60);
-      expect(Number.isFinite(h.x) && Number.isFinite(h.y)).toBe(true);
-      expect(Math.hypot(h.x, h.y)).toBeCloseTo(1, 6);
-    }
-    expect(h.x).toBeLessThan(-0.9);
-  });
-  test('smoothHeading: a stationary icon keeps its previous heading', () => {
-    const h = { x: 0, y: -1 };
-    expect(smoothHeading(h, 0, 0, 1 / 60)).toBe(h);
   });
 });
