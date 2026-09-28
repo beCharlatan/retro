@@ -10,7 +10,7 @@
 
    One-continuous-scroll деталка (docs/modernization-plan.md —
    "деталка продолжает карту") — originally prototyped here, now the
-   shared shape of all 13 games (see game-shell.js). What was, in the
+   shared shape of every game (see game-shell.js). What was, in the
    old paged .screen/.screen.active model:
      - Every round is a plain always-visible <section class="round">
        (id="round-N") stacked in .game-main — no more .screen's
@@ -47,7 +47,8 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
 import CONTENT from '../content/framing.json';
-import { renderContext, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderNote, renderRules, renderSteps } from '../content.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { RoundTimers } from '../controllers/round-timers.js';
 import { SpoilerController } from '../controllers/spoiler-controller.js';
@@ -63,6 +64,7 @@ import {
   ICON_X,
 } from '../icons.js';
 import { buildFramingEntries, loadableDraft, patchItem } from '../logic/entries.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { framingFrame, framingReady, framingResults } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -197,11 +199,47 @@ export class RetroGameFraming extends LitElement {
     // One timer, live for one scenario at a time; each scenario keeps its own length.
     this.timers = new RoundTimers(this, { seconds: ANSWER_TIMER_SECONDS, count: SCENARIOS.length });
 
+    this.projector = new ProjectorController(this, 'framing', {
+      roster: (round) => this._projectorRoster(round),
+      entries: (round) => this._projectorEntries(round),
+    });
+
     this.draft = loadableDraft(Persist.load('framing'), {
       key: 'entries',
       length: state.participants.length,
       // drafts of the single-scenario version stored one `choice`, not `choices[]`
       rowCheck: (row) => Array.isArray(row.choices) && row.choices.length === ROUND_COUNT,
+    });
+  }
+
+  // Who is in which group — public (people need to know their group), unlike the group's text.
+  _projectorRoster(round) {
+    if (round < 1 || round > ENTRY_ROUND) return null;
+    const { groupA, groupB } = this.groups;
+    return {
+      kind: 'groups',
+      title: 'Состав групп',
+      groups: [
+        { label: `Группа ${GROUP_LABEL.A}`, tone: 'a', names: groupA },
+        { label: `Группа ${GROUP_LABEL.B}`, tone: 'b', names: groupB },
+      ],
+    };
+  }
+
+  _projectorEntries(round) {
+    if (round !== ENTRY_ROUND) return null;
+    return projectorEntries({
+      title: 'Кто что выбрал',
+      total: this.entries.length,
+      rows: this.entries.map((e) => ({
+        who: [e.name],
+        tag: `Группа ${GROUP_LABEL[e.group]}`,
+        complete: e.choices.every((c) => c !== null),
+        cells: e.choices.map((c, i) => ({
+          label: SCENARIOS[i].name,
+          value: c === null ? null : `${SCENARIOS[i].optionWord} ${c}`,
+        })),
+      })),
     });
   }
 
@@ -553,9 +591,9 @@ export class RetroGameFraming extends LitElement {
     return html`
       <section class="${this.flow.roundClass(roundIdx)}" id="round-${roundIdx}">
         <div class="round-body">
-          <p class="eyebrow">Сценарий ${round + 1} из ${ROUND_COUNT}${round > 0 ? ' · рабочая ситуация' : ''}</p>
-          <h2>${sc.title}</h2>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Сценарий ${round + 1} из ${ROUND_COUNT}${round > 0 ? ' · рабочая ситуация' : ''}</p>
+          <h2 data-projector="title">${sc.title}</h2>
+          <p class="lede" data-projector="lede" data-projector-text=${sc.intro}>
             ${sc.intro}
             Тексты спрятаны — раскройте или скопируйте только тот, что нужен, и отправьте его
             своей группе в чат.
@@ -564,7 +602,10 @@ export class RetroGameFraming extends LitElement {
           ${this._spoilerCard(round, 'A', 'var(--game-accent, var(--blue))')}
           ${this._spoilerCard(round, 'B', 'var(--red)')}
 
-          ${this.timers.card(round, { runningLabel: 'Запустите, когда тексты уже отправлены группам — на обсуждение и ответ' })}
+          ${this.timers.card(round, {
+            runningLabel: 'Запустите, когда тексты уже отправлены группам — на обсуждение и ответ',
+            projectorLabel: 'на обсуждение и ответ',
+          })}
 
           <div class="nav-row">
             <button class="ghost" @click=${() => this.flow.scrollTo(roundIdx - 1)}>${unsafeHTML(ICON_LEFT)} Назад</button>
@@ -647,7 +688,7 @@ export class RetroGameFraming extends LitElement {
       <div class="group-compare wording-compare">
         ${card('gain', 'low team-a')} ${card('loss', 'high team-b')}
       </div>
-      <div class="d3-chart-card">
+      <div class="d3-chart-card" data-projector="chart">
         <div class="d3-chart-title">Кто что выбрал · ${sc.name.toLowerCase()}</div>
         <svg id="framing-chart-${round}" class="d3-chart-svg" role="img" aria-label="Выбор каждого участника по группам, сценарий ${round + 1}"></svg>
       </div>
@@ -664,6 +705,7 @@ export class RetroGameFraming extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('framing')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -672,13 +714,16 @@ export class RetroGameFraming extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 11 минут</p>
-          <h1>Один выбор, две формулировки</h1>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 11 минут</p>
+          <h1 data-projector="title">Один выбор, две формулировки</h1>
+          <!-- not projected: hints at what the experiment tests -->
           <p class="lede">
             Мы разделим вас на две группы. Каждая услышит свою версию одной и той же дилеммы — с
             одинаковыми числами внутри. Два сценария: сначала история про людей, потом рабочая
             ситуация про баги перед релизом.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -717,8 +762,8 @@ export class RetroGameFraming extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Распределение ролей</p>
-          <h2>Кто в какой группе</h2>
+          <p class="eyebrow" data-projector="eyebrow">Распределение ролей</p>
+          <h2 data-projector="title">Кто в какой группе</h2>
           <p class="lede">Не нравится расклад — перемешайте.</p>
 
           <div>${this._groupsHolder()}</div>
@@ -741,7 +786,7 @@ export class RetroGameFraming extends LitElement {
 
         <section class="${this.flow.roundClass(ENTRY_ROUND)}" id="round-${ENTRY_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите выбор каждого участника</h2>
           <p class="lede">Для каждого сценария — вариант 1 или вариант 2, по формулировке, которую слышал этот участник.</p>
 
@@ -770,8 +815,8 @@ export class RetroGameFraming extends LitElement {
 
         <section class="${this.flow.roundClass(RESULTS_ROUND)}" id="round-${RESULTS_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({
             value: r ? r.flipText : '—',
@@ -833,8 +878,8 @@ export class RetroGameFraming extends LitElement {
 
         <section class="${this.flow.roundClass(CONTEXT_ROUND)}" id="round-${CONTEXT_ROUND}">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эффект фрейминга</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эффект фрейминга</h1>
           ${renderContext(CONTENT.context)}
 
           <h2>Ещё немного фактов</h2>

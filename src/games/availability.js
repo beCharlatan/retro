@@ -21,8 +21,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { drawBars } from '../charts/bars.js';
 import { tipHtml } from '../charts/kit.js';
 import CONTENT from '../content/availability.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
@@ -31,6 +32,7 @@ import { renderHome } from '../home.js';
 import { ICON_CLIPBOARD, ICON_DOWNLOAD, ICON_LEFT, ICON_RIGHT, ICON_X } from '../icons.js';
 import { countFilled, hasEnough, loadableDraft, patchItem } from '../logic/entries.js';
 import { escapeHtml, formatPercent, outcomeMark } from '../logic/format.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { availabilityResults, availabilityRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -120,6 +122,10 @@ export class RetroGameAvailability extends LitElement {
       },
     ]);
 
+    this.projector = new ProjectorController(this, 'availability', {
+      entries: (round) => this._projectorEntries(round),
+    });
+
     this.draft = loadableDraft(Persist.load('availability'), {
       key: 'entries',
       length: this.names.length,
@@ -150,6 +156,25 @@ export class RetroGameAvailability extends LitElement {
   _onToggle(idx, qIdx, val) {
     this.entries = patchItem(this.entries, idx, 'answers', qIdx, val);
     Persist.save('availability', { entries: this.entries });
+  }
+
+  // The question rounds are screens 1..N; each shows who has answered THAT question so far.
+  _projectorEntries(round) {
+    const qIdx = round - 1;
+    const q = QUESTIONS[qIdx];
+    if (!q) return null;
+    return projectorEntries({
+      title: 'Кто что выбрал',
+      total: this.entries.length,
+      rows: this.entries.map((e) => {
+        const a = e.answers[qIdx];
+        return {
+          who: [e.name],
+          complete: a !== null,
+          cells: [{ label: 'Ответ', value: a === null ? null : a === 'a' ? q.optA : q.optB }],
+        };
+      }),
+    });
   }
 
   _filledCount(qIdx) {
@@ -218,9 +243,9 @@ export class RetroGameAvailability extends LitElement {
     return html`
       <section class="${this.flow.roundClass(1 + qIdx)}" id="round-${1 + qIdx}">
         <div class="round-body">
-        <p class="eyebrow">Вопрос ${qIdx + 1} из ${QUESTIONS.length}</p>
-        <h2>${q.text}</h2>
-        <p class="lede">Интуитивный выбор — без подсчётов.</p>
+        <p class="eyebrow" data-projector="eyebrow">Вопрос ${qIdx + 1} из ${QUESTIONS.length}</p>
+        <h2 data-projector="title">${q.text}</h2>
+        <p class="lede" data-projector="lede" data-projector-text="${q.optA} или ${q.optB}? Интуитивный выбор — без подсчётов.">Интуитивный выбор — без подсчётов.</p>
 
         ${this.timers.card(qIdx, { runningLabel: 'на ответ', compact: true })}
 
@@ -286,6 +311,7 @@ export class RetroGameAvailability extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('availability')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -294,9 +320,11 @@ export class RetroGameAvailability extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 6 минут</p>
-          <h1>Что чаще убивает?</h1>
-          <p class="lede">${QUESTIONS.length} коротких вопроса. Не гуглите — это про первое ощущение, а не про факты. Все вопросы — про громкие новости последних лет.</p>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 6 минут</p>
+          <h1 data-projector="title">Что чаще убивает?</h1>
+          <p class="lede" data-projector="lede">${QUESTIONS.length} коротких вопроса. Не гуглите — это про первое ощущение, а не про факты. Все вопросы — про громкие новости последних лет.</p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -337,8 +365,8 @@ export class RetroGameAvailability extends LitElement {
 
         <section class="${this.flow.roundClass(1 + QUESTIONS.length)}" id="round-${1 + QUESTIONS.length}">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? r.correctRate : '—', ...REVEAL_COPY.availability(r ? { totalCorrect: r.totalCorrect, totalAnswered: r.totalAnswered, worst: r.worst, questionCount: QUESTIONS.length } : null) })}
 
@@ -371,7 +399,7 @@ export class RetroGameAvailability extends LitElement {
             }
           </div>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Сколько человек ответили верно</div>
             <svg id="av-chart" class="d3-chart-svg" role="img" aria-label="Доля верных ответов по каждому вопросу"></svg>
             <p class="d3-chart-cap">Красные столбцы — ниже 50%: интуиция подводила сильнее, чем подбрасывание монетки. Такие ошибки и создают эвристика доступности: громкое кажется частым.</p>
@@ -420,8 +448,8 @@ export class RetroGameAvailability extends LitElement {
 
         <section class="${this.flow.roundClass(2 + QUESTIONS.length)}" id="round-${2 + QUESTIONS.length}">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эвристика доступности</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эвристика доступности</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

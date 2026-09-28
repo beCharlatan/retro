@@ -4,7 +4,11 @@
 // and no test framework to install.
 
 const path = require('node:path');
-const { chromium } = require('playwright');
+const playwright = require('playwright');
+
+// BROWSER=webkit bun test/run-all.js --only=projector  — the same suite in WebKit (Safari's engine).
+const BROWSER = process.env.BROWSER || 'chromium';
+const engine = playwright[BROWSER];
 
 const DIST_PATH = path.join(__dirname, '..', 'dist', 'index.html');
 const DIST_URL = `file://${DIST_PATH}`;
@@ -51,7 +55,7 @@ class Report {
 // Opens a fresh page against dist/index.html, wired to fail the report on
 // any uncaught JS error or console.error (excluding the expected 403 from
 // Google Fonts, which has no network access in this sandbox).
-async function openPage(browser, report, viewport) {
+async function openPage(browser, report, viewport, hooks) {
   // A context (not browser.newPage) so tools that insist on one — axe — work too.
   const context = await browser.newContext({
     viewport: viewport || { width: 1000, height: 1300 },
@@ -65,7 +69,7 @@ async function openPage(browser, report, viewport) {
     // a workaround bolted onto the feature.
     reducedMotion: 'reduce',
   });
-  await enableTestHooks(context);
+  await enableTestHooks(context, hooks);
   const page = await context.newPage();
   const closePage = page.close.bind(page);
   page.close = async (...args) => {
@@ -82,16 +86,50 @@ async function openPage(browser, report, viewport) {
   return page;
 }
 
-// Turns on the app's test-only hooks (window.__reportData, see
-// src/report-export.js). Specs that build their own context call this too.
-async function enableTestHooks(context) {
-  await context.addInitScript(() => {
-    window.__RETRO_TEST__ = true;
-  });
+// The team the suite plays with. The app has no built-in list — who plays is managed in the UI and
+// kept in localStorage — so every test context starts with these 14 people already in it.
+const TEST_PLAYERS = [
+  'Михаил',
+  'Виктория',
+  'Ирина',
+  'Айшат',
+  'Екатерина',
+  'Олег',
+  'Мухамед',
+  'Артём',
+  'Марат',
+  'Арина',
+  'Таня',
+  'Денис',
+  'Диана',
+  'Анатолий',
+];
+const PLAYERS_KEY = 'retro.players.v1';
+
+// Turns on the app's test-only hooks (window.__reportData, see src/report-export.js) and puts the
+// test team into localStorage (pass { players: null } for a first-run, empty app, or another list).
+// Specs that build their own context call this too.
+async function enableTestHooks(context, { players = TEST_PLAYERS } = {}) {
+  await context.addInitScript(
+    ({ list, key }) => {
+      window.__RETRO_TEST__ = true;
+      try {
+        if (list && !window.localStorage.getItem(key)) {
+          window.localStorage.setItem(
+            key,
+            JSON.stringify(list.map((name) => ({ name, active: true }))),
+          );
+        }
+      } catch {
+        // no storage in this context: the app starts with an empty list, the test will say so
+      }
+    },
+    { list: players, key: PLAYERS_KEY },
+  );
 }
 
 async function withBrowser(fn) {
-  const browser = await chromium.launch();
+  const browser = await engine.launch();
   try {
     await fn(browser);
   } finally {
@@ -137,6 +175,8 @@ module.exports = {
   Report,
   openPage,
   enableTestHooks,
+  TEST_PLAYERS,
+  PLAYERS_KEY,
   withBrowser,
   openGameFromHome,
   exitToHome,

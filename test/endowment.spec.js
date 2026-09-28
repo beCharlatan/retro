@@ -31,7 +31,7 @@ async function run() {
       try {
         await page.click('.roster-toggle');
         await page.waitForTimeout(450);
-        const names = await page.$$eval('.roster-panel .chip', (els) =>
+        const names = await page.$$eval('.roster-panel .player-name', (els) =>
           els.map((e) => e.textContent),
         );
         report.check(
@@ -39,7 +39,7 @@ async function run() {
           names.some((n) => n.includes('Анатолий')),
           names.join(', ').slice(0, 120),
         );
-        const count = parseInt(await page.textContent('.panel-head .count'), 10);
+        const count = parseInt(await page.textContent('[data-testid="players-count"]'), 10);
         report.check('the participant counter counts him too', count >= 14, `count=${count}`);
       } catch (e) {
         report.fail('roster: threw', e.message);

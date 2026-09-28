@@ -80,7 +80,11 @@ async function run() {
         const onButtonCount = await page
           .$$eval('.round-body .toggle-pair button.on', (btns) => btns.length)
           .catch(() => 0);
-        const restoredSomething = hasFilledInput || onButtonCount > 0;
+        // a game whose draft isn't form fields (a bid log, a list of weekly orders)
+        // says itself how to see that it came back
+        const restoredSomething = game.restored
+          ? await game.restored(page).catch(() => false)
+          : hasFilledInput || onButtonCount > 0;
         report.check(`${game.name}: restore repopulates the form`, restoredSomething);
 
         // --- discard path: fill again, reload, discard, confirm gone for good ---

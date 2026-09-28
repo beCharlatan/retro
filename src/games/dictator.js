@@ -42,8 +42,11 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
 import CONTENT from '../content/dictator.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
+import { RoundTimers } from '../controllers/round-timers.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
 import { renderHome } from '../home.js';
@@ -58,6 +61,7 @@ import {
   patchRow,
 } from '../logic/entries.js';
 import { formatSigned } from '../logic/format.js';
+import { projectorEntries, spaced } from '../logic/projector-entries.js';
 import { dictatorResults } from '../logic/results.js';
 import { dodge } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
@@ -67,6 +71,7 @@ import { avatarName, state } from '../state.js';
 import { sharedStyles } from '../styles/shared-styles.js';
 
 const POT = 1000;
+const ROUND_TIMER_SECONDS = 20;
 const VARS = { pot: POT }; // filled into {pot} in the content texts
 const TOTAL_SCREENS = 5;
 const ROUND_TITLES = [
@@ -90,8 +95,21 @@ export class RetroGameDictator extends LitElement {
     super();
     this.names = state.participants.slice();
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
+    this.charts = new ChartController(this, [
+      {
+        id: 'dict-chart',
+        when: () => this.results,
+        draw: () => this._drawChart(this.results.filled),
+      },
+    ]);
     this.data = this._blankData();
     this.results = null;
+    // One 20s timer, live for one round at a time; each round keeps its own length.
+    this.timers = new RoundTimers(this, { seconds: ROUND_TIMER_SECONDS, count: 2 });
+
+    this.projector = new ProjectorController(this, 'dictator', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('dictator'), {
       key: 'data',
@@ -127,6 +145,24 @@ export class RetroGameDictator extends LitElement {
     Persist.save('dictator', { data: this.data });
   }
 
+  // Round 1 is anonymous — the room sees the amounts, sorted, with no names; round 2 shows whose is whose.
+  _projectorEntries(round) {
+    if (round !== 1 && round !== 2) return null;
+    const field = round === 1 ? 'r1' : 'r2';
+    const anonymous = round === 1;
+    return projectorEntries({
+      title: anonymous ? 'Сколько отдали (без имён)' : 'Сколько отдали',
+      total: this.data.length,
+      anonymous,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        key: d[field],
+        complete: d[field] !== null,
+        cells: [{ label: 'Отдал(а)', value: d[field] === null ? null : `${spaced(d[field])} ₽` }],
+      })),
+    });
+  }
+
   _filledCount(field) {
     return countFilled(this.data, hasFields(field));
   }
@@ -151,19 +187,11 @@ export class RetroGameDictator extends LitElement {
   async _reset() {
     this.data = this._blankData();
     this.results = null;
+    this.timers.resetAll();
     Persist.clear('dictator');
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
-  }
-
-  updated() {
-    // No longer gated on screenIdx===3 — every round (including this
-    // one) is always in the DOM now, so "do we have results yet" is
-    // the only thing that matters for whether the chart should draw.
-    if (this.results) {
-      this._drawChart(this.results.filled);
-    }
   }
 
   _drawChart(filled) {
@@ -407,6 +435,33 @@ export class RetroGameDictator extends LitElement {
     });
   }
 
+  // The timer card shown above a round's entry table.
+  _roundTimer(round) {
+    return this.timers.card(round, { compact: true, runningLabel: 'на решение' });
+  }
+
+  // The situation in one picture — what the room is deciding. It is the same for both rounds; only
+  // the rule under it changes (anonymous, then not). Nothing here says what the game is testing.
+  _scene(rule) {
+    const pot = `${POT.toLocaleString('ru-RU').replace(/\s/g, '\u202f')} ₽`;
+    return html`
+      <div class="dictator-scene" data-projector="body">
+        <div class="dictator-pot">
+          <span>Вам дали</span>
+          <b>${pot}</b>
+        </div>
+        <div class="dictator-arrow" aria-hidden="true">→</div>
+        <div class="dictator-choices">
+          <div class="dictator-choice keep"><b>Оставить себе</b><span>сколько хотите</span></div>
+          <div class="dictator-choice give">
+            <b>Отдать коллеге</b><span>любую часть, из другой команды</span>
+          </div>
+        </div>
+        ${rule ? html`<p class="dictator-rule ${rule.tone}">${rule.text}</p>` : ''}
+      </div>
+    `;
+  }
+
   _entryRow(row, idx, field) {
     return html`
       <div class="entry-row two-col">
@@ -432,6 +487,7 @@ export class RetroGameDictator extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('dictator')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -440,12 +496,17 @@ export class RetroGameDictator extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 7 минут</p>
-          <h1>Быстрое решение про деньги — дважды</h1>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 7 минут</p>
+          <h1 data-projector="title">Быстрое решение про деньги — дважды</h1>
+          <!-- not projected: hints at what the experiment tests -->
           <p class="lede">
             Два раунда с одним и тем же выбором. Меняется только одна деталь — а вместе с ней,
             скорее всего, и суммы.
           </p>
+
+          ${this._scene(null)}
+
+          ${renderRules(CONTENT.rules, VARS)}
 
           <div class="draft-mount">
             ${
@@ -484,9 +545,13 @@ export class RetroGameDictator extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Раунд 1 из 2 · Анонимно</p>
-          <h2>Сколько каждый отдал — не зная, что решат остальные</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 1 из 2 · Анонимно</p>
+          <h2 data-projector="title" data-projector-text="Сколько вы отдадите?">Сколько каждый отдал — не зная, что решат остальные</h2>
           <p class="lede">Никто не узнает, кто сколько написал.</p>
+
+          ${this._scene({ tone: 'anon', text: 'Анонимно — никто не узнает, кто сколько отдал' })}
+
+          ${this._roundTimer(0)}
 
           <div class="entry-head two-col">
             <div>Участник</div>
@@ -509,7 +574,10 @@ export class RetroGameDictator extends LitElement {
               class="primary"
               data-testid="next-btn-1"
               ?disabled=${!hasEnough(filled1)}
-              @click=${() => this.flow.advance(2)}
+              @click=${() => {
+                this.timers.reset();
+                this.flow.advance(2);
+              }}
             >
               Раунд 2 ${unsafeHTML(ICON_RIGHT)}
             </button>
@@ -520,9 +588,13 @@ export class RetroGameDictator extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Раунд 2 из 2 · Вас увидят</p>
-          <h2>То же решение, но уже не анонимно</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 2 из 2 · Вас увидят</p>
+          <h2 data-projector="title" data-projector-text="То же решение — но теперь с вашим именем">То же решение, но уже не анонимно</h2>
           <p class="lede">Коллега узнает, кто именно принял это решение.</p>
+
+          ${this._scene({ tone: 'named', text: 'Не анонимно — рядом с суммой будет ваше имя' })}
+
+          ${this._roundTimer(1)}
 
           <div class="entry-head two-col">
             <div>Участник</div>
@@ -545,7 +617,10 @@ export class RetroGameDictator extends LitElement {
               class="primary"
               data-testid="next-btn-2"
               ?disabled=${!hasEnough(filled2)}
-              @click=${() => this.flow.advance(3, () => this._showResults())}
+              @click=${() => {
+                this.timers.reset();
+                this.flow.advance(3, () => this._showResults());
+              }}
             >
               Показать результаты ${unsafeHTML(ICON_RIGHT)}
             </button>
@@ -556,8 +631,8 @@ export class RetroGameDictator extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r && r.delta !== null ? `${(r.delta >= 0 ? '+' : '') + Math.round(r.delta)} ₽` : '—', ...REVEAL_COPY.dictator(r && r.delta !== null ? { avgR1: r.avgR1, avgR2: r.avgR2, delta: r.delta, pot: POT } : null) })}
 
@@ -572,7 +647,7 @@ export class RetroGameDictator extends LitElement {
             </div>
           </div>
 
-          <div class="chart-wrap">
+          <div class="chart-wrap" data-projector="chart">
             <svg id="dict-chart" class="d3-chart-svg" viewBox="0 0 640 260"></svg>
             <div class="cap">
               Светлые точки — раунд 1 (анонимно), тёмные — раунд 2 (не анонимно). Линия соединяет
@@ -623,8 +698,8 @@ export class RetroGameDictator extends LitElement {
 
         <section class="${this.flow.roundClass(4)}" id="round-4">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Игра диктатора</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Игра диктатора</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

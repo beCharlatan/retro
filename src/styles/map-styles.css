@@ -1,7 +1,7 @@
 /* =====================================================
      Гейм-карта (ветка `gme`) — отдельная визуальная система,
      сознательно НЕ кит-точная (в отличие от src/styles.css, который
-     переиспользуют все 13 игр и который этот заход не трогает).
+     переиспользуют все игры и который этот заход не трогает).
      Крупные радиусы, мягкие тени, живая (не приглушённая) палитра —
      подложка bg.jpg (пастельный градиент, инлайнится ниже тем же
      способом, что src/print-assets/print-bg.jpg: Bun.build() не
@@ -432,7 +432,7 @@
 }
 .roster-chevron svg {
   /* ICON_CHEVRON_DOWN's own `.icon-inline` class is styled in
-       src/styles.css (the kit-precise stylesheet the 13 games share) —
+       src/styles.css (the kit-precise stylesheet all the games share) —
        this component uses map-styles.css instead, which doesn't
        include it, so the <svg> needs its size set explicitly here or
        it'd fall back to the browser's unstyled-SVG default. */
@@ -473,24 +473,6 @@
   font-weight: 700;
   color: var(--map-ink-faint);
 }
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #fff;
-  border: 1px solid var(--map-line);
-  border-radius: 999px;
-  padding: 3px 8px 3px 3px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--map-ink);
-}
 .avatar {
   flex: none;
   width: 22px;
@@ -514,20 +496,186 @@
   align-items: center;
   gap: 6px;
 }
-button.chip-x {
-  width: 17px;
-  height: 17px;
+/* ---------- Игроки (players-admin.js) ---------- */
+.roster-panel.players-admin.open {
+  width: 330px;
+}
+.player-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 8px;
+  border-radius: var(--map-radius-sm);
+  background: #fff;
+  border: 1px solid var(--map-line);
+  transition: opacity 0.15s var(--map-ease);
+}
+.player-row.off {
+  opacity: 0.55;
+}
+.player-row.off .player-name {
+  text-decoration: line-through;
+}
+.player-active {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--map-cognitive);
+  cursor: pointer;
+}
+.player-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--map-ink);
+  background: none;
+  border: none;
+  padding: 3px 4px;
+  border-radius: 8px;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-name:hover {
+  background: var(--map-line);
+}
+.player-edit {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border: 1.5px solid var(--map-cognitive);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--map-ink);
+}
+.player-edit:focus-visible {
+  outline: none;
+}
+button.player-x {
+  width: 20px;
+  height: 20px;
   flex: none;
   border: none;
   border-radius: 50%;
   background: var(--map-line);
   color: var(--map-ink-soft);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+button.player-x:hover {
+  background: #ffd9e3;
+  color: #b3123f;
+}
+.players-error {
+  min-height: 16px;
+  margin: 6px 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b3123f;
+}
+.players-empty {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 4px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--map-line);
+  border-radius: var(--map-radius-sm);
+  font-size: 12.5px;
+  color: var(--map-ink-soft);
+}
+.players-empty b {
+  font-size: 14px;
+  color: var(--map-ink);
+}
+.bulk-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bulk-box textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--map-line);
+  border-radius: var(--map-radius-sm);
+  background: #fff;
+  color: var(--map-ink);
+  resize: vertical;
+}
+.bulk-box textarea:focus-visible {
+  outline: none;
+  border-color: var(--map-cognitive);
+}
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bulk-actions button.primary {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--map-radius-sm);
+  background: #6d4be8;
+  color: #fff;
+  cursor: pointer;
+}
+.players-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 12px;
+}
+button.link-btn {
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #5a3ad6;
+  cursor: pointer;
+}
+button.link-btn:hover {
+  text-decoration: underline;
+}
+button.link-btn.danger {
+  color: #b3123f;
+}
+.players-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--map-ink-faint);
+}
+.players-note.warn {
+  padding: 8px 10px;
+  border-radius: var(--map-radius-sm);
+  background: #fff3cf;
+  color: #6b4500;
+  font-weight: 600;
 }
 .add-row {
   display: flex;
@@ -554,13 +702,13 @@ button.chip-x {
   padding: 8px 14px;
   border: none;
   border-radius: var(--map-radius-sm);
-  background: var(--map-cognitive);
+  background: #6d4be8; /* white text needs >= 4.5:1 */
   color: #fff;
   cursor: pointer;
   transition: background 0.15s var(--map-ease);
 }
 .add-row button.primary:hover {
-  background: #6a48f0;
+  background: #5b3bd6;
 }
 
 .filter-toolbar {

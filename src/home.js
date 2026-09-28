@@ -30,7 +30,7 @@
 ========================================================= */
 import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { ICON_CHEVRON_DOWN, ICON_SURPRISE, ICON_X } from './icons.js';
+import { ICON_SURPRISE, ICON_X } from './icons.js';
 import {
   countForCategory as countCategory,
   countForStructure as countStructure,
@@ -39,8 +39,12 @@ import {
   matchesFilters as matchesGame,
 } from './logic/filters.js';
 import { createMap, PALETTE } from './map-render.js';
+import { PlayersAdmin } from './players-admin.js';
+import { onPlayersChange } from './players-store.js';
+import { projector } from './projector/index.js';
+import { idleSnapshot } from './projector/snapshots.js';
 import { openGame } from './router.js';
-import { app, avatarHTML, CATEGORY, GAMES, STRUCTURE, state } from './state.js';
+import { app, CATEGORY, GAMES, STRUCTURE, state } from './state.js';
 import { mapStyles } from './styles/map-styles.js';
 import { showToast } from './toast.js';
 
@@ -58,7 +62,6 @@ export class RetroHome extends LitElement {
   static styles = mapStyles;
 
   static properties = {
-    rosterOpen: { state: true },
     selectedGame: { state: true },
   };
 
@@ -70,7 +73,7 @@ export class RetroHome extends LitElement {
     // leaves more of the canvas clear of HUD chrome for the location
     // layout to fit into without overlapping a card (see map-render.js's
     // SAFE_INSET).
-    this.rosterOpen = false;
+    this.players = new PlayersAdmin(this);
     this.selectedGame = null;
     this._mapController = null;
   }
@@ -88,9 +91,24 @@ export class RetroHome extends LitElement {
     this._mapController.updateHighlight(matchesFilters, filtersActive());
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    // The projector's welcome screen shows who is playing: keep it current.
+    this._publishWelcome();
+    this._offPlayers = onPlayersChange(() => {
+      this._publishWelcome();
+      this.requestUpdate();
+    });
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._offPlayers?.();
     this._mapController?.destroy();
+  }
+
+  _publishWelcome() {
+    projector.publish(idleSnapshot());
   }
 
   _setFilter(id) {
@@ -110,6 +128,7 @@ export class RetroHome extends LitElement {
   // dive in and start it via the exact same path the panel's own
   // "Начать игру" button uses. See map-render.js's focusAndAutoStart().
   _pickRandomGame() {
+    if (this._blockedByTeam()) return;
     const pool = GAMES.filter((g) => matchesFilters(g) && g.ready);
     if (!pool.length) {
       showToast('Нет доступных игр с такими фильтрами');
@@ -123,33 +142,19 @@ export class RetroHome extends LitElement {
     this._mapController?.unfocus();
   }
 
+  // A game needs people: say why and put the cursor where they are added.
+  _blockedByTeam() {
+    const problem = this.players.problem();
+    if (!problem) return false;
+    showToast(problem);
+    this._mapController?.unfocus(); // the zoomed-in icon would sit over the panel
+    this.players.reveal();
+    return true;
+  }
+
   _startSelectedGame() {
+    if (this._blockedByTeam()) return;
     if (this.selectedGame) this._mapController?.startGame(this.selectedGame.id);
-  }
-
-  _addParticipant() {
-    const input = this.renderRoot.getElementById('new-participant');
-    const v = input.value.trim();
-    if (!v) return;
-    state.participants.push(v);
-    input.value = '';
-    this.requestUpdate();
-  }
-
-  _onNewParticipantKeydown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      this._addParticipant();
-    }
-  }
-
-  _removeParticipant(i) {
-    state.participants.splice(i, 1);
-    this.requestUpdate();
-  }
-
-  _toggleRoster() {
-    this.rosterOpen = !this.rosterOpen;
   }
 
   _filterPills(options, active, onSelect, countFn) {
@@ -163,66 +168,6 @@ export class RetroHome extends LitElement {
         </button>
       `,
     );
-  }
-
-  // One persistent structure for both states (not two templates Lit
-  // swaps between) — a `.roster-body` that's always in the DOM but
-  // collapses via a `grid-template-rows: 0fr -> 1fr` transition (the
-  // standard CSS-only way to animate to/from an intrinsic height
-  // without JS measuring anything) is what makes the reveal an actual
-  // animation instead of an instant swap. The toggle header (count
-  // badge + chevron) stays visible in both states and is the only
-  // "collapse" control now — the old second "Свернуть" button inside
-  // the expanded body was redundant with it.
-  _rosterPanel() {
-    return html`
-      <div class="hud-card roster-panel ${this.rosterOpen ? 'open' : ''}">
-        <button type="button" class="roster-toggle" @click=${() => this._toggleRoster()}>
-          <span class="badge">${state.participants.length}</span>
-          <span class="roster-toggle-label">Участники</span>
-          <span class="roster-chevron">${unsafeHTML(ICON_CHEVRON_DOWN)}</span>
-        </button>
-        <div class="roster-body">
-          <div class="roster-body-inner">
-            <div class="panel-head">
-              <h2>Участники</h2>
-              <span class="count">${state.participants.length} человек</span>
-            </div>
-            <div class="chips">
-              ${state.participants.map(
-                (name, i) => html`
-                  <span class="chip">
-                    ${unsafeHTML(avatarHTML(name))}${name}
-                    <button
-                      class="chip-x"
-                      aria-label="Удалить ${name}"
-                      @click=${() => this._removeParticipant(i)}
-                    >
-                      ×
-                    </button>
-                  </span>
-                `,
-              )}
-            </div>
-            <div class="add-row">
-              <input
-                type="text"
-                id="new-participant"
-                placeholder="Имя участника"
-                @keydown=${(e) => this._onNewParticipantKeydown(e)}
-              />
-              <button
-                class="primary"
-                id="add-participant-btn"
-                @click=${() => this._addParticipant()}
-              >
-                Добавить
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
   }
 
   // The full-detail card the camera's fly-to always lands next to —
@@ -275,7 +220,9 @@ export class RetroHome extends LitElement {
         <p class="lede">Выберите локацию на карте — коротких командных экспериментов ${GAMES.length}.</p>
       </div>
 
-      ${this._rosterPanel()}
+      ${this.players.render()}
+
+      <retro-projector-button class="home-projector"></retro-projector-button>
 
       <div class="hud-card filter-toolbar">
         <div>

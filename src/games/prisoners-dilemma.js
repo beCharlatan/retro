@@ -22,8 +22,9 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { drawStackedBars } from '../charts/bars.js';
 import { tipHtml } from '../charts/kit.js';
 import CONTENT from '../content/prisoners-dilemma.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -37,6 +38,7 @@ import {
   ICON_TRIO,
   ICON_X,
 } from '../icons.js';
+import { renderLeaderboard } from '../leaderboard.js';
 import { dilemmaOutcomes } from '../logic/chart-data.js';
 import {
   buildDilemmaEntries,
@@ -47,6 +49,8 @@ import {
   MIN_FILLED_PAIRS,
   patchRow,
 } from '../logic/entries.js';
+import { prisonersDilemmaScores, rankScores } from '../logic/leaderboard.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import {
   choiceLabel,
   prisonersDilemmaPayoff,
@@ -98,6 +102,11 @@ export class RetroGamePrisonersDilemma extends LitElement {
     ]);
     this.selectedSwap = null;
     this.shuffleSpin = false;
+
+    this.projector = new ProjectorController(this, 'prisoners-dilemma', {
+      roster: (round) => this._projectorRoster(round),
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('prisoners-dilemma'), {
       key: 'entries',
@@ -225,6 +234,54 @@ export class RetroGamePrisonersDilemma extends LitElement {
     this.flow.scrollTo(0);
   }
 
+  // The pairs; on the round-1 recap screen also what each one chose (the facilitator reads it aloud).
+  _projectorRoster(round) {
+    if (round < 1 || round > 4) return null;
+    const recap = round === 3;
+    return {
+      kind: 'pairs',
+      title: recap ? 'Ходы в раунде 1' : 'Кто с кем в паре',
+      pairs: this.assignment.pairs.map((p, i) => {
+        const e = this.entries[i];
+        return {
+          a: p.a,
+          b: p.b,
+          tagA: recap && e?.r1a ? choiceLabel(e.r1a) : '',
+          tagB: recap && e?.r1b ? choiceLabel(e.r1b) : '',
+          trio: !!p.trio,
+        };
+      }),
+    };
+  }
+
+  // Screens 2 and 4 take the moves of round 1 and round 2.
+  _projectorEntries(screen) {
+    if (screen !== 2 && screen !== 4) return null;
+    const round = screen === 2 ? 1 : 2;
+    return projectorEntries({
+      title: 'Что выбрали пары',
+      unit: 'пар',
+      total: this.entries.length,
+      rows: this.entries.map((e) => {
+        const a = e[`r${round}a`];
+        const b = e[`r${round}b`];
+        return {
+          who: [e.a, e.b],
+          complete: a !== null && b !== null,
+          cells:
+            a === null && b === null
+              ? []
+              : [
+                  {
+                    label: 'Ходы',
+                    value: `${a ? choiceLabel(a) : '…'} · ${b ? choiceLabel(b) : '…'}`,
+                  },
+                ],
+        };
+      }),
+    });
+  }
+
   _pairCard(p, i) {
     const selectedA = this.selectedSwap?.i === i && this.selectedSwap?.side === 'a';
     const selectedB = this.selectedSwap?.i === i && this.selectedSwap?.side === 'b';
@@ -336,6 +393,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('prisoners-dilemma')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -344,12 +402,14 @@ export class RetroGamePrisonersDilemma extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 10 минут</p>
-          <h1>Один партнёр, два хода</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 10 минут</p>
+          <h1 data-projector="title">Один партнёр, два хода</h1>
+          <p class="lede" data-projector="lede">
             Мы разобьём вас на пары. Каждая пара сыграет два раунда подряд с одним и тем же
             партнёром — и после первого раунда узнает, что выбрал другой.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -388,7 +448,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Распределение ролей</p>
+          <p class="eyebrow" data-projector="eyebrow">Распределение ролей</p>
           <h2>Кто с кем в паре</h2>
           <p class="lede">
             Роли симметричны, и пара останется той же на оба раунда. Не нравится расклад —
@@ -413,7 +473,7 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Раунд 1 из 2 · Вслепую</p>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 1 из 2 · Вслепую</p>
           <h2>Впишите ход каждого в паре</h2>
           <p class="lede">
             Что выбрал каждый — сотрудничать или предать. Партнёры не знают выбора друг друга.
@@ -447,8 +507,8 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">Итог раунда 1</p>
-          <h2>Вот что выбрала каждая пара</h2>
+          <p class="eyebrow" data-projector="eyebrow">Итог раунда 1</p>
+          <h2 data-projector="title">Вот что выбрала каждая пара</h2>
           <p class="lede">Прочитайте вслух — теперь каждый знает, что сделал его партнёр в первый раз.</p>
 
           <table class="results-table" id="recap-table">
@@ -485,8 +545,8 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(4)}" id="round-4">
           <div class="round-body">
-          <p class="eyebrow">Раунд 2 из 2 · Уже зная итог раунда 1</p>
-          <h2>Тот же партнёр — решайте заново</h2>
+          <p class="eyebrow" data-projector="eyebrow">Раунд 2 из 2 · Уже зная итог раунда 1</p>
+          <h2 data-projector="title">Тот же партнёр — решайте заново</h2>
           <p class="lede">Что выбрал каждый теперь, зная, как повёл себя партнёр в первый раз.</p>
 
           <div class="pair-entry-list" id="entry-body-2">
@@ -517,8 +577,8 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(5)}" id="round-5">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? `${(r.delta >= 0 ? '+' : '') + r.delta} п.п.` : '—', ...REVEAL_COPY.prisonersDilemma(r ? { coopR1: r.coopR1, coopR2: r.coopR2, delta: r.delta, echoRate: r.echoRate } : null) })}
 
@@ -544,7 +604,9 @@ export class RetroGamePrisonersDilemma extends LitElement {
             </div>
           </div>
 
-          <div class="d3-chart-card">
+          ${r ? renderLeaderboard({ rows: rankScores(prisonersDilemmaScores(r.filled)), unit: ['балл', 'балла', 'баллов'] }) : ''}
+
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Что делали пары в каждом раунде</div>
             <svg id="pd-chart" class="d3-chart-svg" role="img" aria-label="Сколько пар сотрудничали, сколько обманули и сколько предали друг друга в раундах 1 и 2"></svg>
             <p class="d3-chart-cap">Каждый ряд — все пары в раунде. Если зелёного стало меньше, а красного больше — «тень будущего» не сработала.</p>
@@ -593,8 +655,8 @@ export class RetroGamePrisonersDilemma extends LitElement {
 
         <section class="${this.flow.roundClass(6)}" id="round-6">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Дилемма заключённого</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Дилемма заключённого</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

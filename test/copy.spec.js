@@ -6,7 +6,7 @@
 // right plain text on the clipboard — including copying WITHOUT first
 // revealing, which is the whole point of sending it privately.
 
-const { Report, withBrowser, DIST_URL, openGameFromHome } = require('./lib');
+const { Report, withBrowser, DIST_URL, openGameFromHome, enableTestHooks } = require('./lib');
 
 async function run() {
   const report = new Report();
@@ -22,6 +22,7 @@ async function run() {
       // continuously-drifting location buttons.
       reducedMotion: 'reduce',
     });
+    await enableTestHooks(context);
 
     // --- framing ---
     {

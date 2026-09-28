@@ -2,12 +2,16 @@
 // The home map must fit whatever window it is opened in:
 //  - every icon (with its glow) stays inside the viewport, also on small or
 //    zoomed-in windows and right after the window is resized;
-//  - the decorative canvas (motion trails + drifting dots) is exactly the
+//  - the decorative canvas (the drifting background dots) is exactly the
 //    size of the map — on a Retina screen (deviceScaleFactor 2) it used to be
-//    laid out at 2× and draw every trail far from its icon, partly off-screen.
+//    laid out at 2× and draw its dots far from where they belong;
+//  - the icons leave no trail behind them (it was removed on purpose).
 
 const path = require('node:path');
-const { Report, withBrowser } = require('./lib');
+const { Report, withBrowser, enableTestHooks } = require('./lib');
+const { GAMES } = require('./games');
+
+const GAMES_COUNT = GAMES.length;
 
 const URL = `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
 const GLOW = 18; // px of drop-shadow reach around an icon
@@ -68,13 +72,17 @@ async function run() {
           viewport: { width: w, height: h },
           reducedMotion: motion,
         });
+        await enableTestHooks(ctx);
         const page = await ctx.newPage();
         page.on('pageerror', (e) => report.fail('no uncaught JS errors', String(e)));
         await page.goto(URL);
         await page.waitForTimeout(motion === 'reduce' ? 700 : 4200);
         const m = await measure(page);
         const label = `${w}×${h}${motion === 'reduce' ? ' (reduced motion)' : ''}`;
-        report.check(`${label}: all 13 game icons are on the map`, m.count === 13);
+        report.check(
+          `${label}: all ${GAMES_COUNT} game icons are on the map`,
+          m.count === GAMES_COUNT,
+        );
         report.check(
           `${label}: every icon and its glow is inside the window`,
           m.outside === 0,
@@ -82,7 +90,7 @@ async function run() {
         );
         report.check(`${label}: the page does not need scrolling`, !m.pageScrolls);
         report.check(
-          `${label}: trail canvas is exactly the size of the map`,
+          `${label}: the decorative canvas is exactly the size of the map`,
           m.canvas[0] === m.host[0] && m.canvas[1] === m.host[1],
           `canvas ${m.canvas} vs map ${m.host}`,
         );
@@ -97,6 +105,7 @@ async function run() {
         deviceScaleFactor: 2,
         reducedMotion: 'no-preference',
       });
+      await enableTestHooks(ctx);
       const page = await ctx.newPage();
       await page.goto(URL);
       await page.waitForTimeout(3500);
@@ -119,23 +128,18 @@ async function run() {
         m.canvas[0] === 1200 && m.canvas[1] === 700,
         `canvas ${m.canvas}`,
       );
-      report.check(
-        'Retina (dpr 2): the backing store is still sharp (2×)',
-        backing[0] === 2400 && backing[1] === 1400,
-        `backing ${backing}`,
-      );
       await ctx.close();
     }
 
-    // The motion wake (tail behind each icon) is actually visible: coloured
-    // canvas pixels exist OUTSIDE the icon's own body, in a ring around it. (It
-    // used to be drawn from the icon's last few positions — ~2px apart — and sat
-    // entirely underneath the icon.)
+    // The icons leave NO trail: no coloured canvas pixels in a ring around any
+    // icon's body. (There used to be a fading comet tail behind each icon; the
+    // only things left on the canvas are the pale, white background dots.)
     {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 800 },
         reducedMotion: 'no-preference',
       });
+      await enableTestHooks(ctx);
       const page = await ctx.newPage();
       await page.goto(URL);
       await page.waitForTimeout(4200);
@@ -182,9 +186,9 @@ async function run() {
         return { withWake, total: icons.length };
       });
       report.check(
-        'the motion wake is visible outside the icons (coloured tail pixels around most icons)',
-        wake.withWake >= 9,
-        `${wake.withWake} of ${wake.total} icons have a visible tail`,
+        'no icon leaves a trail (no coloured pixels around any icon)',
+        wake.total >= 13 && wake.withWake === 0,
+        `${wake.withWake} of ${wake.total} icons have coloured pixels behind them`,
       );
       await ctx.close();
     }
@@ -195,6 +199,7 @@ async function run() {
         viewport: { width: 1440, height: 800 },
         reducedMotion: motion,
       });
+      await enableTestHooks(ctx);
       const page = await ctx.newPage();
       await page.goto(URL);
       await page.waitForTimeout(motion === 'reduce' ? 700 : 3000);

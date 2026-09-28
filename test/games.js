@@ -402,6 +402,268 @@ const GAMES = [
       return n.includes('%');
     },
   },
+
+  // ---------- the second batch (docs/new-games/) ----------
+  {
+    id: 'weakest-link',
+    name: 'Слабое звено',
+    async toEntryScreen(page) {
+      await page.click('button:has-text("Раунд 1")');
+    },
+    async fill(page, opts = {}) {
+      return pickInRows(page, '[data-testid="entry-body-1"] .entry-row', (i) => i % 7, opts.count);
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-1"]');
+      for (let screen = 2; screen <= 5; screen++) {
+        await page.waitForTimeout(80);
+        await pickInRows(
+          page,
+          `[data-testid="entry-body-${screen}"] .entry-row`,
+          (i) => (i + screen) % 7,
+        );
+        await page.click(`[data-testid="next-btn-${screen}"]`);
+      }
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('→');
+    },
+  },
+  {
+    id: 'volunteer',
+    name: 'Кто возьмёт на себя',
+    async toEntryScreen(page) {
+      await page.click('button:has-text("Раунд 1")');
+    },
+    async fill(page, opts = {}) {
+      return pickInRows(
+        page,
+        '[data-testid^="entry-body-1-"] .entry-row',
+        (i) => i % 2,
+        opts.count,
+      );
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-1"]');
+      for (let screen = 2; screen <= 3; screen++) {
+        await page.waitForTimeout(80);
+        await pickInRows(page, `[data-testid^="entry-body-${screen}-"] .entry-row`, (i) =>
+          i % 3 ? 1 : 0,
+        );
+        await page.click(`[data-testid="next-btn-${screen}"]`);
+      }
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('%');
+    },
+  },
+  {
+    id: 'hidden-profile',
+    name: 'Скрытый профиль',
+    async toEntryScreen(page) {
+      await page.click('[data-testid="next-btn-0"]');
+      await page.waitForTimeout(80);
+      await page.click('[data-testid="next-btn-1"]');
+    },
+    async fill(page, opts = {}) {
+      return pickInRows(page, '[data-testid="entry-body-2"] .entry-row', (i) => i % 3, opts.count);
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-2"]');
+      await page.waitForTimeout(80);
+      await page.click('#round-3 .toggle-pair button:has-text("Саша")');
+      await page.click('[data-testid="next-btn-3"]');
+      await page.waitForTimeout(80);
+      await page.click('[data-testid="next-btn-4"]');
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('Саша');
+    },
+  },
+  {
+    id: 'dollar-auction',
+    name: 'Долларовый аукцион',
+    async toEntryScreen(page) {
+      await page.click('button:has-text("К торгам")');
+    },
+    // two people escalate: 10, 20, … — 12 bids by default, past the prize of 100
+    async fill(page, opts = {}) {
+      const n = opts.count ?? 12;
+      for (let i = 0; i < n; i++) {
+        const buttons = await page.$$('[data-testid="bid-buttons"] button');
+        await buttons[i % 2].click();
+      }
+      return n;
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-1"]');
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('за 100');
+    },
+    // the draft is the bid log: restored, the board shows a leading bid again
+    async restored(page) {
+      const board = await page.textContent('.board');
+      return /\d/.test(board.split('лидер')[0]);
+    },
+  },
+  {
+    id: 'lemons',
+    name: 'Рынок «лимонов»',
+    hasRoles: true,
+    async toEntryScreen(page) {
+      await page.click('button:has-text("Распределить роли")');
+      await page.waitForTimeout(80);
+      await page.click('[data-testid="next-btn-1"]');
+    },
+    async fill(page, opts = {}) {
+      return fillInputs(
+        page,
+        '#round-2 .entry-row.number-choice input',
+        (i) => 40 + i * 7,
+        opts.count,
+      );
+    },
+    async toResults(page) {
+      for (let screen = 2; screen <= 5; screen++) {
+        await page.waitForTimeout(80);
+        if (screen > 2)
+          await fillInputs(
+            page,
+            `#round-${screen} .entry-row.number-choice input`,
+            (i) => 30 + i * 9,
+          );
+        // every buyer in the queue takes the cheapest lot left (or passes when none)
+        for (let k = 0; k < 30; k++) {
+          const options = await page.$$(`#round-${screen} .round-recap .bid-buttons button`);
+          if (!options.length) break;
+          await options[0].click();
+        }
+        await page.click(`[data-testid="reveal-btn-${screen}"]`);
+        await page.waitForTimeout(60);
+        await page.click(`[data-testid="next-btn-${screen}"]`);
+      }
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('→');
+    },
+  },
+  {
+    id: 'beauty-contest',
+    name: 'Угадай ⅔ от среднего',
+    async toEntryScreen(page) {
+      await page.click('button:has-text("Раунд 1")');
+    },
+    async fill(page, opts = {}) {
+      return fillInputs(page, '[data-testid="entry-body-1"] input', (i) => 10 + i * 5, opts.count);
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-1"]');
+      for (let screen = 2; screen <= 4; screen++) {
+        await page.waitForTimeout(80);
+        await fillInputs(
+          page,
+          `[data-testid="entry-body-${screen}"] input`,
+          (i) => 30 - screen * 5 + i,
+        );
+        await page.click(`[data-testid="next-btn-${screen}"]`);
+      }
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('→');
+    },
+  },
+  {
+    id: 'el-farol',
+    name: 'Бар «Эль Фароль»',
+    async toEntryScreen(page) {
+      await page.click('button:has-text("Вечер 1")');
+    },
+    // everyone is "Дома" by default — tap "Иду" for every other person
+    async fill(page, opts = {}) {
+      const rows = await page.$$('[data-testid="entry-body-1"] .entry-row');
+      const n = opts.count ?? rows.length;
+      for (let i = 0; i < n; i += 2) await (await rows[i].$$('button'))[0].click();
+      return n;
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-1"]');
+      for (let screen = 2; screen <= 8; screen++) {
+        await page.waitForTimeout(60);
+        const rows = await page.$$(`[data-testid="entry-body-${screen}"] .entry-row`);
+        for (let i = screen % 3; i < rows.length; i += 3)
+          await (await rows[i].$$('button'))[0].click();
+        await page.click(`[data-testid="next-btn-${screen}"]`);
+      }
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.includes('из 8');
+    },
+  },
+  {
+    id: 'beer-game',
+    name: 'Пивная игра',
+    hasRoles: true,
+    async toEntryScreen(page) {
+      await page.click('[data-testid="next-btn-0"]');
+      await page.waitForTimeout(80);
+      await page.click('[data-testid="next-btn-1"]');
+    },
+    // opts.count = how many weeks to play (all 24 by default); a mild panic upstream
+    async fill(page, opts = {}) {
+      const n = opts.count ?? 24;
+      for (let w = 0; w < n; w++) {
+        const inputs = await page.$$('[data-testid="orders-row"] input');
+        const surge = w >= 4 && w < 10 ? 2 : 0;
+        for (let i = 0; i < 4; i++) await inputs[i].fill(String(w < 4 ? 4 : 8 + surge * i));
+        await page.click('[data-testid="week-btn"]');
+      }
+      return n;
+    },
+    async toResults(page) {
+      await page.click('[data-testid="next-btn-2"]');
+      await page.waitForTimeout(80);
+      const rows = await page.$$('#round-3 .entry-row');
+      for (let i = 0; i < rows.length; i++) {
+        await (await rows[i].$('input')).fill(String(10 + i));
+        await (await rows[i].$$('.toggle-pair button'))[i % 4].click();
+      }
+      await page.click('[data-testid="next-btn-3"]');
+      await page.waitForTimeout(80);
+      await page.click('[data-testid="next-btn-4"]');
+    },
+    async verifyResults(page) {
+      const n = await page.textContent('.reveal .n');
+      return n.startsWith('×');
+    },
+    // the draft is the orders: restored, the game is back at the week after them
+    async restored(page) {
+      const eyebrow = await page.textContent('#round-2 .eyebrow');
+      return !eyebrow.includes('Неделя 1 ');
+    },
+  },
 ];
+
+// Clicks button number pick(i) in each of the first `count` rows (all by default).
+async function pickInRows(page, rowSelector, pick, count) {
+  const rows = await page.$$(rowSelector);
+  const n = count ?? rows.length;
+  for (let i = 0; i < n; i++) await (await rows[i].$$('button'))[pick(i)].click();
+  return n;
+}
+
+async function fillInputs(page, selector, value, count) {
+  const inputs = await page.$$(selector);
+  const n = count ?? inputs.length;
+  for (let i = 0; i < n; i++) await inputs[i].fill(String(value(i)));
+  return n;
+}
 
 module.exports = { GAMES };

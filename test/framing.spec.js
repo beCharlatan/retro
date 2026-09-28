@@ -6,7 +6,7 @@
 // meets both wordings. Flow:
 //   intro → roles → scenario 1 → scenario 2 → entry → results → context
 
-const { Report, openPage, withBrowser, openGameFromHome } = require('./lib');
+const { Report, openPage, withBrowser, openGameFromHome, enableTestHooks } = require('./lib');
 
 const startFraming = async (page) => {
   await openGameFromHome(page, 'framing');
@@ -101,6 +101,7 @@ async function run() {
         viewport: { width: 1000, height: 1300 },
         reducedMotion: 'reduce',
       });
+      await enableTestHooks(ctx);
       await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
       const page = await ctx.newPage();
       try {
@@ -360,6 +361,7 @@ async function run() {
         viewport: { width: 420, height: 900 },
         reducedMotion: 'reduce',
       });
+      await enableTestHooks(ctx);
       const page = await ctx.newPage();
       try {
         await page.goto(

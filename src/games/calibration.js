@@ -33,8 +33,9 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { drawIntervals } from '../charts/intervals.js';
 import CONTENT from '../content/calibration.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
 import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { RoundTimers } from '../controllers/round-timers.js';
 import { clearQuestionSlots, readQuestionSlots } from '../custom-question-form.js';
@@ -58,6 +59,7 @@ import {
   patchItem,
 } from '../logic/entries.js';
 import { formatPercent, outcomeMark } from '../logic/format.js';
+import { projectorEntries, spaced } from '../logic/projector-entries.js';
 import { calibrationBars, calibrationResults, calibrationRows } from '../logic/results.js';
 import { Persist, timeAgo } from '../persist.js';
 import { ReportExport } from '../report-export.js';
@@ -124,6 +126,10 @@ export class RetroGameCalibration extends LitElement {
     this.timers = new RoundTimers(this, {
       seconds: QUESTION_TIMER_SECONDS,
       count: DEFAULT_QUESTIONS.length,
+    });
+
+    this.projector = new ProjectorController(this, 'calibration', {
+      entries: (round) => this._projectorEntries(round),
     });
 
     this.draft = loadableDraft(Persist.load('calibration'), {
@@ -200,6 +206,27 @@ export class RetroGameCalibration extends LitElement {
     Persist.save('calibration', {
       entries: this.entries,
       questions: this.isCustomQuestions ? this.questions : null,
+    });
+  }
+
+  // Each question round shows the ranges named for THAT question so far.
+  _projectorEntries(round) {
+    const qIdx = round - 1;
+    if (qIdx < 0 || qIdx >= this.questions.length) return null;
+    return projectorEntries({
+      title: 'Какие диапазоны назвали',
+      total: this.entries.length,
+      rows: this.entries.map((e) => {
+        const r = e.ranges[qIdx];
+        return {
+          who: [e.name],
+          complete: r.low !== null && r.high !== null,
+          cells: [
+            { label: 'От', value: r.low === null ? null : spaced(r.low) },
+            { label: 'До', value: r.high === null ? null : spaced(r.high) },
+          ],
+        };
+      }),
     });
   }
 
@@ -297,9 +324,9 @@ export class RetroGameCalibration extends LitElement {
     return html`
       <section class="${this.flow.roundClass(1 + qIdx)}" id="round-${1 + qIdx}">
         <div class="round-body">
-        <p class="eyebrow">Вопрос ${qIdx + 1} из ${this.questions.length}</p>
-        <h2 id="q-heading-${qIdx}">${q.q}</h2>
-        <p class="lede">Для каждого — диапазон, в который он уверен на 90%, что попадёт правильный ответ.</p>
+        <p class="eyebrow" data-projector="eyebrow">Вопрос ${qIdx + 1} из ${this.questions.length}</p>
+        <h2 id="q-heading-${qIdx}" data-projector="title">${q.q}</h2>
+        <p class="lede" data-projector="lede">Для каждого — диапазон, в который он уверен на 90%, что попадёт правильный ответ.</p>
 
         ${this.timers.card(qIdx, { runningLabel: 'на ответ', compact: true })}
 
@@ -364,6 +391,7 @@ export class RetroGameCalibration extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('calibration')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -372,9 +400,11 @@ export class RetroGameCalibration extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 10 минут</p>
-          <h1>Насколько вы на самом деле уверены?</h1>
-          <p class="lede">${this.questions.length} коротких вопроса. На каждый — не точный ответ, а диапазон.</p>
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 10 минут</p>
+          <h1 data-projector="title">Насколько вы на самом деле уверены?</h1>
+          <p class="lede" data-projector="lede">${this.questions.length} коротких вопроса. На каждый — не точный ответ, а диапазон.</p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -443,8 +473,8 @@ export class RetroGameCalibration extends LitElement {
 
         <section class="${this.flow.roundClass(1 + this.questions.length)}" id="round-${1 + this.questions.length}">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: r ? r.hitRate : '—', ...REVEAL_COPY.calibration(r ? { hitPct: r.totalAnswered ? Math.round((r.totalHits / r.totalAnswered) * 100) : null, totalHits: r.totalHits, totalAnswered: r.totalAnswered } : null) })}
 
@@ -465,7 +495,7 @@ export class RetroGameCalibration extends LitElement {
 
           <p class="note" id="answers-reveal">${r ? r.answersReveal : ''}</p>
 
-          <div class="d3-chart-card">
+          <div class="d3-chart-card" data-projector="chart">
             <div class="d3-chart-title">Кто в какой диапазон уверен — и попал ли</div>
             <svg id="cal-chart" class="d3-chart-svg" role="img" aria-label="Диапазоны участников по каждому вопросу и верный ответ"></svg>
             <p class="d3-chart-cap">Каждая полоска — «90%-й» диапазон одного человека. Цветная — накрыла верный ответ (золотая линия), красная — мимо. Узкие красные полоски наверху — это самоуверенность.</p>
@@ -514,8 +544,8 @@ export class RetroGameCalibration extends LitElement {
 
         <section class="${this.flow.roundClass(2 + this.questions.length)}" id="round-${2 + this.questions.length}">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Калибровка уверенности</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Калибровка уверенности</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

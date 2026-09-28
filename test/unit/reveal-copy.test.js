@@ -94,6 +94,104 @@ const SAMPLES = {
     { deals: 10, total: 16, avgOffer: 300, avgMin: 200 },
     { deals: 16, total: 16, avgOffer: 400, avgMin: 250 },
   ],
+  weakestLink: [
+    {
+      minByRound: [4, 3, 2, 2, 1],
+      share7ByRound: [40, 30, 20, 20, 10],
+      talkEffect: 0,
+      talkRound: 4,
+    },
+    {
+      minByRound: [3, 2, 2, 6, 6],
+      share7ByRound: [30, 20, 10, 70, 70],
+      talkEffect: 4,
+      talkRound: 4,
+    },
+  ],
+  volunteer: [
+    {
+      rounds: [
+        { avgSize: 2, volunteerRate: 60, nobodyRate: 0 },
+        { avgSize: 4, volunteerRate: 30, nobodyRate: 25 },
+        { avgSize: 8, volunteerRate: 10, nobodyRate: 0 },
+      ],
+    },
+    {
+      rounds: [
+        { avgSize: 2, volunteerRate: 50, nobodyRate: 25 },
+        { avgSize: 4, volunteerRate: 50, nobodyRate: 0 },
+        { avgSize: 8, volunteerRate: 60, nobodyRate: 0 },
+      ],
+    },
+  ],
+  hiddenProfile: [
+    {
+      soloVotes: { sasha: 5, zhenya: 2, valya: 1 },
+      total: 8,
+      groupChoice: 'sasha',
+      groupName: 'Саша',
+      surfaced: 2,
+    },
+    {
+      soloVotes: { sasha: 4, zhenya: 3, valya: 1 },
+      total: 8,
+      groupChoice: 'zhenya',
+      groupName: 'Женя',
+      surfaced: null,
+    },
+  ],
+  dollarAuction: [
+    { final: 160, second: 150, prize: 100, bidsAfterAbsurd: 6 },
+    { final: 40, second: 30, prize: 100, bidsAfterAbsurd: 0 },
+  ],
+  lemons: [
+    { goodSoldByRound: [60, 30, 0, 50], avgPriceByRound: [70, 45, 25, 60], surplusPct: 40 },
+    { goodSoldByRound: [50, 50, 60, 70], avgPriceByRound: [70, 72, 75, 80], surplusPct: 85 },
+  ],
+  beautyContest: [
+    { targetByRound: [23, 13, 7, 3], levelsR1: { l1: 2, l2: 2, zero: 1, impossible: 1 } },
+    { targetByRound: [30, 29, 28, 28], levelsR1: { l1: 5, l2: 1, zero: 0, impossible: 0 } },
+  ],
+  elFarol: [
+    {
+      attendance: [6, 3, 7, 4, 4, 4, 4, 4],
+      capacity: 4,
+      goodSilent: 2,
+      goodTalk: 4,
+      silentCount: 4,
+      talkCount: 4,
+      spreadSilent: 1.5,
+      spreadTalk: 0,
+    },
+    {
+      attendance: [4, 6, 2, 7, 6, 2, 7, 1],
+      capacity: 4,
+      goodSilent: 2,
+      goodTalk: 2,
+      silentCount: 4,
+      talkCount: 4,
+      spreadSilent: 1.75,
+      spreadTalk: 2.5,
+    },
+  ],
+  beerGame: [
+    {
+      maxOrderByRole: [16, 16, 37, 37],
+      teamCost: 1372.5,
+      benchmarkCost: 384,
+      ratio: 3.6,
+      wavesShare: 100,
+      avgGuessMax: 14.5,
+    },
+    {
+      maxOrderByRole: [9, 10, 11, 12],
+      teamCost: 400,
+      benchmarkCost: 384,
+      ratio: 1,
+      wavesShare: null,
+      avgGuessMax: null,
+    },
+  ],
 };
 
 describe('REVEAL_COPY', () => {

@@ -59,6 +59,27 @@ async function run() {
       }
     }
 
+    report.section('Accessibility — players panel');
+    for (const [label, players] of [
+      ['filled', undefined],
+      ['empty first run', null],
+    ]) {
+      const page = await openPage(
+        browser,
+        report,
+        undefined,
+        players === null ? { players: null } : undefined,
+      );
+      try {
+        await page.click('.roster-toggle');
+        await page.waitForTimeout(500);
+        if (players === null) await page.click('#bulk-toggle-btn');
+        await checkScreen(report, page, `home with the players panel open (${label})`);
+      } finally {
+        await page.close();
+      }
+    }
+
     for (const game of GAMES) {
       report.section(`Accessibility — ${game.name}`);
       const page = await openPage(browser, report);

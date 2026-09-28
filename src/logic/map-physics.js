@@ -12,7 +12,6 @@
      layout                   computeSafeBounds, computeIconScale,
                               initialNodes
      per-frame simulation     moveNodes, separateNodes
-     motion wake (the tail)   smoothHeading, wakeDots
 
    A node is { x, y, vx, vy, frozen, ...game }. The simulation functions
    MUTATE the nodes they are given, on purpose: map-render.js binds each
@@ -130,10 +129,13 @@ export function computeIconScale(bounds, count, separation = MIN_SEPARATION) {
   return Math.min(1, Math.max(MIN_ICON_SCALE, Math.sqrt(area / wanted)));
 }
 
-// Scatters every game inside `bounds`, each on its own heading. Rejection
-// sampling (40 tries) for the starting spread — cheap for 13 points. The
-// layout drifts away from its start within seconds, so determinism only
-// matters so a reload doesn't reshuffle for no reason.
+// Scatters every game inside `bounds`, each on its own heading. Best-of-N
+// sampling for the starting spread: the first spot at least `minSeparation`
+// from everyone placed so far, or failing that the spot farthest from them —
+// never simply the last try, which with 20+ icons on a narrow screen left
+// icons sitting on top of each other (and under "reduce motion" nothing ever
+// moves them apart). Determinism only matters so a reload doesn't reshuffle.
+const PLACEMENT_TRIES = 200;
 export function initialNodes(
   games,
   bounds,
@@ -144,10 +146,17 @@ export function initialNodes(
   for (const g of games) {
     let x = 0;
     let y = 0;
-    for (let tries = 0; tries < 40; tries++) {
-      x = bounds.minX + rand() * (bounds.maxX - bounds.minX);
-      y = bounds.minY + rand() * (bounds.maxY - bounds.minY);
-      if (placed.every((n) => Math.hypot(n.x - x, n.y - y) >= minSeparation)) break;
+    let best = -1;
+    for (let tries = 0; tries < PLACEMENT_TRIES; tries++) {
+      const cx = bounds.minX + rand() * (bounds.maxX - bounds.minX);
+      const cy = bounds.minY + rand() * (bounds.maxY - bounds.minY);
+      const gap = Math.min(Infinity, ...placed.map((n) => Math.hypot(n.x - cx, n.y - cy)));
+      if (gap > best) {
+        best = gap;
+        x = cx;
+        y = cy;
+      }
+      if (gap >= minSeparation) break;
     }
     const angle = rand() * Math.PI * 2;
     const speed = DRIFT_SPEED[0] + rand() * (DRIFT_SPEED[1] - DRIFT_SPEED[0]);
@@ -224,62 +233,4 @@ export function separateNodes(nodes, dt, minSeparation = MIN_SEPARATION) {
       }
     }
   }
-}
-
-// ---------- the wake (the fading tail behind a drifting icon) ----------
-//
-// The tail used to be the icon's last 10 positions. The icons drift at
-// 6–15 px/s, so 10 frames back is about 2 px — the whole "trail" sat under
-// the icon and was invisible. It is now drawn as a comet tail: dots laid out
-// BEHIND the icon, starting just past its edge and reaching a fixed distance
-// away, regardless of how slowly the icon drifts.
-
-export const ICON_SIZE = 75; // px, the game icon's own size at scale 1
-export const WAKE = {
-  count: 9, // dots in the tail
-  startGap: 8, // px between the icon's edge and the first dot
-  gap: 11, // px between neighbouring dots
-  maxRadius: 10, // the dot nearest the icon
-  minRadius: 3, // the dot at the far end
-  maxAlpha: 0.38,
-  fade: 1.25, // >1 fades faster than linearly toward the tip
-};
-
-// Which way the icon is heading, smoothed: a bounce off an edge flips its
-// velocity instantly, and an instantly flipping tail would snap across the
-// icon. `prev` is a unit vector; the result is too. Time constant `tau` (s).
-//
-// Turns by ANGLE, along the shorter way round. (Blending the two vectors and
-// re-normalising looks equivalent but is stuck on a head-on 180° reversal:
-// the blend of (1,0) and (-1,0) is still along the x axis, so after
-// normalising it never leaves (1,0).)
-export function smoothHeading(prev, vx, vy, dt, tau = 0.45) {
-  const speed = Math.hypot(vx, vy);
-  if (speed < 1e-6) return prev;
-  const from = Math.atan2(prev.y, prev.x);
-  let turn = Math.atan2(vy, vx) - from;
-  if (turn > Math.PI) turn -= 2 * Math.PI;
-  else if (turn < -Math.PI) turn += 2 * Math.PI;
-  const angle = from + turn * (1 - Math.exp(-dt / tau));
-  return { x: Math.cos(angle), y: Math.sin(angle) };
-}
-
-// The tail's dots relative to the icon's centre, for an icon heading `heading`
-// (unit vector) and shrunk by `iconScale`. Every offset points BACKWARD, and
-// starts outside the icon's own radius so the tail is actually visible.
-// Returns [{ dx, dy, radius, alpha }] nearest-to-the-icon first.
-export function wakeDots(heading, iconScale = 1, wake = WAKE) {
-  const edge = (ICON_SIZE / 2) * iconScale;
-  const dots = [];
-  for (let i = 0; i < wake.count; i++) {
-    const t = wake.count > 1 ? i / (wake.count - 1) : 0;
-    const distance = edge + (wake.startGap + i * wake.gap) * iconScale;
-    dots.push({
-      dx: -heading.x * distance,
-      dy: -heading.y * distance,
-      radius: (wake.maxRadius + (wake.minRadius - wake.maxRadius) * t) * iconScale,
-      alpha: wake.maxAlpha * (1 - t) ** wake.fade,
-    });
-  }
-  return dots;
 }

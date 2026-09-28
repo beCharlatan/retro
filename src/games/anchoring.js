@@ -23,7 +23,9 @@ import { html, LitElement } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { ChartTip } from '../chart-tip.js';
 import CONTENT from '../content/anchoring.json';
-import { renderContext, renderFacts, renderNote, renderSteps } from '../content.js';
+import { renderContext, renderFacts, renderNote, renderRules, renderSteps } from '../content.js';
+import { ChartController } from '../controllers/chart-controller.js';
+import { ProjectorController } from '../controllers/projector-controller.js';
 import { RoundFlowController } from '../controllers/round-flow-controller.js';
 import { confirmExit, renderReveal } from '../game-shell.js';
 import { gameAccentStyle, renderTrail } from '../game-trail.js';
@@ -37,6 +39,7 @@ import {
   parseNumberInput,
   patchRow,
 } from '../logic/entries.js';
+import { projectorEntries } from '../logic/projector-entries.js';
 import { anchoringResults } from '../logic/results.js';
 import { linearRegression } from '../logic/stats.js';
 import { Persist, timeAgo } from '../persist.js';
@@ -67,8 +70,19 @@ export class RetroGameAnchoring extends LitElement {
     super();
     this.names = state.participants.slice();
     this.flow = new RoundFlowController(this, { titles: ROUND_TITLES });
+    this.charts = new ChartController(this, [
+      {
+        id: 'scatter',
+        when: () => this.results,
+        draw: () => this._drawScatter(this.results.filled),
+      },
+    ]);
     this.data = this._blankData();
     this.results = null;
+
+    this.projector = new ProjectorController(this, 'anchoring', {
+      entries: (round) => this._projectorEntries(round),
+    });
 
     this.draft = loadableDraft(Persist.load('anchoring'), {
       key: 'data',
@@ -105,6 +119,22 @@ export class RetroGameAnchoring extends LitElement {
     Persist.save('anchoring', { data: this.data });
   }
 
+  _projectorEntries(round) {
+    if (round !== 1) return null;
+    return projectorEntries({
+      title: 'Что внесли',
+      total: this.data.length,
+      rows: this.data.map((d) => ({
+        who: [d.name],
+        complete: d.anchor !== null && d.guess !== null,
+        cells: [
+          { label: 'Число', value: d.anchor },
+          { label: 'Оценка', value: d.guess === null ? null : `${d.guess}%` },
+        ],
+      })),
+    });
+  }
+
   _filledCount() {
     return countFilled(this.data, hasFields('anchor', 'guess'));
   }
@@ -132,15 +162,6 @@ export class RetroGameAnchoring extends LitElement {
     this.flow.reset();
     await this.updateComplete;
     this.flow.scrollTo(0);
-  }
-
-  updated() {
-    // No longer gated on screenIdx===2 — every round (including this
-    // one) is always in the DOM now, so "do we have results yet" is
-    // the only thing that matters for whether the scatter should draw.
-    if (this.results) {
-      this._drawScatter(this.results.filled);
-    }
   }
 
   _drawScatter(points) {
@@ -396,6 +417,7 @@ export class RetroGameAnchoring extends LitElement {
 
     return html`
       <div class="wrap-wide" style=${gameAccentStyle('anchoring')}>
+        <retro-projector-button></retro-projector-button>
         <button type="button" class="game-exit" aria-label="Выйти из игры" @click=${() => confirmExit(() => this._goHome())}>
           ${unsafeHTML(ICON_X)}
         </button>
@@ -404,12 +426,14 @@ export class RetroGameAnchoring extends LitElement {
           <div class="game-main">
         <section class="${this.flow.roundClass(0)}" id="round-0">
           <div class="round-body">
-          <p class="eyebrow">Командное упражнение · 5 минут</p>
-          <h1>Быстрый эксперимент для команды</h1>
-          <p class="lede">
+          <p class="eyebrow" data-projector="eyebrow">Командное упражнение · 5 минут</p>
+          <h1 data-projector="title">Быстрый эксперимент для команды</h1>
+          <p class="lede" data-projector="lede">
             Три коротких шага. Что именно здесь проверяется — расскажем в самом конце, после того
             как увидим результат.
           </p>
+
+          ${renderRules(CONTENT.rules)}
 
           <div class="draft-mount">
             ${
@@ -448,7 +472,7 @@ export class RetroGameAnchoring extends LitElement {
 
         <section class="${this.flow.roundClass(1)}" id="round-1">
           <div class="round-body">
-          <p class="eyebrow">Сбор данных</p>
+          <p class="eyebrow" data-projector="eyebrow">Сбор данных</p>
           <h2>Впишите числа каждого участника</h2>
           <p class="lede">Спросите по очереди: число из шага 1 и оценку из шага 3.</p>
 
@@ -478,12 +502,12 @@ export class RetroGameAnchoring extends LitElement {
 
         <section class="${this.flow.roundClass(2)}" id="round-2">
           <div class="round-body">
-          <p class="eyebrow">Результаты</p>
-          <h2>Что получилось у вашей команды</h2>
+          <p class="eyebrow" data-projector="eyebrow">Результаты</p>
+          <h2 data-projector="title">Что получилось у вашей команды</h2>
 
           ${renderReveal({ value: '28%', ...REVEAL_COPY.anchoring(r ? { lowAvg: r.lowAvgN, highAvg: r.highAvgN } : null) })}
 
-          <div class="chart-wrap">
+          <div class="chart-wrap" data-projector="chart">
             <svg id="scatter" class="d3-chart-svg" viewBox="0 0 640 380"></svg>
             <div class="cap">
               По горизонтали — число из шага 1 у каждого человека (00–99), по вертикали — его
@@ -546,8 +570,8 @@ export class RetroGameAnchoring extends LitElement {
 
         <section class="${this.flow.roundClass(3)}" id="round-3">
           <div class="round-body">
-          <p class="eyebrow">А теперь — контекст</p>
-          <h1>Эффект якоря</h1>
+          <p class="eyebrow" data-projector="eyebrow">А теперь — контекст</p>
+          <h1 data-projector="title">Эффект якоря</h1>
           ${renderContext(CONTENT.context)}
 
           <hr />

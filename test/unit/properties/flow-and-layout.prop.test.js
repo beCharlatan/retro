@@ -11,8 +11,6 @@ import {
   moveNodes,
   mulberry32,
   separateNodes,
-  smoothHeading,
-  wakeDots,
 } from '../../../src/logic/map-physics.js';
 import {
   activeIndexFromTops,
@@ -231,41 +229,6 @@ describe('map physics', () => {
         expect(sx).toBeCloseTo(w * 0.28, 5);
         expect(sy).toBeCloseTo(h * 0.6, 5);
       }),
-      RUNS,
-    );
-  });
-
-  test('the wake: dots always trail behind the heading, outside the icon, with valid radius and alpha', () => {
-    fc.assert(
-      fc.property(num(0, 6.283), num(0.4, 1), (angle, scale) => {
-        const heading = { x: Math.cos(angle), y: Math.sin(angle) };
-        for (const d of wakeDots(heading, scale)) {
-          // behind: the dot's offset points against the heading
-          expect(d.dx * heading.x + d.dy * heading.y).toBeLessThan(0);
-          expect(Math.hypot(d.dx, d.dy)).toBeGreaterThan((75 / 2) * scale);
-          expect(d.radius).toBeGreaterThan(0);
-          expect(d.alpha).toBeGreaterThanOrEqual(0);
-          expect(d.alpha).toBeLessThanOrEqual(1);
-        }
-      }),
-      RUNS,
-    );
-  });
-
-  test('smoothHeading always returns a finite unit vector, whatever velocity it is fed', () => {
-    fc.assert(
-      fc.property(
-        num(0, 6.283),
-        fc.array(fc.tuple(num(-20, 20), num(-20, 20)), { minLength: 1, maxLength: 30 }),
-        (angle, velocities) => {
-          let h = { x: Math.cos(angle), y: Math.sin(angle) };
-          for (const [vx, vy] of velocities) {
-            h = smoothHeading(h, vx, vy, 1 / 60);
-            expect(Number.isFinite(h.x) && Number.isFinite(h.y)).toBe(true);
-            expect(Math.hypot(h.x, h.y)).toBeCloseTo(1, 6);
-          }
-        },
-      ),
       RUNS,
     );
   });

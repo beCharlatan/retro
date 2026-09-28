@@ -7,7 +7,7 @@
 // show the questions and the portrait separately; the old "Сюрприз" reveal
 // is gone.
 
-const { Report, openPage, withBrowser, openGameFromHome, enableTestHooks } = require('./lib');
+const { Report, withBrowser, openGameFromHome, enableTestHooks } = require('./lib');
 const { GAMES } = require('./games');
 
 async function run() {
