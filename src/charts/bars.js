@@ -122,7 +122,7 @@ export function drawBars(
 // rows: [{ label, segments: [{ key, label, value, color, tip }] }]; every row's
 // segments are drawn as shares of that row's own total.
 // legend: [{ label, color }]
-export function drawStackedBars(svgNode, { rows, legend, theme }) {
+export function drawStackedBars(svgNode, { rows, legend }) {
   const height = TOP + 14 + rows.length * (ROW_H + ROW_GAP) + 8 - ROW_GAP;
   const svg = setupSvg(svgNode, W, height);
   const barX = 96;
