@@ -1,0 +1,74 @@
+/* Экран для показа — дополнительные стили поверх общих токенов.
+   Большая пассивная поверхность: full-width, размеры в vmin, чтобы
+   читалось с заднего ряда и никогда не прокручивалось. */
+#app {
+  max-width: none;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6vmin;
+}
+.p-title {
+  font-size: 8vmin;
+  margin-bottom: 2vmin;
+}
+.p-eyebrow {
+  font-size: 2.6vmin;
+}
+.p-card {
+  font-size: 3.4vmin;
+  padding: 4vmin;
+}
+.p-card .field,
+.p-card .field > span {
+  font-size: 3.2vmin;
+}
+.p-headline {
+  font-size: 22vmin;
+  text-align: center;
+  color: var(--accent-deep);
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  line-height: 1;
+  margin: 4vmin 0 1vmin;
+}
+.p-detail {
+  text-align: center;
+  font-size: 4vmin;
+  color: var(--ink-soft);
+  margin: 0 0 4vmin;
+}
+.p-count {
+  text-align: center;
+  font-size: 6vmin;
+  color: var(--ink-faint);
+}
+.p-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6vmin;
+  justify-content: center;
+  margin-top: 3vmin;
+}
+.p-chip {
+  font-size: 3vmin;
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 1.2vmin 3vmin;
+}
+.p-chip.on {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.p-setup {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+.p-setup input {
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  text-align: center;
+}

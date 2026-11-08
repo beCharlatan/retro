@@ -1,6 +1,6 @@
 name: verify
 
-# The full gate on every push and pull request. Three independent jobs so a
+# The full gate on every pull request. Four independent jobs so a
 # failure says WHAT broke without reading a long log:
 #
 #   static   Biome (errors only fail the job), the undeclared-variables lint that
@@ -8,6 +8,9 @@ name: verify
 #            property tests (no browser, seconds).
 #   e2e      Builds dist/index.html and runs the whole Playwright regression
 #            suite (test/run-all.js) against it.
+#   server   The online mode (Telegram Mini App): builds its clients and runs
+#            the protocol/declaration/session tests + a WS end-to-end run
+#            (test/server/) against a real server process.
 #   visual   Screenshot comparison of the exported PNG reports. Baselines are
 #            per-platform (system fonts render differently on macOS and Linux), so
 #            this job runs only when baselines for the runner's platform are
@@ -19,8 +22,6 @@ name: verify
 # `git push` stays fast; this is what actually enforces everything.
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
     branches: ["**"]
   workflow_dispatch:
@@ -83,6 +84,21 @@ jobs:
           name: dist
           path: dist/index.html
           retention-days: 14
+
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build the online-mode clients
+        run: bun run build:tma
+      - name: Online-mode tests (protocol, declarations, session, WS e2e)
+        run: bun run test:server
 
   visual:
     runs-on: ubuntu-latest

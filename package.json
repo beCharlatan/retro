@@ -5,6 +5,9 @@
   "packageManager": "bun@1.4.2",
   "scripts": {
     "build": "bun build.js",
+    "build:tma": "bun scripts/build-tma.js",
+    "server": "bun run build:tma && bun server/index.js",
+    "test:server": "cd test/server && bun test",
     "dev": "bun scripts/dev-server.js",
     "test": "bun test/run-all.js",
     "test:smoke": "bun test/run-all.js --only=smoke",
